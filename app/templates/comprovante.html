@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block titulo %}Comprovante de entrega{% endblock %}
+{% block conteudo %}
+<div class="cabecalho nao-imprimir">
+  <h1>Comprovante de entrega de EPI</h1>
+  <div class="acoes">
+    <button class="btn primario" onclick="window.print()">Imprimir</button>
+    <a class="btn" href="{{ url_for('cadastros.colaborador_ficha', colab_id=topo.colaborador_id) }}">Ficha do colaborador</a>
+    {% if pode_editar %}<a class="btn" href="{{ url_for('movimentos.movimentar', tipo='saida') }}">Nova entrega</a>{% endif %}
+  </div>
+</div>
+<section class="cartao comprovante">
+  <h2 class="so-imprimir">Comprovante de entrega de EPI</h2>
+  <table class="dados">
+    <tr><th>Colaborador</th><td>{{ topo.colab_nome }}</td><th>Matrícula</th><td>{{ topo.matricula or '—' }}</td></tr>
+    <tr><th>Função</th><td>{{ topo.colab_funcao or '—' }}</td><th>Setor</th><td>{{ topo.setor or '—' }}</td></tr>
+    <tr><th>Data da entrega</th><td>{{ topo.data|data_br }}</td><th>Responsável</th><td>{{ topo.usuario_nome }}</td></tr>
+    {% if topo.local_destino or pedido %}<tr><th>Local de destino</th><td>{{ topo.local_destino or '—' }}</td><th>Pedido</th><td>{% if pedido %}#{{ pedido.id }}{% else %}—{% endif %}</td></tr>{% endif %}
+  </table>
+  <table>
+    <thead><tr><th>EPI</th><th>CA</th><th class="num">Qtd</th><th>Unid.</th></tr></thead>
+    <tbody>
+    {% for l in linhas %}
+      <tr class="{{ 'cancelada' if l.cancelada }}"><td>{{ l.epi_nome }}{% if l.cancelada %} <small>(CANCELADO)</small>{% endif %}</td><td>{{ l.ca or '—' }}</td><td class="num">{{ l.quantidade }}</td><td>{{ l.unidade }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="declaracao">Declaro ter recebido, gratuitamente, os Equipamentos de Proteção Individual acima relacionados, em perfeito estado, e estar ciente da obrigatoriedade do seu uso, guarda, conservação e da comunicação de qualquer dano ou extravio.</p>
+  <div class="assinaturas">
+    {% if pedido and pedido.retirado_por_nome and pedido.retirado_por_nome != topo.colab_nome %}
+    <div><span></span>{{ pedido.retirado_por_nome }}<br><small>Retirou em nome de {{ topo.colab_nome }}{% if pedido.retirado_descricao %} · {{ pedido.retirado_descricao }}{% endif %}</small></div>
+    {% else %}
+    <div><span></span>{{ topo.colab_nome }}<br><small>Colaborador</small></div>
+    {% endif %}
+    <div><span></span>{{ topo.usuario_nome }}<br><small>Responsável pela entrega</small></div>
+  </div>
+</section>
+{% endblock %}

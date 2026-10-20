@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block titulo %}Usuários{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Usuários</h1>
+  <div class="acoes"><a class="btn primario" href="{{ url_for('cadastros.usuario_novo') }}">Novo usuário</a></div>
+</div>
+<div class="cartao"><table>
+  <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Situação</th><th></th></tr></thead>
+  <tbody>
+  {% for u in usuarios %}
+    <tr class="{{ 'inativo' if not u.ativo }}"><td>{{ u.nome }}</td><td>{{ u.login }}</td><td>{{ PERFIS[u.perfil] }}</td>
+      <td>{{ 'Ativo' if u.ativo else 'Inativo' }}</td><td><a href="{{ url_for('cadastros.usuario_editar', uid=u.id) }}">Editar</a></td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p class="nota"><strong>Administrador:</strong> tudo, inclusive cancelar lançamentos e gerenciar usuários. <strong>Almoxarifado:</strong> cadastros, entradas, entregas, baixas e ajustes. <strong>Consulta:</strong> apenas visualiza painel, histórico e relatórios.</p>
+{% endblock %}

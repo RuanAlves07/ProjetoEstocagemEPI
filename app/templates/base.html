@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Estoque de EPIs{% endblock %} · Estoque de EPIs</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body{% if usuario %} data-csrf="{{ csrf_token() }}" data-novos-url="{{ url_for('pedidos.novos') }}"{% endif %}>
+{% if usuario %}
+{% set ep = request.endpoint or '' %}
+<header class="topo" id="topo-sistema">
+  <div class="topo-barra-mobile">
+    <a class="marca" href="{{ url_for('painel.inicio') }}">🦺 Estoque de EPIs</a>
+    <button type="button" class="btn-menu-mobile nao-imprimir" id="btn-menu-mobile" aria-label="Abrir menu" aria-expanded="false">☰ Menu</button>
+  </div>
+  <nav class="nav-principal">
+    <a href="{{ url_for('painel.inicio') }}" class="{{ 'ativo' if ep == 'painel.inicio' }}">Painel</a>
+    <a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar') }}">Pedidos <span class="contador" id="badge-pedidos" {{ 'hidden' if not pedidos_a_atender }}>{{ pedidos_a_atender }}</span></a>
+    <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep == 'pedidos.solicitar' }}">Formulário</a>
+    <a href="{{ url_for('cadastros.epis_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.epi') }}">EPIs</a>
+    <a href="{{ url_for('cadastros.colaboradores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.colab') or ep == 'cadastros.cargos_padrao' }}">Colaboradores</a>
+    <a href="{{ url_for('movimentos.lista') }}" class="{{ 'ativo' if ep in ('movimentos.lista',) }}">Movimentações</a>
+    <a href="{{ url_for('painel.relatorios') }}" class="{{ 'ativo' if ep == 'painel.relatorios' }}">Relatórios</a>
+    {% if eh_admin %}<a href="{{ url_for('pedidos.integracao') }}" class="{{ 'ativo' if ep == 'pedidos.integracao' }}">Integração</a>{% endif %}
+    {% if eh_admin %}<a href="{{ url_for('cadastros.usuarios_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.usuario') }}">Usuários</a>{% endif %}
+  </nav>
+  <div class="usuario">
+    {% if pode_editar %}
+    <details class="menu">
+      <summary class="btn primario">+ Movimentar</summary>
+      <div class="menu-itens">
+        <a href="{{ url_for('movimentos.movimentar', tipo='saida') }}">Entrega a colaborador</a>
+        <a href="{{ url_for('movimentos.movimentar', tipo='entrada') }}">Entrada de estoque</a>
+        <a href="{{ url_for('movimentos.movimentar', tipo='baixa') }}">Baixa (perda/avaria)</a>
+        <a href="{{ url_for('movimentos.movimentar', tipo='ajuste') }}">Ajuste / saldo inicial</a>
+      </div>
+    </details>
+    {% endif %}
+    <a href="{{ url_for('auth.minha_senha') }}" title="Alterar senha">{{ usuario['nome'] }}</a>
+    <form method="post" action="{{ url_for('auth.sair') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn link">Sair</button>
+    </form>
+  </div>
+</header>
+
+<nav class="barra-inferior-mobile nao-imprimir" aria-label="Navegação rápida mobile">
+  <a href="{{ url_for('painel.inicio') }}" class="{{ 'ativo' if ep == 'painel.inicio' }}">
+    <span class="icone-mob">📊</span><span>Painel</span>
+  </a>
+  <a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar') }}">
+    <span class="icone-mob">📦{% if pedidos_a_atender %}<em class="badge-mob" id="badge-pedidos-mob">{{ pedidos_a_atender }}</em>{% endif %}</span><span>Pedidos</span>
+  </a>
+  <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep == 'pedidos.solicitar' }}">
+    <span class="icone-mob">📋</span><span>Formulário</span>
+  </a>
+  <a href="{{ url_for('cadastros.epis_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.epi') }}">
+    <span class="icone-mob">🦺</span><span>EPIs</span>
+  </a>
+  <a href="{{ url_for('cadastros.colaboradores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.colab') or ep == 'cadastros.cargos_padrao' }}">
+    <span class="icone-mob">👷</span><span>Equipe</span>
+  </a>
+</nav>
+{% endif %}
+<main class="{{ 'estreito' if not usuario and request.endpoint != 'pedidos.solicitar' }}">
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}<div class="aviso {{ cat }}">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  {% block conteudo %}{% endblock %}
+</main>
+{% if usuario and pode_editar %}
+<aside id="dock-pedidos" hidden>
+  <div class="dock-cab"><strong>🔔 <span id="dock-qtd">0</span> novo(s) pedido(s)</strong><button type="button" class="btn link" id="dock-min" title="Minimizar">−</button></div>
+  <div id="dock-corpo"></div>
+</aside>
+{% endif %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

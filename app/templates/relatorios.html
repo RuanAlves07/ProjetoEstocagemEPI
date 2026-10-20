@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block titulo %}Relatórios{% endblock %}
+{% macro barra(valor, maximo, cor='') %}<div class="barra {{ cor }}"><span style="width: {{ (valor / maximo * 100)|round(0) if maximo else 0 }}%"></span></div>{% endmacro %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Relatórios</h1>
+  <div class="acoes"><a class="btn" href="{{ url_for('movimentos.exportar_csv', de=de.isoformat(), ate=ate.isoformat()) }}">Exportar movimentações do período (CSV)</a></div>
+</div>
+<form class="filtros" method="get">
+  <label>de <input type="date" name="de" value="{{ de.isoformat() }}"></label>
+  <label>até <input type="date" name="ate" value="{{ ate.isoformat() }}"></label>
+  <button class="btn">Aplicar</button>
+  {% for nome, (d, a) in atalhos.items() %}<a class="btn link" href="{{ url_for('painel.relatorios', de=d.isoformat(), ate=a.isoformat()) }}">{{ nome }}</a>{% endfor %}
+</form>
+<p class="nota">Período: {{ de|data_br }} a {{ ate|data_br }}. Considera apenas movimentações não canceladas.</p>
+
+<section class="cartao">
+  <h2>Itens com mais saída</h2>
+  <div class="tabela-rolavel"><table>
+    <thead><tr><th>#</th><th>EPI</th><th></th><th class="num">Entregues</th><th class="num">Baixas</th><th class="num">Total saídas</th><th class="num">Entradas</th></tr></thead>
+    <tbody>
+    {% for r in ranking %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><a href="{{ url_for('movimentos.lista', epi_id=r.id, de=de.isoformat(), ate=ate.isoformat()) }}">{{ r.nome }}</a></td>
+        <td class="barra-celula">{{ barra(r.entregas + r.baixas, maximos.ranking) }}</td>
+        <td class="num">{{ r.entregas }}</td><td class="num">{{ r.baixas }}</td>
+        <td class="num"><strong>{{ r.entregas + r.baixas }}</strong> <small class="suave">{{ r.unidade }}</small></td>
+        <td class="num">{{ r.entradas }}</td>
+      </tr>
+    {% else %}<tr><td colspan="7" class="vazio">Sem movimentações no período.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="cartao">
+  <h2>Para onde estão indo (entregas por local de destino)</h2>
+  <table><thead><tr><th>Local</th><th></th><th class="num">Unid.</th><th class="num">Entregas</th></tr></thead><tbody>
+  {% for r in por_local %}
+    <tr><td>{{ r.nome }}</td><td class="barra-celula">{{ barra(r.total, maximos.local, 'azul') }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.entregas }}</td></tr>
+  {% else %}<tr><td colspan="4" class="vazio">Sem entregas no período.</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="nota">O local vem do campo “Local” dos pedidos do Forms. Entregas lançadas direto em Movimentar não têm local.</p>
+</section>
+
+<div class="grade-2">
+  <section class="cartao">
+    <h2>Entregas por setor</h2>
+    <table><thead><tr><th>Setor</th><th></th><th class="num">Unid.</th><th class="num">Colab.</th></tr></thead><tbody>
+    {% for r in por_setor %}
+      <tr><td><a href="{{ url_for('movimentos.lista', tipo='saida', setor=r.nome if r.nome != '(sem setor)' else '', de=de.isoformat(), ate=ate.isoformat()) }}">{{ r.nome }}</a></td>
+          <td class="barra-celula">{{ barra(r.total, maximos.setor, 'azul') }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.colaboradores }}</td></tr>
+    {% else %}<tr><td colspan="4" class="vazio">Sem entregas no período.</td></tr>{% endfor %}
+    </tbody></table>
+  </section>
+  <section class="cartao">
+    <h2>Colaboradores que mais receberam</h2>
+    <table><thead><tr><th>Colaborador</th><th></th><th class="num">Unid.</th><th class="num">Entregas</th></tr></thead><tbody>
+    {% for r in por_colaborador %}
+      <tr><td><a href="{{ url_for('cadastros.colaborador_ficha', colab_id=r.id) }}">{{ r.nome }}</a>{% if r.setor %} <small class="suave">{{ r.setor }}</small>{% endif %}</td>
+          <td class="barra-celula">{{ barra(r.total, maximos.colaborador, 'azul') }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.entregas }}</td></tr>
+    {% else %}<tr><td colspan="4" class="vazio">Sem entregas no período.</td></tr>{% endfor %}
+    </tbody></table>
+  </section>
+</div>
+
+<section class="cartao">
+  <h2>Entradas × saídas por mês</h2>
+  <table><thead><tr><th>Mês</th><th>Entradas</th><th></th><th>Saídas (entregas + baixas)</th><th></th></tr></thead><tbody>
+  {% for r in por_mes %}
+    <tr><td>{{ r.mes[5:] }}/{{ r.mes[:4] }}</td>
+        <td class="num">{{ r.entradas }}</td><td class="barra-celula">{{ barra(r.entradas, maximos.mes, 'verde') }}</td>
+        <td class="num">{{ r.saidas }}</td><td class="barra-celula">{{ barra(r.saidas, maximos.mes, 'vermelho') }}</td></tr>
+  {% else %}<tr><td colspan="5" class="vazio">Sem movimentações no período.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

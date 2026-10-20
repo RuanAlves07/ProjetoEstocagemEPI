@@ -1,0 +1,40 @@
+<article class="pedido-card status-{{ p.status }}">
+  <header>
+    <a class="pedido-titulo" href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }} · {{ p.solicitante }}</a>
+    <span class="suave">{{ p.recebido_em|tempo_atras }}</span>
+  </header>
+  <div class="pedido-meta">📍 <strong>{{ p.local_destino or 'Local não informado' }}</strong>{% if p.motivo %} · {{ p.motivo }}{% endif %}</div>
+  <ul class="pedido-itens">
+    {% for i in p.itens if not i.ignorado %}
+      <li>
+        {% if p.status in ('pronto', 'retirado') or i.separado %}<span class="ok-mini">✓</span>{% endif %}
+        {{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}
+        {% if i.epi_nome and i.tamanho %}<span class="badge">Tam. {{ i.tamanho }}</span>{% endif %}
+        {% if not i.epi_id %}<span class="badge amarelo">identificar</span>{% endif %}
+        {% if i.falta and p.status in ('novo', 'pendente', 'em_separacao') %}<span class="badge vermelho">sem saldo</span>{% endif %}
+      </li>
+    {% else %}<li class="suave">Nenhum item identificado no formulário</li>{% endfor %}
+  </ul>
+  {% if p.observacao %}<p class="pedido-obs">💬 {{ p.observacao }}</p>{% endif %}
+  {% if p.status == 'em_separacao' %}<div class="progresso-mini">{{ p.separados }}/{{ p.total_itens }} separados</div>{% endif %}
+  {% if p.status == 'retirado' %}<p class="nota">Retirado por <strong>{{ p.retirado_por_nome }}</strong> em {{ p.retirado_em|hora_br }}</p>{% endif %}
+  <footer class="acoes">
+    {% if pode_editar and p.status in ('novo', 'pendente') %}
+      <form method="post" action="{{ url_for('pedidos.iniciar', pedido_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn primario">Iniciar separação</button>
+      </form>
+      {% if p.status == 'novo' %}
+      <form method="post" action="{{ url_for('pedidos.mais_tarde', pedido_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="voltar" value="/pedidos" data-auto>
+        <button class="btn">Mais tarde</button>
+      </form>
+      {% endif %}
+    {% else %}
+      <a class="btn {{ 'primario' if p.status in ('em_separacao', 'pronto') and pode_editar }}" href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">
+        {{ {'em_separacao': 'Continuar separação', 'pronto': 'Ver / registrar retirada'}.get(p.status, 'Abrir') if pode_editar else 'Abrir' }}
+      </a>
+    {% endif %}
+  </footer>
+</article>

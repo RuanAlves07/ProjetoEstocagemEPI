@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ 'Novo colaborador' if novo else 'Editar colaborador' }}{% endblock %}
+{% block conteudo %}
+<div class="cartao estreito-card">
+  <h1>{{ 'Novo colaborador' if novo else 'Editar colaborador' }}</h1>
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <label>Nome <input name="nome" required autofocus value="{{ colab.nome or '' }}"></label>
+    <div class="linha">
+      <label>Matrícula <input name="matricula" value="{{ colab.matricula or '' }}"></label>
+      <label>Setor / Obra <input name="setor" list="setores" value="{{ colab.setor or '' }}"></label>
+    </div>
+    <datalist id="setores">{% for s in setores %}<option value="{{ s }}">{% endfor %}</datalist>
+    <label>Cargo / Função
+      <input name="funcao" list="lista-cargos" value="{{ colab.funcao or '' }}" placeholder="Selecione ou digite o cargo (ex.: Pedreiro, Motorista…)">
+      <span class="nota">Ao alocar o cargo, o perfil do colaborador já puxa automaticamente os equipamentos utilizados por padrão naquele cargo.</span>
+    </label>
+    <datalist id="lista-cargos">{% for cg in cargos %}<option value="{{ cg }}">{% endfor %}</datalist>
+    {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if colab.ativo }}> Colaborador ativo</label>
+    <p class="nota">Se o setor mudar, entregas antigas continuam registradas no setor da época.</p>{% endif %}
+    <div class="acoes">
+      <button class="btn primario">Salvar</button>
+      <a class="btn" href="{{ url_for('cadastros.colaborador_ficha', colab_id=colab_id) if not novo else url_for('cadastros.colaboradores_lista') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

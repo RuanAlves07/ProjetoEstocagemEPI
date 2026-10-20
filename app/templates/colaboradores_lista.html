@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block titulo %}Colaboradores{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Colaboradores</h1>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('cadastros.cargos_padrao') }}">⚙️ Padrão de EPIs por Cargo</a>
+    {% if pode_editar %}<a class="btn primario" href="{{ url_for('cadastros.colaborador_novo') }}">Novo colaborador</a>{% endif %}
+  </div>
+</div>
+
+<div class="abas">
+  <a class="ativa" href="{{ url_for('cadastros.colaboradores_lista') }}">Lista de colaboradores <span class="contador">{{ colaboradores|length }}</span></a>
+  <a href="{{ url_for('cadastros.cargos_padrao') }}">Padrão de EPIs por cargo <span class="contador">{{ cargos|length }}</span></a>
+</div>
+
+<form class="filtros" method="get">
+  <input name="q" value="{{ busca }}" placeholder="Buscar por nome, matrícula, setor ou cargo">
+  <select name="cargo">
+    <option value="">Todos os cargos / funções</option>
+    {% for cg in cargos %}
+    <option value="{{ cg }}" {{ 'selected' if cg == cargo_filtro }}>{{ cg }} ({{ contagem_padrao.get(cg.casefold(), 0) }} EPIs padrão)</option>
+    {% endfor %}
+  </select>
+  <label class="check"><input type="checkbox" name="inativos" value="1" {{ 'checked' if mostrar_inativos }}> mostrar inativos</label>
+  <button class="btn">Filtrar</button>
+</form>
+
+<div class="cartao"><div class="tabela-rolavel"><table>
+  <thead><tr><th>Nome</th><th>Matrícula</th><th>Setor / Obra</th><th>Cargo / Função</th><th>Padrão do cargo</th><th></th></tr></thead>
+  <tbody>
+  {% for c in colaboradores %}
+    {% set qtd_pad = contagem_padrao.get((c.funcao or '').casefold(), 0) %}
+    <tr class="{{ 'inativo' if not c.ativo }}">
+      <td><a href="{{ url_for('cadastros.colaborador_ficha', colab_id=c.id) }}">{{ c.nome }}</a>{% if not c.ativo %} <span class="badge">inativo</span>{% endif %}</td>
+      <td>{{ c.matricula or '—' }}</td>
+      <td>{{ c.setor or '—' }}</td>
+      <td>
+        {% if c.funcao %}
+          <a href="{{ url_for('cadastros.cargos_padrao', cargo=c.funcao) }}">{{ c.funcao }}</a>
+        {% else %}
+          <span class="suave">— Sem cargo —</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if c.funcao %}
+          <a class="badge {{ 'verde' if qtd_pad else 'amarelo' }}" href="{{ url_for('cadastros.cargos_padrao', cargo=c.funcao) }}">
+            {{ qtd_pad }} EPI(s) padrão
+          </a>
+        {% else %}
+          <span class="suave">—</span>
+        {% endif %}
+      </td>
+      <td class="acoes">
+        <a class="btn pequeno" href="{{ url_for('cadastros.colaborador_ficha', colab_id=c.id) }}">Ver perfil</a>
+        {% if pode_editar and c.ativo %}<a class="btn pequeno" href="{{ url_for('movimentos.movimentar', tipo='saida', colaborador_id=c.id) }}">Entregar EPI</a>{% endif %}
+      </td>
+    </tr>
+  {% else %}<tr><td colspan="6" class="vazio">Nenhum colaborador encontrado.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

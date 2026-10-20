@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf, tabela_movs with context %}
+{% block titulo %}Pedido #{{ p.id }}{% endblock %}
+{% block conteudo %}
+{% set em_aberto = p.status in ('novo', 'pendente', 'em_separacao') %}
+{% set separando = p.status == 'em_separacao' and pode_editar %}
+<div class="cabecalho">
+  <h1>Pedido #{{ p.id }} <span class="badge status-{{ p.status }}">{{ STATUS[p.status] }}</span></h1>
+  <div class="acoes"><a class="btn" href="{{ url_for('pedidos.lista') }}">← Pedidos</a></div>
+</div>
+
+<section class="cartao pedido-cabecalho">
+  <div class="dados-pedido">
+    <div><span class="suave">Solicitante</span><strong>{{ p.solicitante }}</strong></div>
+    <div><span class="suave">Local</span><strong>{{ p.local_destino or '—' }}</strong></div>
+    <div><span class="suave">Motivo</span><strong>{{ p.motivo or '—' }}</strong></div>
+    <div><span class="suave">Recebido</span><strong>{{ p.recebido_em|hora_br }}</strong></div>
+  </div>
+  {% if p.observacao %}<p class="pedido-obs">💬 <strong>Observação:</strong> {{ p.observacao }}</p>{% endif %}
+</section>
+
+{% if em_aberto and pode_editar and p.status != 'em_separacao' %}
+<div class="aviso ok">Pedido ainda não iniciado.
+  <form method="post" action="{{ url_for('pedidos.iniciar', pedido_id=p.id) }}" style="display:inline">{{ csrf() }}<button class="btn primario">Iniciar separação</button></form>
+  {% if p.status == 'novo' %}<form method="post" action="{{ url_for('pedidos.mais_tarde', pedido_id=p.id) }}" style="display:inline">{{ csrf() }}<button class="btn">Mais tarde</button></form>{% endif %}
+</div>
+{% endif %}
+
+<section class="cartao">
+  <div class="cabecalho">
+    <h2>Itens {% if em_aberto %}<small class="suave" id="progresso">{{ p.separados }}/{{ p.total_itens }} separados</small>{% endif %}</h2>
+  </div>
+  <div class="tabela-rolavel"><table class="checklist">
+    <thead><tr><th></th><th>Item</th><th class="num">Saldo</th><th></th></tr></thead>
+    <tbody>
+    {% for i in p.itens %}
+      <tr class="{{ 'ignorado' if i.ignorado }}">
+        <td class="chk-cel">
+          {% if not i.ignorado %}
+          <input type="checkbox" class="chk-sep" {{ 'checked' if i.separado or p.status in ('pronto', 'retirado') }}
+                 {{ '' if separando and i.epi_id else 'disabled' }}
+                 data-url="{{ url_for('pedidos.separar', pedido_id=p.id, item_id=i.id) }}" title="Marcar como separado">
+          {% endif %}
+        </td>
+        <td>
+          <span class="item-nome">{{ i.quantidade }}× {{ i.epi_nome or '—' }}{% if i.tamanho %} <span class="badge">Tam. {{ i.tamanho }}</span>{% endif %}</span>
+          <small class="suave">{{ i.coluna }}: “{{ i.texto_original }}”</small>
+          {% if not i.epi_id and not i.ignorado %}<span class="badge amarelo">identificar o EPI</span>{% endif %}
+          {% if i.ignorado %}<span class="badge">ignorado</span>{% endif %}
+          {% if i.epi_ativo == false %}<span class="badge vermelho">EPI inativo</span>{% endif %}
+        </td>
+        <td class="num">
+          {% if i.saldo is not none and not i.ignorado %}
+            <span class="{{ 'erro-texto' if i.falta }}">{{ i.saldo }} {{ i.unidade }}</span>{% if i.falta %}<br><small class="erro-texto">insuficiente</small>{% endif %}
+          {% endif %}
+        </td>
+        <td>
+          {% if em_aberto and pode_editar %}
+          <details class="editar-item" {{ 'open' if not i.epi_id and not i.ignorado }}>
+            <summary>{{ 'Identificar' if not i.epi_id and not i.ignorado else ('Restaurar' if i.ignorado else 'Alterar') }}</summary>
+            <form method="post" action="{{ url_for('pedidos.editar_item', pedido_id=p.id, item_id=i.id) }}" class="linha-form">
+              {{ csrf() }}
+              <select name="epi_id" required>
+                <option value="">Selecione o EPI…</option>
+                {% for e in epis %}<option value="{{ e.id }}" {{ 'selected' if e.id == i.epi_id }}>{{ e.nome }} — saldo {{ e.saldo }}</option>{% endfor %}
+              </select>
+              <input type="number" name="quantidade" min="1" max="999" value="{{ i.quantidade }}" title="Quantidade">
+              {% if i.coluna != 'Adicionado' %}<label class="check"><input type="checkbox" name="lembrar" value="1" checked> lembrar para os próximos pedidos</label>{% endif %}
+              <button class="btn primario pequeno">Salvar</button>
+            </form>
+            {% if not i.ignorado %}
+            <form method="post" action="{{ url_for('pedidos.ignorar_item', pedido_id=p.id, item_id=i.id) }}" class="linha-form">
+              {{ csrf() }}
+              {% if i.coluna != 'Adicionado' %}<label class="check"><input type="checkbox" name="sempre" value="1"> ignorar sempre este texto</label>{% endif %}
+              <button class="btn perigo pequeno">Remover do pedido</button>
+            </form>
+            {% endif %}
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="4" class="vazio">O formulário não trouxe nenhum item. Adicione abaixo.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if em_aberto and pode_editar %}
+  <details class="editar-item" style="margin-top:.8rem">
+    <summary>+ Adicionar item que não veio no formulário</summary>
+    <form method="post" action="{{ url_for('pedidos.adicionar_item', pedido_id=p.id) }}" class="linha-form">
+      {{ csrf() }}
+      <select name="epi_id" required><option value="">Selecione o EPI…</option>{% for e in epis %}<option value="{{ e.id }}">{{ e.nome }} — saldo {{ e.saldo }}</option>{% endfor %}</select>
+      <input type="number" name="quantidade" min="1" max="999" value="1" title="Quantidade">
+      <button class="btn pequeno">Adicionar</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+{% if em_aberto %}
+<section class="cartao">
+  <h2>Colaborador</h2>
+  {% if p.colaborador_id %}
+    <p>✅ <a href="{{ url_for('cadastros.colaborador_ficha', colab_id=p.colaborador_id) }}">{{ p.colaborador_nome }}</a> — a baixa será registrada na ficha dele.</p>
+  {% else %}
+    <p class="erro-texto">“{{ p.solicitante }}” não foi encontrado nos colaboradores cadastrados. Vincule a um colaborador (a baixa precisa de um) ou cadastre agora.</p>
+  {% endif %}
+  {% if pode_editar %}
+  <details class="editar-item" {{ 'open' if not p.colaborador_id }}>
+    <summary>{{ 'Trocar colaborador' if p.colaborador_id else 'Vincular colaborador' }}</summary>
+    <form method="post" action="{{ url_for('pedidos.colaborador', pedido_id=p.id) }}" class="linha-form">
+      {{ csrf() }}
+      <select name="colaborador_id" required><option value="">Selecione…</option>
+        {% for c in colaboradores %}<option value="{{ c.id }}" {{ 'selected' if c.id == p.colaborador_id }}>{{ c.nome }}{% if c.matricula %} ({{ c.matricula }}){% endif %}</option>{% endfor %}
+      </select>
+      <button class="btn primario pequeno">Vincular</button>
+    </form>
+    {% if not p.colaborador_id %}
+    <form method="post" action="{{ url_for('pedidos.colaborador', pedido_id=p.id) }}" class="linha-form">
+      {{ csrf() }}<input type="hidden" name="criar" value="1">
+      <button class="btn pequeno">Cadastrar “{{ p.solicitante }}” como novo colaborador</button>
+    </form>
+    {% endif %}
+  </details>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if separando %}
+<section class="cartao">
+  <form method="post" action="{{ url_for('pedidos.finalizar', pedido_id=p.id) }}" class="acoes">
+    {{ csrf() }}
+    <button class="btn primario grande" id="btn-finalizar" {{ 'disabled' if not p.pronto_para_finalizar }}
+            data-bloqueio="{{ '1' if not p.colaborador_id }}">Finalizar pedido</button>
+    <span class="nota" id="dica-finalizar">Marque todos os itens como separados{% if not p.colaborador_id %} e vincule o colaborador{% endif %}. Ao finalizar, a baixa no estoque é feita e o pedido fica “pronto para retirada”.</span>
+  </form>
+</section>
+{% endif %}
+
+{% if p.status == 'pronto' %}
+<section class="cartao destaque-pronto">
+  <h2>✅ Pronto para retirada</h2>
+  <p>Baixa já registrada no estoque{% if p.finalizado_em %} em {{ p.finalizado_em|hora_br }}{% endif %}.
+    <a href="{{ url_for('movimentos.comprovante', grupo=p.grupo) }}">Imprimir comprovante</a></p>
+  {% if pode_editar %}
+  <form method="post" action="{{ url_for('pedidos.retirar', pedido_id=p.id) }}" class="formulario">
+    {{ csrf() }}
+    <h2>Registrar retirada</h2>
+    <div class="linha">
+      <label>Quem retirou <input name="retirado_por_nome" required value="{{ p.solicitante }}"></label>
+      <label>Descrição (cargo/função, empresa, obra…) <input name="retirado_descricao" placeholder="Ex.: Encarregado da obra X"></label>
+    </div>
+    <div class="acoes"><button class="btn primario">Marcar como retirado</button></div>
+  </form>
+  {% endif %}
+</section>
+{% elif p.status == 'retirado' %}
+<section class="cartao">
+  <h2>Retirada</h2>
+  <p><strong>{{ p.retirado_por_nome }}</strong>{% if p.retirado_descricao %} — {{ p.retirado_descricao }}{% endif %}<br>
+    em {{ p.retirado_em|hora_br }} · <a href="{{ url_for('movimentos.comprovante', grupo=p.grupo) }}">Comprovante</a></p>
+</section>
+{% elif p.status == 'cancelado' %}
+<div class="aviso erro">Pedido cancelado em {{ p.cancelado_em|hora_br }}: {{ p.cancelado_motivo }}</div>
+{% endif %}
+
+{% if p.grupo and movs %}
+<section class="cartao"><h2>Movimentações de estoque geradas</h2>{{ tabela_movs(movs, mostrar_colab=false, voltar=request.path) }}</section>
+{% endif %}
+
+{% if pode_editar and (em_aberto or (p.status == 'pronto' and eh_admin)) %}
+<details class="cancelar-pedido">
+  <summary>Cancelar este pedido</summary>
+  <form method="post" action="{{ url_for('pedidos.cancelar', pedido_id=p.id) }}" class="linha-form">
+    {{ csrf() }}
+    <input name="motivo" placeholder="Motivo do cancelamento" required>
+    <button class="btn perigo pequeno">Cancelar pedido</button>
+  </form>
+  {% if p.status == 'pronto' %}<p class="nota">Como já houve baixa, o cancelamento devolve os itens ao estoque.</p>{% endif %}
+</details>
+{% endif %}
+{% endblock %}

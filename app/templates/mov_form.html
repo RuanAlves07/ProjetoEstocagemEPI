@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block conteudo %}
+<div class="cartao">
+  <h1>{{ titulo }}</h1>
+  {% if tipo == 'ajuste' %}<p class="nota">Use para lançar o <strong>saldo inicial</strong> de cada item (motivo: “Saldo inicial”) ou para corrigir diferenças após contagem física.</p>{% endif %}
+  <form method="post" class="formulario" id="form-mov">
+    {{ csrf() }}
+    <div class="linha">
+      <label>Data <input type="date" name="data" required value="{{ form.data }}"></label>
+      {% if tipo == 'saida' %}
+      <label>Colaborador
+        <select name="colaborador_id" required>
+          <option value="">Selecione…</option>
+          {% for c in colaboradores %}<option value="{{ c.id }}" {{ 'selected' if form.colaborador_id == c.id }}>{{ c.nome }}{% if c.matricula %} ({{ c.matricula }}){% endif %}{% if c.setor %} · {{ c.setor }}{% endif %}</option>{% endfor %}
+        </select>
+      </label>
+      {% elif tipo == 'entrada' %}
+      <label>Fornecedor <input name="fornecedor" value="{{ form.fornecedor or '' }}"></label>
+      <label>Nota fiscal <input name="nota_fiscal" value="{{ form.nota_fiscal or '' }}"></label>
+      {% elif tipo == 'ajuste' %}
+      <label>Tipo de ajuste
+        <select name="sentido">
+          <option value="mais" {{ 'selected' if form.sentido != 'menos' }}>Acrescentar ao estoque (+)</option>
+          <option value="menos" {{ 'selected' if form.sentido == 'menos' }}>Retirar do estoque (−)</option>
+        </select>
+      </label>
+      {% endif %}
+    </div>
+    {% if tipo in ('baixa', 'ajuste') %}
+    <label>Motivo <input name="motivo" required value="{{ form.motivo or '' }}" placeholder="{{ 'Ex.: Saldo inicial; Contagem de inventário' if tipo == 'ajuste' else 'Ex.: Perda, avaria, vencimento, descarte' }}"></label>
+    {% endif %}
+
+    <h2>Itens</h2>
+    <div class="tabela-rolavel"><table class="itens" id="itens">
+      <thead><tr><th>EPI</th><th class="num">Quantidade</th>{% if tipo == 'entrada' %}<th class="num">Custo unit. (opcional)</th>{% endif %}<th></th></tr></thead>
+      <tbody>
+      {% for it in itens %}
+        <tr>
+          <td>
+            <select name="epi_id" required>
+              <option value="">Selecione…</option>
+              {% for e in epis %}<option value="{{ e.id }}" {{ 'selected' if it.epi_id == e.id }}>{{ e.nome }}{% if tipo == 'saida' and e.ca %} · CA {{ e.ca }}{% endif %} — saldo {{ e.saldo }} {{ e.unidade }}</option>{% endfor %}
+            </select>
+          </td>
+          <td class="num"><input type="number" name="quantidade" min="1" step="1" required value="{{ it.quantidade }}"></td>
+          {% if tipo == 'entrada' %}<td class="num"><input type="text" inputmode="decimal" name="custo_unitario" value="{{ it.custo_unitario }}" placeholder="0,00"></td>{% endif %}
+          <td><button type="button" class="btn link remover" title="Remover linha">✕</button></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p><button type="button" class="btn" id="add-linha">+ Adicionar item</button></p>
+
+    <label>Observação (opcional) <input name="observacao" value="{{ form.observacao or '' }}"></label>
+    <div class="acoes">
+      <button class="btn primario">{{ 'Registrar entrega' if tipo == 'saida' else 'Registrar' }}</button>
+      <a class="btn" href="{{ url_for('painel.inicio') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

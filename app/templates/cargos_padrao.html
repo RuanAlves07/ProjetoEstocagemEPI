@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ 'Cargo: ' ~ cargo_atual if cargo_atual else 'Padrão de EPIs por Cargo' }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>{{ 'Cargo: ' ~ cargo_atual if cargo_atual else 'Padrão de EPIs por Cargo' }}</h1>
+  <div class="acoes">
+    {% if cargo_atual %}
+      <a class="btn" href="{{ url_for('cadastros.cargos_padrao') }}">← Todos os cargos</a>
+      <a class="btn" href="{{ url_for('cadastros.colaboradores_lista', cargo=cargo_atual) }}">Ver colaboradores deste cargo</a>
+    {% else %}
+      <a class="btn" href="{{ url_for('cadastros.colaboradores_lista') }}">← Lista de colaboradores</a>
+      {% if pode_editar %}<a class="btn primario" href="{{ url_for('cadastros.colaborador_novo') }}">Novo colaborador</a>{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="abas">
+  <a href="{{ url_for('cadastros.colaboradores_lista') }}">Lista de colaboradores</a>
+  <a class="ativa" href="{{ url_for('cadastros.cargos_padrao') }}">Padrão de EPIs por cargo <span class="contador">{{ resumo_cargos|length }}</span></a>
+</div>
+
+{% if not cargo_atual %}
+  <!-- Visão 1: Lista de todos os cargos -->
+  {% if pode_editar %}
+  <div style="margin-bottom:1rem">
+    <form method="get" action="{{ url_for('cadastros.cargos_padrao') }}" class="linha-form" style="margin:0">
+      <input name="cargo" placeholder="Nome de um novo cargo (ex.: Soldador, Eletricista)…" required style="min-width:280px">
+      <button class="btn primario">+ Criar / configurar novo cargo</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="cartao">
+    <p class="nota" style="margin-top:0">Clique em cima do nome do cargo abaixo para abrir e editar a lista dos equipamentos definidos por padrão para aquela função.</p>
+    <div class="tabela-rolavel">
+      <table>
+        <thead>
+          <tr>
+            <th>Cargo / Função</th>
+            <th class="num">Colaboradores ativos</th>
+            <th class="num">Qtd. EPIs padrão</th>
+            <th>Equipamentos padrão configurados</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for rc in resumo_cargos %}
+          <tr>
+            <td>
+              <a href="{{ url_for('cadastros.cargos_padrao', cargo=rc.nome) }}" style="font-weight:700;font-size:1rem">
+                {{ rc.nome }}
+              </a>
+            </td>
+            <td class="num">
+              <a href="{{ url_for('cadastros.colaboradores_lista', cargo=rc.nome) }}">{{ rc.colaboradores }}</a>
+            </td>
+            <td class="num">
+              <span class="badge {{ 'verde' if rc.epis else 'amarelo' }}">{{ rc.epis }} item(ns)</span>
+            </td>
+            <td>
+              {% if rc.nomes_epis %}
+                <small class="suave">{{ rc.nomes_epis|join(' · ') }}</small>
+              {% else %}
+                <small class="erro-texto">Nenhum equipamento padrão definido</small>
+              {% endif %}
+            </td>
+            <td class="acoes">
+              <a class="btn pequeno" href="{{ url_for('cadastros.cargos_padrao', cargo=rc.nome) }}">Abrir equipamentos padrão</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="vazio">Nenhum cargo cadastrado ainda. Crie um cargo acima para começar.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{% else %}
+  <!-- Visão 2: Detalhe do cargo selecionado com a lista de equipamentos padrão -->
+  {% set selecionados = epis|selectattr('id', 'in', padrao_ids)|list %}
+  <section class="cartao destaque-pronto">
+    <div class="cabecalho">
+      <h2 style="margin:0">Equipamentos definidos por padrão para: {{ cargo_atual }}</h2>
+      <span class="badge verde"><span id="contador-padrao">{{ padrao_ids|length }}</span> equipamento(s) padrão</span>
+      <span id="badge-padrao" hidden>{{ padrao_ids|length }}</span>
+    </div>
+    {% if selecionados %}
+    <ul class="pedido-itens" style="margin-top:.7rem">
+      {% for e in selecionados %}
+      <li><strong>{{ e.nome }}</strong> {% if e.categoria %}<span class="suave">({{ e.categoria }})</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="nota" style="margin:.6rem 0 0">Ainda não há equipamentos marcados como padrão para este cargo. Marque os itens na lista do inventário abaixo.</p>
+    {% endif %}
+  </section>
+
+  <section class="cartao">
+    <h2>Selecionar / alterar equipamentos padrão no inventário</h2>
+    <p class="nota">Marque ou desmarque abaixo os equipamentos que todo colaborador do cargo <strong>{{ cargo_atual }}</strong> utiliza por padrão. Qualquer item solicitado fora desta seleção aparecerá automaticamente na aba <strong>Equipamentos solicitados</strong> do colaborador.</p>
+
+    <form method="post" action="{{ url_for('cadastros.cargos_padrao', cargo=cargo_atual) }}" id="form-padrao-colab"
+          data-ajax-url="{{ url_for('cadastros.cargos_padrao', cargo=cargo_atual) }}">
+      {{ csrf() }}
+      <input type="hidden" name="cargo" value="{{ cargo_atual }}">
+      <div class="tabela-rolavel">
+        <table class="checklist">
+          <thead>
+            <tr>
+              <th>Padrão do cargo</th>
+              <th>Equipamento (inventário)</th>
+              <th>Categoria</th>
+              <th>CA</th>
+              <th class="num">Saldo atual</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for e in epis %}
+            <tr>
+              <td class="chk-cel">
+                <input type="checkbox" name="epi_id" value="{{ e.id }}" class="chk-padrao"
+                       {{ 'checked' if e.id in padrao_ids }} {{ '' if pode_editar else 'disabled' }}>
+              </td>
+              <td>
+                <label style="cursor:pointer;font-weight:600;margin:0" onclick="const c=this.closest('tr').querySelector('.chk-padrao');if(c&&!c.disabled){c.click();}">
+                  {{ e.nome }}
+                </label>
+              </td>
+              <td>{{ e.categoria or '—' }}</td>
+              <td>{{ e.ca or '—' }}</td>
+              <td class="num">{{ e.saldo }} <small class="suave">{{ e.unidade }}</small></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="vazio">Nenhum equipamento cadastrado no inventário.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if pode_editar and epis %}
+      <div class="acoes" style="margin-top:1rem">
+        <button class="btn primario">Salvar padrão do cargo “{{ cargo_atual }}”</button>
+        <a class="btn" href="{{ url_for('cadastros.cargos_padrao') }}">Voltar para todos os cargos</a>
+        <span class="nota" id="status-padrao">As marcações também são salvas automaticamente ao clicar.</span>
+      </div>
+      {% endif %}
+    </form>
+  </section>
+{% endif %}
+{% endblock %}

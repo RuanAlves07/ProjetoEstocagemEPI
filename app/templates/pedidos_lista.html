@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% macro select_inventario(nome_campo, rotulo_grupo) %}
+  {% set principais, outros = opcoes_inv[nome_campo] %}
+  <select name="{{ nome_campo }}">
+    <option value="">— Nenhum —</option>
+    {% if principais %}
+    <optgroup label="{{ rotulo_grupo }}">
+      {% for e in principais %}
+      <option value="{{ e.nome }}">{{ e.nome }} (saldo: {{ e.saldo }} {{ e.unidade }})</option>
+      {% endfor %}
+    </optgroup>
+    {% endif %}
+    {% if outros %}
+    <optgroup label="Outros itens do inventário">
+      {% for e in outros %}
+      <option value="{{ e.nome }}">{{ e.nome }} (saldo: {{ e.saldo }} {{ e.unidade }})</option>
+      {% endfor %}
+    </optgroup>
+    {% endif %}
+  </select>
+{% endmacro %}
+{% block titulo %}Pedidos{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Pedidos de EPI</h1>
+  <div class="acoes">
+    <a class="btn primario" href="{{ url_for('pedidos.solicitar') }}">📋 Abrir Formulário Público</a>
+    <a class="btn" href="{{ url_for('pedidos.exportar_csv') }}">Exportar controle de saída (CSV)</a>
+  </div>
+</div>
+
+{% if pode_editar %}
+<div class="acoes" style="margin-bottom:1rem">
+  <details class="editar-item">
+    <summary class="btn">+ Lançar / simular pedido</summary>
+    <form method="post" action="{{ url_for('pedidos.simular') }}" class="cartao formulario" style="margin-top:.5rem">
+      {{ csrf() }}
+      <input type="hidden" name="voltar" value="{{ url_for('pedidos.lista') }}">
+      <div class="linha">
+        <label>Nome — Colaborador (Col. H)
+          <select name="nome" required>
+            <option value="">Selecione o colaborador…</option>
+            {% for c in colaboradores %}
+            <option value="{{ c.nome }}">{{ c.nome }}{% if c.matricula %} ({{ c.matricula }}){% endif %}{% if c.setor %} · {{ c.setor }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Local (Col. I)
+          <input name="local" list="lista-locais" placeholder="Ex.: Araquari / Joinville">
+          <datalist id="lista-locais">{% for l in locais %}<option value="{{ l }}">{% endfor %}</datalist>
+        </label>
+        <label>Motivo (Col. J)
+          <select name="motivo">
+            <option value="Reposição">Reposição</option>
+            <option value="Admissão">Admissão</option>
+            <option value="Substituição por desgaste">Substituição por desgaste</option>
+            <option value="Troca periódica">Troca periódica</option>
+            <option value="Obra nova">Obra nova</option>
+          </select>
+        </label>
+      </div>
+      <div class="linha">
+        <label>Vestimento (Col. K) {{ select_inventario('vestimento', 'Vestimentos no inventário') }}</label>
+        <label id="bloco-epi-sim">EPI (Col. L)
+          {{ select_inventario('epi', 'EPIs no inventário') }}
+          <button type="button" class="btn link pequeno" onclick="const s=this.previousElementSibling.cloneNode(true);s.selectedIndex=0;this.before(s);" style="align-self:flex-start">+ Adicionar outro EPI</button>
+        </label>
+        <label>Sapatão (Col. M) {{ select_inventario('sapatao', 'Calçados no inventário') }}</label>
+      </div>
+      <div class="linha">
+        <label>Camiseta (Col. N) {{ select_inventario('camiseta', 'Camisetas no inventário') }}</label>
+        <label>Calça (Col. O) {{ select_inventario('calca', 'Calças no inventário') }}</label>
+        <label>Observação (Col. P) <input name="observacao" placeholder="Observações do pedido"></label>
+      </div>
+      <div class="acoes"><button class="btn primario">Criar card de pedido</button></div>
+    </form>
+  </details>
+  <details class="editar-item">
+    <summary class="btn">Importar planilha do Forms (CSV)</summary>
+    <form method="post" action="{{ url_for('pedidos.importar_csv') }}" enctype="multipart/form-data" class="cartao linha-form" style="margin-top:.5rem">
+      {{ csrf() }}
+      <input type="file" name="arquivo" accept=".csv,text/csv" required>
+      <button class="btn primario">Importar</button>
+      <span class="nota">Lê as colunas H a P da planilha do Forms (Nome, Local, Motivo, Vestimento, EPI, Sapatão, Camiseta, Calça, Observação) e ignora pedidos já importados.</span>
+    </form>
+  </details>
+</div>
+{% endif %}
+<div class="abas">
+  <a class="{{ 'ativa' if aba == 'abertos' }}" href="{{ url_for('pedidos.lista') }}">Em andamento{% if pedidos_a_atender %} <span class="contador">{{ pedidos_a_atender }}</span>{% endif %}</a>
+  <a class="{{ 'ativa' if aba == 'retirados' }}" href="{{ url_for('pedidos.lista', aba='retirados') }}">Retirados</a>
+  <a class="{{ 'ativa' if aba == 'cancelados' }}" href="{{ url_for('pedidos.lista', aba='cancelados') }}">Cancelados</a>
+</div>
+
+{% if grupos %}
+  {% for chave, rotulo, lista in grupos %}
+  <section class="grupo-pedidos">
+    <h2>{{ rotulo }} <span class="contador {{ 'alerta' if chave == 'novo' and lista }}">{{ lista|length }}</span></h2>
+    {% if lista %}
+      <div class="grade-cards">{% for p in lista %}{% include '_pedido_card.html' %}{% endfor %}</div>
+    {% else %}<p class="vazio">Nenhum pedido aqui.</p>{% endif %}
+  </section>
+  {% endfor %}
+{% else %}
+  <div class="cartao"><div class="tabela-rolavel"><table>
+    <thead><tr><th>Pedido</th><th>Solicitante</th><th>Local</th><th>Itens</th>
+      {% if aba == 'retirados' %}<th>Retirado por</th><th>Quando</th>{% else %}<th>Motivo do cancelamento</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for p in historico %}
+      <tr>
+        <td><a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }}</a></td>
+        <td>{{ p.solicitante }}</td><td>{{ p.local_destino or '—' }}</td>
+        <td>{% for i in p.itens if not i.ignorado %}{{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}{{ ', ' if not loop.last }}{% endfor %}</td>
+        {% if aba == 'retirados' %}
+          <td>{{ p.retirado_por_nome }}{% if p.retirado_descricao %}<br><small class="suave">{{ p.retirado_descricao }}</small>{% endif %}</td>
+          <td>{{ p.retirado_em|hora_br }}</td>
+        {% else %}<td>{{ p.cancelado_motivo }}</td>{% endif %}
+      </tr>
+    {% else %}<tr><td colspan="6" class="vazio">Nada por aqui.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <p class="nota">Mostrando os 200 mais recentes. O CSV traz todos.</p></div>
+{% endif %}
+{% endblock %}

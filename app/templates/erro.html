@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block titulo %}Erro{% endblock %}
+{% block conteudo %}
+<div class="cartao">
+  <h1>{{ erro.code }} · {{ {400: 'Requisição inválida', 403: 'Sem permissão', 404: 'Não encontrado', 413: 'Conteúdo grande demais'}.get(erro.code, 'Erro') }}</h1>
+  <p>{% if erro.code == 403 %}Seu perfil não tem permissão para esta ação.{% elif erro.code == 404 %}O registro ou página não existe.{% else %}{{ erro.description }}{% endif %}</p>
+  <p><a class="btn" href="{{ url_for('painel.inicio') }}">Voltar ao painel</a></p>
+</div>
+{% endblock %}

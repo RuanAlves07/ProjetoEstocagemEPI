@@ -1,0 +1,368 @@
+import re
+
+from app import estoque, pedidos
+from app.db import get_db
+from tests.test_app import Base
+
+
+class BasePedidos(Base):
+    def setUp(self):
+        super().setUp()
+        self.setup_admin()
+        self.luva = self.criar_epi("Luva G")
+        self.bota = self.criar_epi("Bota 40")
+        self.camiseta = self.criar_epi("Camiseta M")
+        self.joao = self.criar_colab("João da Silva")
+        for epi in (self.luva, self.bota, self.camiseta):
+            self.mov("entrada", epi, 10)
+        with self.app.app_context():
+            self.key = pedidos.obter_api_key(get_db())
+
+    def api(self, dados, chave=None, **kw):
+        return self.app.test_client().post(
+            "/api/pedidos", json=dados, headers={"X-API-Key": self.key if chave is None else chave}, **kw)
+
+    def novo_pedido(self, **extra):
+        dados = {"id": "resp-1", "nome": "João da Silva", "local": "Obra A", "motivo": "Reposição",
+                 "epi": "2x Luva G", "sapatao": "Bota 40", "camiseta": "M", "observacao": "Urgente", **extra}
+        r = self.api(dados)
+        self.assertIn(r.status_code, (200, 201), r.get_data(as_text=True))
+        return r.get_json()["id"]
+
+    def itens(self, pedido_id):
+        with self.app.app_context():
+            return [dict(r) for r in get_db().execute(
+                "SELECT * FROM pedido_itens WHERE pedido_id = ? ORDER BY id", (pedido_id,))]
+
+    def pedido(self, pedido_id):
+        with self.app.app_context():
+            return dict(get_db().execute("SELECT * FROM pedidos WHERE id = ?", (pedido_id,)).fetchone())
+
+    def separar_todos(self, pedido_id):
+        for it in self.itens(pedido_id):
+            if not it["ignorado"]:
+                r = self.post(f"/pedidos/{pedido_id}/itens/{it['id']}/separar", {"separado": "1"})
+                self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+
+
+class TestApi(BasePedidos):
+    def test_exige_chave(self):
+        self.assertEqual(self.api({"nome": "X"}, chave="errada").status_code, 401)
+        self.assertEqual(self.app.test_client().post("/api/pedidos", json={"nome": "X"}).status_code, 401)
+
+    def test_validacoes(self):
+        self.assertEqual(self.api({"local": "Obra"}).status_code, 400)
+        r = self.app.test_client().post("/api/pedidos", data="não é json", headers={"X-API-Key": self.key})
+        self.assertEqual(r.status_code, 400)
+
+    def test_cria_pedido_e_identifica_itens(self):
+        pid = self.novo_pedido()
+        p = self.pedido(pid)
+        self.assertEqual((p["status"], p["local_destino"], p["colaborador_id"]), ("novo", "Obra A", self.joao))
+        por_texto = {i["texto_original"]: i for i in self.itens(pid)}
+        self.assertEqual(por_texto["Luva G"]["epi_id"], self.luva)
+        self.assertEqual(por_texto["Luva G"]["quantidade"], 2)
+        self.assertEqual(por_texto["Bota 40"]["epi_id"], self.bota)
+        self.assertEqual(por_texto["M"]["epi_id"], self.camiseta)    # "Camiseta" + "M"
+
+    def test_idempotente_pelo_id_da_resposta(self):
+        a = self.novo_pedido()
+        r = self.api({"id": "resp-1", "nome": "João da Silva", "epi": "Luva G"})
+        self.assertEqual((r.status_code, r.get_json()["id"], r.get_json()["criado"]), (200, a, False))
+        self.assertEqual(len(self.itens(a)), 3)
+
+    def test_multipla_escolha_do_forms_e_respostas_nao(self):
+        pid = self.novo_pedido(epi='["Luva G","Óculos"]', calca="Não", vestimento="")
+        textos = [i["texto_original"] for i in self.itens(pid)]
+        self.assertIn("Óculos", textos)
+        self.assertNotIn("Não", textos)
+        oculos = next(i for i in self.itens(pid) if i["texto_original"] == "Óculos")
+        self.assertIsNone(oculos["epi_id"])
+
+    def test_colaborador_nao_cadastrado(self):
+        pid = self.novo_pedido(id="x", nome="Maria Nova")
+        self.assertIsNone(self.pedido(pid)["colaborador_id"])
+
+    def test_nome_com_acento_e_caixa_diferentes_casa(self):
+        pid = self.novo_pedido(id="y", nome="  JOAO DA SILVA ")
+        self.assertEqual(self.pedido(pid)["colaborador_id"], self.joao)
+
+
+class TestFluxo(BasePedidos):
+    def test_fluxo_completo_com_baixa_no_estoque(self):
+        pid = self.novo_pedido()
+        # mais tarde -> pendente; aparece na lista
+        self.post(f"/pedidos/{pid}/mais-tarde", {"voltar": "/pedidos"})
+        self.assertEqual(self.pedido(pid)["status"], "pendente")
+        self.assertIn("Pendentes", self.c.get("/pedidos").get_data(as_text=True))
+        # iniciar
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.assertEqual(self.pedido(pid)["status"], "em_separacao")
+        # finalizar sem separar tudo: bloqueado e sem baixa
+        r = self.post(f"/pedidos/{pid}/finalizar", follow_redirects=True)
+        self.assertIn("separados", r.get_data(as_text=True))
+        self.assertEqual(self.saldo(self.luva), 10)
+        self.separar_todos(pid)
+        self.post(f"/pedidos/{pid}/finalizar")
+        p = self.pedido(pid)
+        self.assertEqual(p["status"], "pronto")
+        self.assertEqual((self.saldo(self.luva), self.saldo(self.bota), self.saldo(self.camiseta)), (8, 9, 9))
+        with self.app.app_context():
+            mov = get_db().execute("SELECT * FROM movimentacoes WHERE pedido_id = ? AND tipo = 'saida'",
+                                   (pid,)).fetchall()
+        self.assertEqual(len(mov), 3)
+        self.assertTrue(all(m["local_destino"] == "Obra A" and m["colaborador_id"] == self.joao for m in mov))
+        # retirada por terceiro
+        self.post(f"/pedidos/{pid}/retirar", {"retirado_por_nome": "Carlos", "retirado_descricao": "Encarregado"})
+        p = self.pedido(pid)
+        self.assertEqual((p["status"], p["retirado_por_nome"]), ("retirado", "Carlos"))
+        comp = self.c.get(f"/entregas/{p['grupo']}/comprovante").get_data(as_text=True)
+        self.assertIn("Carlos", comp)
+        self.assertIn("Obra A", self.c.get("/relatorios").get_data(as_text=True))
+        self.assertIn("Carlos", self.c.get("/pedidos/exportar.csv").get_data(as_text=True))
+
+    def test_item_nao_identificado_bloqueia_ate_identificar_e_aprende(self):
+        pid = self.novo_pedido(epi="Protetor auricular", sapatao="", camiseta="")
+        self.post(f"/pedidos/{pid}/iniciar")
+        item = next(i for i in self.itens(pid) if i["texto_original"] == "Protetor auricular")
+        # não dá para marcar sem identificar
+        r = self.post(f"/pedidos/{pid}/itens/{item['id']}/separar", {"separado": "1"})
+        self.assertEqual(r.status_code, 400)
+        prot = self.criar_epi("Protetor auricular tipo plug")
+        self.mov("entrada", prot, 5)
+        self.post(f"/pedidos/{pid}/itens/{item['id']}/editar",
+                  {"epi_id": str(prot), "quantidade": "1", "lembrar": "1"})
+        # próximo pedido já reconhece sozinho
+        novo = self.novo_pedido(id="outro", epi="protetor AURICULAR", sapatao="", camiseta="")
+        self.assertEqual(self.itens(novo)[0]["epi_id"], prot)
+
+    def test_ignorar_sempre(self):
+        pid = self.novo_pedido(vestimento="Sim", epi="", sapatao="", camiseta="")
+        item = self.itens(pid)[0]
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.post(f"/pedidos/{pid}/itens/{item['id']}/ignorar", {"sempre": "1"})
+        novo = self.novo_pedido(id="z", vestimento="Sim", epi="", sapatao="", camiseta="")
+        self.assertEqual(self.itens(novo)[0]["ignorado"], 1)
+
+    def test_sem_saldo_reverte_tudo(self):
+        pid = self.novo_pedido(epi="20x Luva G", sapatao="Bota 40", camiseta="")
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.separar_todos(pid)
+        r = self.post(f"/pedidos/{pid}/finalizar", follow_redirects=True)
+        self.assertIn("Saldo insuficiente", r.get_data(as_text=True))
+        self.assertEqual(self.pedido(pid)["status"], "em_separacao")
+        self.assertEqual((self.saldo(self.luva), self.saldo(self.bota)), (10, 10))
+
+    def test_finalizar_exige_colaborador_vinculado(self):
+        pid = self.novo_pedido(nome="Maria Nova", sapatao="", camiseta="")
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.separar_todos(pid)
+        r = self.post(f"/pedidos/{pid}/finalizar", follow_redirects=True)
+        self.assertIn("Vincule", r.get_data(as_text=True))
+        self.post(f"/pedidos/{pid}/colaborador", {"criar": "1"})
+        self.post(f"/pedidos/{pid}/finalizar")
+        self.assertEqual(self.pedido(pid)["status"], "pronto")
+
+    def test_nao_finaliza_duas_vezes(self):
+        pid = self.novo_pedido(sapatao="", camiseta="")
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.separar_todos(pid)
+        self.post(f"/pedidos/{pid}/finalizar")
+        self.post(f"/pedidos/{pid}/finalizar")
+        self.assertEqual(self.saldo(self.luva), 8)
+
+    def test_trocar_epi_invalida_separacao(self):
+        pid = self.novo_pedido(sapatao="", camiseta="")
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.separar_todos(pid)
+        item = self.itens(pid)[0]
+        self.post(f"/pedidos/{pid}/itens/{item['id']}/editar", {"epi_id": str(self.bota), "quantidade": "1"})
+        self.assertEqual(self.itens(pid)[0]["separado"], 0)
+
+    def test_cancelar_pronto_estorna_somente_admin(self):
+        pid = self.novo_pedido(sapatao="", camiseta="")
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.separar_todos(pid)
+        self.post(f"/pedidos/{pid}/finalizar")
+        self.assertEqual(self.saldo(self.luva), 8)
+        # almoxarifado não estorna
+        self.post("/usuarios/novo", {"nome": "Alm", "login": "alm", "perfil": "almoxarifado",
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        alm = self.app.test_client()
+        self.post("/login", {"login": "alm", "senha": "senha1234"}, client=alm)
+        self.post(f"/pedidos/{pid}/cancelar", {"motivo": "teste"}, client=alm)
+        self.assertEqual(self.pedido(pid)["status"], "pronto")
+        self.post(f"/pedidos/{pid}/cancelar", {"motivo": "Desistiu"})
+        self.assertEqual(self.pedido(pid)["status"], "cancelado")
+        self.assertEqual(self.saldo(self.luva), 10)
+
+    def test_cancelar_antes_da_baixa_nao_mexe_no_estoque(self):
+        pid = self.novo_pedido()
+        self.post(f"/pedidos/{pid}/cancelar", {"motivo": "Duplicado"})
+        self.assertEqual(self.pedido(pid)["status"], "cancelado")
+        self.assertEqual(self.saldo(self.luva), 10)
+
+    def test_consulta_nao_age(self):
+        pid = self.novo_pedido()
+        self.post("/usuarios/novo", {"nome": "Ver", "login": "ver", "perfil": "consulta",
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        ver = self.app.test_client()
+        self.post("/login", {"login": "ver", "senha": "senha1234"}, client=ver)
+        self.assertEqual(self.post(f"/pedidos/{pid}/iniciar", client=ver).status_code, 403)
+        self.assertEqual(ver.get(f"/pedidos/{pid}").status_code, 200)
+        self.assertEqual(ver.get("/pedidos/novos").get_json()["novos"], 0)
+        self.assertEqual(ver.get("/integracao").status_code, 403)
+
+
+class TestTelas(BasePedidos):
+    def test_novos_devolve_card_e_contagem(self):
+        pid = self.novo_pedido()
+        d = self.c.get("/pedidos/novos").get_json()
+        self.assertEqual((d["novos"], d["a_atender"]), (1, 1))
+        self.assertIn("Iniciar separação", d["html"])
+        self.assertIn("Mais tarde", d["html"])
+        self.post(f"/pedidos/{pid}/mais-tarde")
+        d = self.c.get("/pedidos/novos").get_json()
+        self.assertEqual((d["novos"], d["a_atender"]), (0, 1))
+
+    def test_paginas_renderizam_em_todos_os_estados(self):
+        pid = self.novo_pedido()
+        urls = ["/pedidos", "/pedidos?aba=retirados", "/pedidos?aba=cancelados", f"/pedidos/{pid}", "/integracao"]
+        for u in urls:
+            self.assertEqual(self.c.get(u).status_code, 200, u)
+        self.post(f"/pedidos/{pid}/iniciar")
+        self.assertEqual(self.c.get(f"/pedidos/{pid}").status_code, 200)
+        self.separar_todos(pid)
+        self.post(f"/pedidos/{pid}/finalizar")
+        html = self.c.get(f"/pedidos/{pid}").get_data(as_text=True)
+        self.assertIn("Pronto para retirada", html)
+        self.assertIn("Marcar como retirado", html)
+
+    def test_xss_no_pedido_escapado(self):
+        pid = self.novo_pedido(id="xss", nome="<img src=x onerror=1>", observacao="<script>1</script>")
+        for u in (f"/pedidos/{pid}", "/pedidos", "/pedidos/novos"):
+            r = self.c.get(u)
+            texto = r.get_data(as_text=True) if u != "/pedidos/novos" else r.get_json()["html"]
+            self.assertNotIn("<script>1</script>", texto)
+            self.assertNotIn("<img src=x", texto)
+
+    def test_banco_antigo_e_migrado(self):
+        import sqlite3
+        import tempfile, os
+        from app import create_app
+        d = tempfile.mkdtemp()
+        caminho = os.path.join(d, "velho.sqlite")
+        con = sqlite3.connect(caminho)
+        con.executescript("""CREATE TABLE usuarios (id INTEGER PRIMARY KEY, nome TEXT, login TEXT, senha_hash TEXT,
+            perfil TEXT, ativo INTEGER DEFAULT 1, criado_em TEXT);
+            CREATE TABLE epis (id INTEGER PRIMARY KEY, nome TEXT);
+            CREATE TABLE movimentacoes (id INTEGER PRIMARY KEY, grupo TEXT, tipo TEXT, epi_id INTEGER,
+            quantidade INTEGER, data TEXT, colaborador_id INTEGER, setor TEXT, ca TEXT, fornecedor TEXT,
+            nota_fiscal TEXT, custo_unitario REAL, motivo TEXT, observacao TEXT, usuario_id INTEGER,
+            criado_em TEXT, cancelada INTEGER DEFAULT 0, cancelada_motivo TEXT, cancelada_por INTEGER,
+            cancelada_em TEXT);
+            INSERT INTO epis VALUES (1, 'Luva');""")
+        con.commit(); con.close()
+        app = create_app({"DATABASE": caminho, "TESTING": True})
+        with app.app_context():
+            cols = {r["name"] for r in get_db().execute("PRAGMA table_info(movimentacoes)")}
+            self.assertTrue({"pedido_id", "local_destino"} <= cols)
+            self.assertEqual(get_db().execute("SELECT COUNT(*) FROM pedidos").fetchone()[0], 0)
+
+
+class TestParser(BasePedidos):
+    def test_dividir_itens(self):
+        self.assertEqual(pedidos.dividir_itens("2x Luva G; Óculos, 3 x Bota 40\nCapacete x2"),
+                         [(2, "Luva G"), (1, "Óculos"), (3, "Bota 40"), (2, "Capacete")])
+        self.assertEqual(pedidos.dividir_itens("  ;; "), [])
+
+    def test_simular_e_importar_csv_colunas_h_a_p(self):
+        import io
+        r = self.post("/pedidos/simular", {
+            "nome": "João da Silva", "local": "Obra B", "motivo": "Admissão",
+            "epi": "Luva G", "sapatao": "Bota 40", "camiseta": "M", "observacao": "Teste manual"
+        }, follow_redirects=True)
+        self.assertIn("Pedido #", r.get_data(as_text=True))
+
+        # Planilha com colunas A..P do Microsoft Forms (H=Nome, I=Local, J=Motivo, K=Vestimento, L=EPI, M=Sapatão, N=Camiseta, O=Calça, P=Obersvação)
+        cab = ["ID", "Início", "Conclusão", "Email", "Nome MS", "Modificado", "Extra",
+               "Nome", "Local", "Motivo", "Vestimento", "EPI", "Sapatão", "Camiseta", "Calça", "Obersvação"]
+        lin = ["99", "", "", "", "", "", "",
+               "João da Silva", "Obra Sul", "Troca", "Não", "Luva G", "Bota 40", "M", "Não", "Obs Forms"]
+        conteudo = (";".join(cab) + "\n" + ";".join(lin) + "\n").encode("utf-8")
+        r = self.post("/pedidos/importar-csv", {"arquivo": (io.BytesIO(conteudo), "forms.csv")},
+                      follow_redirects=True, content_type="multipart/form-data")
+        self.assertIn("1 pedido(s) importado(s)", r.get_data(as_text=True))
+        # Reimportar a mesma planilha ignora o ID 99 duplicado
+        r2 = self.post("/pedidos/importar-csv", {"arquivo": (io.BytesIO(conteudo), "forms.csv")},
+                       follow_redirects=True, content_type="multipart/form-data")
+        self.assertIn("0 pedido(s) importado(s)", r2.get_data(as_text=True))
+
+    def test_formulario_publico_sem_login_e_tamanhos(self):
+        sapatao_epi = self.criar_epi("Sapatão Bidensidade")
+        botina_epi = self.criar_epi("Botina Bico PVC")
+        self.mov("entrada", sapatao_epi, 5)
+        self.mov("entrada", botina_epi, 5)
+
+        # Cliente anônimo (sem login) acessa /solicitar
+        anon = self.app.test_client()
+        r_get = anon.get("/solicitar")
+        self.assertEqual(r_get.status_code, 200)
+        html_form = r_get.get_data(as_text=True)
+        self.assertIn("UNIFORME E EPI", html_form)
+        self.assertNotIn("Informe a data do pedido", html_form)
+        self.assertNotIn("filtro-colaborador", html_form)
+        self.assertIn("João da Silva", html_form)
+
+        # Enviar só tamanho de uniforme sem marcar nenhum item é bloqueado
+        r_invalido = anon.post("/solicitar", data={
+            "nome": "João da Silva", "local": "Araquari", "motivo": "Desgaste", "camiseta": "G",
+        }, follow_redirects=True)
+        self.assertIn("Selecione ao menos um equipamento", r_invalido.get_data(as_text=True))
+
+        # Restrição somente números no tamanho do calçado
+        r_letra = anon.post("/solicitar", data={
+            "nome": "João da Silva", "local": "Araquari", "motivo": "Desgaste",
+            "epi": ["Sapatão Bidensidade"], "tam_sapatao": "41A",
+        }, follow_redirects=True)
+        self.assertIn("somente números", r_letra.get_data(as_text=True))
+
+        # Envio completo marcando Sapatão (41) + Botina (40) + Bota (42) + Camiseta (G) com tamanhos distintos
+        r_post = anon.post("/solicitar", data={
+            "nome": "João da Silva",
+            "local": "Araquari",
+            "motivo": "Desgaste",
+            "epi": ["Luva G", "Sapatão Bidensidade", "Botina Bico PVC", "Bota 40"],
+            "vestimento": ["Camiseta M"],
+            "tam_sapatao": "41",
+            "tam_botina": "40",
+            "tam_bota": "42",
+            "camiseta": "G",
+            "calca": "GG",  # deve ser ignorado pois nenhuma calça foi selecionada
+            "observacao": "Entregar na obra de Araquari",
+        }, follow_redirects=True)
+        self.assertEqual(r_post.status_code, 200)
+        html_ok = r_post.get_data(as_text=True)
+        self.assertIn("enviada com sucesso", html_ok)
+        self.assertIn("Tam. 41", html_ok)
+        self.assertIn("Tam. 40", html_ok)
+        self.assertIn("Tam. 42", html_ok)
+        self.assertIn("Tam. G", html_ok)
+        self.assertNotIn("Tam. GG", html_ok)
+
+        # Confere se o pedido entrou na fila como 'novo' com todos os 5 itens identificados e numerações distintas
+        with self.app.app_context():
+            carregados = pedidos.carregar(get_db(), status=("novo",))
+            self.assertEqual(len(carregados), 1)
+            p = carregados[0]
+            self.assertEqual(p["solicitante"], "João da Silva")
+            self.assertEqual(p["local_destino"], "Araquari")
+            self.assertEqual(p["motivo"], "Desgaste")
+            self.assertEqual(p["colaborador_id"], self.joao)
+            self.assertEqual(p["total_itens"], 5)
+            self.assertEqual(p["nao_identificados"], 0)
+            por_epi = {i["epi_nome"]: i["tamanho"] for i in p["itens"]}
+            self.assertEqual(por_epi["Sapatão Bidensidade"], "41")
+            self.assertEqual(por_epi["Botina Bico PVC"], "40")
+            self.assertEqual(por_epi["Bota 40"], "42")
+            self.assertEqual(por_epi["Camiseta M"], "G")

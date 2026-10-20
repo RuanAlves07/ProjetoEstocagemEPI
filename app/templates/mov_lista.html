@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import tabela_movs with context %}
+{% block titulo %}Movimentações{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Movimentações</h1>
+  <div class="acoes"><a class="btn" href="{{ url_for('movimentos.exportar_csv', **args) }}">Exportar Excel (CSV)</a></div>
+</div>
+<form class="filtros" method="get">
+  <select name="tipo"><option value="">Todos os tipos</option>
+    {% for k, v in TIPOS.items() %}<option value="{{ k }}" {{ 'selected' if f.get('tipo') == k }}>{{ v }}</option>{% endfor %}
+  </select>
+  <select name="epi_id"><option value="">Todos os EPIs</option>
+    {% for e in epis %}<option value="{{ e.id }}" {{ 'selected' if f.get('epi_id') == e.id|string }}>{{ e.nome }}</option>{% endfor %}
+  </select>
+  <select name="colaborador_id"><option value="">Todos os colaboradores</option>
+    {% for c in colaboradores %}<option value="{{ c.id }}" {{ 'selected' if f.get('colaborador_id') == c.id|string }}>{{ c.nome }}</option>{% endfor %}
+  </select>
+  <select name="setor"><option value="">Todos os setores</option>
+    {% for s in setores %}<option {{ 'selected' if f.get('setor') == s }}>{{ s }}</option>{% endfor %}
+  </select>
+  <label>de <input type="date" name="de" value="{{ f.get('de', '') }}"></label>
+  <label>até <input type="date" name="ate" value="{{ f.get('ate', '') }}"></label>
+  <label class="check"><input type="checkbox" name="canceladas" value="1" {{ 'checked' if f.get('canceladas') == '1' }}> incluir canceladas</label>
+  <button class="btn">Filtrar</button>
+  <a class="btn link" href="{{ url_for('movimentos.lista') }}">Limpar</a>
+</form>
+<div class="cartao">
+  {{ tabela_movs(movs, voltar=request.full_path.rstrip('?')) }}
+  <div class="paginacao">
+    {% if pagina > 1 %}<a class="btn" href="{{ url_for('movimentos.lista', pagina=pagina - 1, **args) }}">← Anterior</a>{% endif %}
+    <span>Página {{ pagina }}</span>
+    {% if tem_proxima %}<a class="btn" href="{{ url_for('movimentos.lista', pagina=pagina + 1, **args) }}">Próxima →</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,230 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf, tabela_movs with context %}
+{% block titulo %}{{ colab.nome }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Perfil: {{ colab.nome }} {% if not colab.ativo %}<span class="badge">inativo</span>{% endif %}</h1>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('cadastros.colaboradores_lista') }}">← Colaboradores</a>
+    {% if pode_editar and colab.ativo %}<a class="btn primario" href="{{ url_for('movimentos.movimentar', tipo='saida', colaborador_id=colab.id) }}">Entregar EPI</a>{% endif %}
+    {% if pode_editar %}<a class="btn" href="{{ url_for('cadastros.colaborador_editar', colab_id=colab.id) }}">Editar cadastro</a>{% endif %}
+    <button class="btn" onclick="window.print()">Imprimir</button>
+  </div>
+</div>
+
+<section class="cartao pedido-cabecalho" style="margin-bottom:1rem">
+  <div class="dados-pedido">
+    <div><span class="suave">Matrícula</span><strong>{{ colab.matricula or '—' }}</strong></div>
+    <div><span class="suave">Setor / Obra</span><strong>{{ colab.setor or '—' }}</strong></div>
+    <div>
+      <span class="suave">Cargo / Função</span>
+      <strong>
+        {% if colab.funcao %}
+          <a href="{{ url_for('cadastros.cargos_padrao', cargo=colab.funcao) }}">{{ colab.funcao }}</a>
+        {% else %}
+          <span class="erro-texto">Sem cargo alocado</span>
+        {% endif %}
+      </strong>
+    </div>
+    <div>
+      <span class="suave">Padrão do cargo</span>
+      <strong><span id="contador-padrao">{{ padrao_ids|length }}</span> equipamento(s)</strong>
+    </div>
+  </div>
+
+  {% if pode_editar %}
+  <details class="editar-item" style="margin-top:.8rem" {{ 'open' if not colab.funcao }}>
+    <summary>{{ 'Trocar cargo / função do colaborador' if colab.funcao else '⚠️ Alocar cargo / função para puxar os EPIs padrão automaticamente' }}</summary>
+    <form method="post" action="{{ url_for('cadastros.colaborador_cargo', colab_id=colab.id) }}" class="linha-form">
+      {{ csrf() }}
+      <input name="funcao" list="lista-cargos-ficha" value="{{ colab.funcao or '' }}" placeholder="Selecione ou digite o cargo (ex.: Pedreiro, Motorista…)" required style="min-width:260px">
+      <datalist id="lista-cargos-ficha">{% for cg in cargos %}<option value="{{ cg }}">{% endfor %}</datalist>
+      <button class="btn primario pequeno">Alocar cargo e puxar padrão</button>
+      <a class="btn pequeno" href="{{ url_for('cadastros.cargos_padrao', cargo=colab.funcao or '') }}">Gerenciar todos os cargos</a>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+<div class="abas">
+  <a class="{{ 'ativa' if aba == 'padrao' }}" href="{{ url_for('cadastros.colaborador_ficha', colab_id=colab.id, aba='padrao') }}">
+    Equipamentos utilizados por padrão <span class="contador" id="badge-padrao">{{ padrao_ids|length }}</span>
+  </a>
+  <a class="{{ 'ativa' if aba == 'solicitados' }}" href="{{ url_for('cadastros.colaborador_ficha', colab_id=colab.id, aba='solicitados') }}">
+    Equipamentos solicitados <span class="contador {{ 'alerta' if solicitados }}">{{ solicitados|length }}</span>
+  </a>
+  <a class="{{ 'ativa' if aba == 'ficha' }}" href="{{ url_for('cadastros.colaborador_ficha', colab_id=colab.id, aba='ficha') }}">
+    Ficha de EPIs entregues <span class="contador">{{ entregas|length }}</span>
+  </a>
+</div>
+
+{% if aba == 'padrao' %}
+<section class="cartao">
+  <div class="cabecalho">
+    <h2>
+      Equipamentos utilizados por padrão
+      {% if colab.funcao %}
+        — Cargo: <a href="{{ url_for('cadastros.cargos_padrao', cargo=colab.funcao) }}">{{ colab.funcao }}</a>
+      {% endif %}
+    </h2>
+    {% if colab.funcao %}
+      <span class="badge">{{ qtd_no_cargo }} colaborador(es) neste cargo</span>
+    {% endif %}
+  </div>
+  {% if colab.funcao %}
+  <p class="nota">Estes equipamentos são puxados automaticamente pelo cargo <strong>{{ colab.funcao }}</strong>. Ao marcar ou desmarcar itens abaixo, o padrão do cargo <strong>{{ colab.funcao }}</strong> é atualizado para todos os colaboradores dessa função. Qualquer item solicitado fora desta lista aparece na aba <strong>Equipamentos solicitados</strong>.</p>
+  {% else %}
+  <p class="nota">Aloque um <strong>Cargo / Função</strong> acima para que este colaborador puxe automaticamente o padrão da função, ou marque os equipamentos abaixo.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('cadastros.colaborador_padrao', colab_id=colab.id) }}" id="form-padrao-colab"
+        data-ajax-url="{{ url_for('cadastros.colaborador_padrao', colab_id=colab.id) }}">
+    {{ csrf() }}
+    <div class="tabela-rolavel">
+      <table class="checklist">
+        <thead>
+          <tr>
+            <th>Usa por padrão</th>
+            <th>Equipamento (inventário)</th>
+            <th>Categoria</th>
+            <th>CA</th>
+            <th class="num">Saldo atual</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for e in epis %}
+          <tr>
+            <td class="chk-cel">
+              <input type="checkbox" name="epi_id" value="{{ e.id }}" class="chk-padrao"
+                     {{ 'checked' if e.id in padrao_ids }} {{ '' if pode_editar else 'disabled' }}>
+            </td>
+            <td>
+              <label style="cursor:pointer;font-weight:600;margin:0" onclick="const c=this.closest('tr').querySelector('.chk-padrao');if(c&&!c.disabled){c.click();}">
+                {{ e.nome }}
+              </label>
+            </td>
+            <td>{{ e.categoria or '—' }}</td>
+            <td>{{ e.ca or '—' }}</td>
+            <td class="num">{{ e.saldo }} <small class="suave">{{ e.unidade }}</small></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="vazio">Nenhum equipamento cadastrado no inventário.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pode_editar and epis %}
+    <div class="acoes" style="margin-top:1rem">
+      <button class="btn primario">
+        {{ 'Salvar padrão do cargo “' ~ colab.funcao ~ '”' if colab.funcao else 'Salvar equipamentos padrão' }}
+      </button>
+      <span class="nota" id="status-padrao">As marcações também são salvas automaticamente ao clicar.</span>
+    </div>
+    {% endif %}
+  </form>
+</section>
+
+{% elif aba == 'solicitados' %}
+<section class="cartao">
+  <h2>Equipamentos solicitados (fora do padrão do cargo)</h2>
+  <p class="nota">Aqui ficam os equipamentos que <strong>{{ colab.nome }}</strong> já pediu ou recebeu mas que <strong>não fazem parte do padrão do cargo ({{ colab.funcao or 'atual' }})</strong> (por exemplo: teste em outro cargo para possível promoção ou necessidade específica de alguma atividade), junto com a <strong>observação</strong> explicando o motivo.</p>
+
+  {% if pode_editar %}
+  <details class="editar-item" style="margin-bottom:1rem">
+    <summary class="btn">+ Registrar equipamento solicitado fora do padrão</summary>
+    <form method="post" action="{{ url_for('cadastros.colaborador_solicitado_novo', colab_id=colab.id) }}" class="cartao formulario" style="margin-top:.6rem">
+      {{ csrf() }}
+      <div class="linha">
+        <label>Equipamento (do inventário)
+          <select name="epi_id" required>
+            <option value="">Selecione o equipamento…</option>
+            {% for e in epis %}
+            <option value="{{ e.id }}">{{ e.nome }}{% if e.id in padrao_ids %} (já é padrão do cargo){% endif %} — saldo: {{ e.saldo }} {{ e.unidade }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label style="max-width:130px">Quantidade
+          <input type="number" name="quantidade" min="1" max="999" value="1" required>
+        </label>
+        <label style="max-width:180px">Data da solicitação
+          <input type="date" name="data" value="{{ hoje_iso }}" required>
+        </label>
+      </div>
+      <label>Observação (por que este EPI fora do padrão foi solicitado?)
+        <input name="observacao" required placeholder="Ex.: Em teste no cargo de Eletricista (possível promoção) / Atividade específica na obra">
+      </label>
+      <div class="acoes"><button class="btn primario">Registrar</button></div>
+    </form>
+  </details>
+  {% endif %}
+
+  <div class="tabela-rolavel">
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Equipamento</th>
+          <th class="num">Qtd</th>
+          <th>Origem</th>
+          <th>Observação (motivo de pedir fora do padrão)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in solicitados %}
+        <tr>
+          <td>{{ s.data|data_br }}</td>
+          <td>
+            <a href="{{ url_for('cadastros.epi_detalhe', epi_id=s.epi_id) }}"><strong>{{ s.epi_nome }}</strong></a>
+            {% if s.ca %}<small class="suave">CA {{ s.ca }}</small>{% endif %}
+          </td>
+          <td class="num">{{ s.quantidade }} <small class="suave">{{ s.unidade }}</small></td>
+          <td>
+            {% if s.pedido_id %}
+              <a href="{{ url_for('pedidos.detalhe', pedido_id=s.pedido_id) }}">{{ s.origem_rotulo }}</a>
+            {% else %}
+              <span class="suave">{{ s.origem_rotulo }}</span>
+            {% endif %}
+          </td>
+          <td style="min-width:320px">
+            {% if pode_editar %}
+            <form method="post" action="{{ url_for('cadastros.colaborador_solicitado_obs', colab_id=colab.id) }}" class="linha-form" style="margin:0">
+              {{ csrf() }}
+              {% if s.reg_id %}<input type="hidden" name="reg_id" value="{{ s.reg_id }}">{% endif %}
+              {% if s.origem_chave %}
+                <input type="hidden" name="origem_chave" value="{{ s.origem_chave }}">
+                <input type="hidden" name="epi_id" value="{{ s.epi_id }}">
+                <input type="hidden" name="quantidade" value="{{ s.quantidade }}">
+                <input type="hidden" name="data" value="{{ s.data }}">
+              {% endif %}
+              <input name="observacao" value="{{ s.observacao }}" placeholder="Descreva por que este EPI foi solicitado (ex.: teste de cargo / serviço específico)…" style="flex:1;min-width:220px">
+              <button class="btn pequeno">Salvar</button>
+            </form>
+            {% else %}
+              {{ s.observacao or '—' }}
+            {% endif %}
+          </td>
+          <td>
+            {% if pode_editar and s.manual and s.reg_id %}
+            <form method="post" action="{{ url_for('cadastros.colaborador_solicitado_remover', colab_id=colab.id, reg_id=s.reg_id) }}" onsubmit="return confirm('Remover este registro?')">
+              {{ csrf() }}
+              <button class="btn link pequeno erro-texto" title="Remover">✕</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="vazio">Nenhum equipamento fora do padrão solicitado até o momento.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% else %}
+<section class="cartao">
+  <h2>Ficha de EPIs entregues</h2>
+  {{ tabela_movs(entregas, mostrar_colab=false, voltar=request.full_path) }}
+</section>
+{% endif %}
+{% endblock %}

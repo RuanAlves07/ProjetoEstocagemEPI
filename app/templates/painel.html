@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import status, ca, tabela_movs with context %}
+{% block titulo %}Painel{% endblock %}
+{% block conteudo %}
+<h1>Painel</h1>
+
+<div class="indicadores">
+  <a class="indicador {{ 'alerta' if pedidos_a_atender }}" href="{{ url_for('pedidos.lista') }}"><span class="valor">{{ pedidos_a_atender }}</span><span>pedidos para separar</span></a>
+  <div class="indicador"><span class="valor">{{ epis|length }}</span><span>EPIs ativos</span></div>
+  <a class="indicador {{ 'alerta' if repor }}" href="#repor"><span class="valor">{{ repor|length }}</span><span>para repor</span></a>
+  <div class="indicador"><span class="valor">{{ total_entradas|num }}</span><span>unid. recebidas no mês</span></div>
+  <div class="indicador"><span class="valor">{{ total_entregas|num }}</span><span>unid. entregues no mês</span></div>
+  <div class="indicador {{ 'alerta' if ca_alertas }}"><span class="valor">{{ ca_alertas|length }}</span><span>CAs vencidos / a vencer</span></div>
+</div>
+
+<div class="grade-2">
+  <section class="cartao" id="repor">
+    <h2>Hora de pedir</h2>
+    {% if repor %}
+    <div class="tabela-rolavel"><table>
+      <thead><tr><th>EPI</th><th class="num">Saldo</th><th class="num">Mín.</th><th class="num">Dura (dias)</th><th class="num">Sugestão</th><th></th></tr></thead>
+      <tbody>
+      {% for e in repor %}
+        <tr>
+          <td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}">{{ e.nome }}</a></td>
+          <td class="num">{{ e.saldo }}</td><td class="num">{{ e.estoque_minimo }}</td>
+          <td class="num">{{ e.cobertura_dias|num if e.cobertura_dias is not none else '—' }}</td>
+          <td class="num"><strong>{{ e.sugerido }}</strong></td>
+          <td>{{ status(e) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p class="nota">Entra aqui quando o saldo chega ao mínimo ou quando o estoque duraria menos que o prazo de reposição do item (consumo dos últimos {{ janela }} dias). A sugestão cobre o estoque mínimo + 60 dias de consumo.</p>
+    {% else %}<p class="vazio">Nenhum item precisa de reposição agora. ✅</p>{% endif %}
+  </section>
+
+  <section class="cartao">
+    <h2>Mais saem (últimos {{ janela }} dias)</h2>
+    {% if mais_saem %}
+    <table><tbody>
+      {% for e in mais_saem %}
+      <tr>
+        <td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}">{{ e.nome }}</a></td>
+        <td class="barra-celula"><div class="barra"><span style="width: {{ (e.consumo / mais_saem[0].consumo * 100)|round(0) }}%"></span></div></td>
+        <td class="num">{{ e.consumo }} {{ e.unidade }}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    <p><a href="{{ url_for('painel.relatorios') }}">Ver relatórios completos →</a></p>
+    {% else %}<p class="vazio">Ainda não há saídas registradas.</p>{% endif %}
+
+    {% if ca_alertas %}
+    <h2>CAs para atualizar</h2>
+    <table><tbody>
+      {% for e in ca_alertas %}<tr><td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}">{{ e.nome }}</a></td><td>{{ ca(e) }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% endif %}
+  </section>
+</div>
+
+<section class="cartao">
+  <h2>Últimas movimentações</h2>
+  {{ tabela_movs(ultimas, voltar='/') }}
+  <p><a href="{{ url_for('movimentos.lista') }}">Ver todas →</a></p>
+</section>
+{% endblock %}

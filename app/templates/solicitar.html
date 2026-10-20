@@ -1,0 +1,342 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Solicitação de Uniforme e EPI{% endblock %}
+{% block conteudo %}
+<div class="form-publico-container">
+  {% if not usuario %}
+  <div class="topo-publico">
+    <span>🦺 <strong>Sistema de Controle de EPIs</strong> · Formulário Público</span>
+    <a class="btn pequeno" href="{{ url_for('auth.login') }}">🔒 Área Restrita (Almoxarifado)</a>
+  </div>
+  {% else %}
+  <div class="cartao barra-compartilhar">
+    <div>
+      <strong>🔗 Link público do formulário:</strong>
+      <code id="url-publica">{{ url_for('pedidos.solicitar', _external=True) }}</code>
+      <span class="nota">(Qualquer colaborador pode acessar sem login)</span>
+    </div>
+    <button type="button" class="btn pequeno" onclick="navigator.clipboard.writeText(document.getElementById('url-publica').textContent);this.textContent='✓ Link copiado!';">Copiar link</button>
+  </div>
+  {% endif %}
+
+  {% if pedido_enviado %}
+  <section class="cartao destaque-pronto" style="padding:1.5rem">
+    <h1 style="margin-top:0;color:var(--verde)">✅ Solicitação #{{ pedido_enviado.id }} enviada com sucesso!</h1>
+    <p>Seu pedido já entrou diretamente na fila de separação do Almoxarifado.</p>
+    <div class="dados-pedido" style="margin:1rem 0;padding:1rem;background:var(--fundo);border-radius:8px">
+      <div><span class="suave">Colaborador</span><strong>{{ pedido_enviado.solicitante }}</strong></div>
+      <div><span class="suave">Local de entrega</span><strong>{{ pedido_enviado.local_destino or '—' }}</strong></div>
+      <div><span class="suave">Motivo</span><strong>{{ pedido_enviado.motivo or '—' }}</strong></div>
+      <div><span class="suave">Data/Hora do pedido</span><strong>{{ pedido_enviado.recebido_em|hora_br }}</strong></div>
+    </div>
+    <h2 style="margin-bottom:.4rem">Itens solicitados</h2>
+    <ul class="pedido-itens" style="margin-bottom:1.2rem">
+      {% for i in pedido_enviado.itens if not i.ignorado %}
+      <li>
+        <strong>{{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}</strong>
+        {% if i.epi_nome and i.tamanho %}<span class="badge">Tam. {{ i.tamanho }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if pedido_enviado.observacao %}
+    <p class="pedido-obs" style="margin-bottom:1.2rem">💬 <strong>Observações:</strong> {{ pedido_enviado.observacao }}</p>
+    {% endif %}
+    <div class="acoes">
+      <a class="btn primario" href="{{ url_for('pedidos.solicitar') }}">Enviar outra solicitação</a>
+      {% if usuario %}
+      <a class="btn" href="{{ url_for('pedidos.detalhe', pedido_id=pedido_enviado.id) }}">Abrir pedido #{{ pedido_enviado.id }} no Almoxarifado →</a>
+      {% endif %}
+    </div>
+  </section>
+  {% else %}
+
+  <form method="post" action="{{ url_for('pedidos.solicitar') }}" class="form-publico" id="form-solicitar">
+    {{ csrf() }}
+    <header class="cartao cabecalho-forms">
+      <h1>UNIFORME E EPI</h1>
+      <p>Este formulário é destinado à solicitação de novos uniformes e Equipamentos de Proteção Individual (EPIs) para os colaboradores das obras.</p>
+      <p class="nota"><span class="obrigatorio">*</span> Obrigatória</p>
+    </header>
+
+    <!-- 1. Nome completo -->
+    <section class="cartao bloco-pergunta">
+      <label class="titulo-pergunta" for="select-colaborador">
+        1. Selecione o seu nome completo. <span class="obrigatorio">*</span>
+      </label>
+      <select name="nome" id="select-colaborador" required>
+        <option value="" data-cargo="">Selecione sua resposta</option>
+        {% set nome_sel = form_dados.get('nome', '') %}
+        {% for c in colaboradores %}
+        <option value="{{ c.nome }}" data-cargo="{{ c.funcao or '' }}" {{ 'selected' if c.nome == nome_sel }}>{{ c.nome }}</option>
+        {% endfor %}
+      </select>
+      <div id="aviso-cargo-colab" class="aviso ok" style="margin:.3rem 0 0;padding:.45rem .8rem;font-size:.88rem" hidden></div>
+    </section>
+
+    <!-- 2. Local de entrega -->
+    <section class="cartao bloco-pergunta">
+      <div class="titulo-pergunta">
+        2. Informe o local qual os EPIs solicitados devem ser entregues. <span class="obrigatorio">*</span>
+      </div>
+      {% set local_sel = form_dados.get('local', '') %}
+      <div class="grade-opcoes-radio">
+        {% for loc in locais %}
+        <label class="opcao-item">
+          <input type="radio" name="local" value="{{ loc }}" {{ 'checked' if loc == local_sel }} required>
+          <span>{{ loc }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 3. Motivo da solicitação -->
+    <section class="cartao bloco-pergunta">
+      <div class="titulo-pergunta">
+        3. Informe o motivo da solicitação. <span class="obrigatorio">*</span>
+      </div>
+      {% set motivo_sel = form_dados.get('motivo', '') %}
+      <div class="lista-opcoes">
+        {% for m in motivos %}
+        <label class="opcao-item">
+          <input type="radio" name="motivo" value="{{ m }}" {{ 'checked' if m == motivo_sel }} required>
+          <span>{{ m }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 4. Equipamento de proteção individual (EPI) -->
+    <section class="cartao bloco-pergunta">
+      <div class="titulo-pergunta">
+        4. Selecione o equipamento de proteção individual necessário.
+      </div>
+      <p class="subtitulo-pergunta">Marque todos os EPIs que você precisa solicitar.</p>
+      {% set epis_marcados = form_dados.get('epi', ()) %}
+      <div class="lista-opcoes">
+        {% for e in epis_protecao %}
+        {% set eh_rec = e.id in padrao_ids_sel %}
+        <label class="opcao-item {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ e.id }}">
+          <input type="checkbox" name="epi" value="{{ e.nome }}"
+                 data-calcado="{{ tipo_calcado(e.nome) or '' }}"
+                 data-uniforme="{{ tipo_uniforme(e.nome) or '' }}"
+                 {{ 'checked' if e.nome in epis_marcados }}>
+          <span>{{ e.nome }} <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span></span>
+        </label>
+        {% else %}
+        <p class="nota">Nenhum EPI cadastrado no estoque no momento.</p>
+        {% endfor %}
+      </div>
+
+      <!-- Abas dinâmicas de numeração por tipo de calçado (aparecem somente ao selecionar Sapatão, Botina ou Bota) -->
+      <div id="secao-tamanho-calcado" class="subbloco-condicional" hidden>
+        <div class="titulo-pergunta">
+          Informe a numeração do calçado selecionado <span class="obrigatorio">*</span>
+        </div>
+        <p class="subtitulo-pergunta">Digite somente números. Será fornecida uma unidade de cada item solicitado (caso necessite de mais unidades, informe no campo de observações).</p>
+        <div class="abas-calcados">
+          <div id="bloco-tam-sapatao" class="aba-calcado-card" hidden>
+            <span class="aba-calcado-titulo">🥾 Sapatão</span>
+            <label for="input-tam-sapatao">Numeração do Sapatão (somente números) <span class="obrigatorio">*</span></label>
+            <input type="text" inputmode="numeric" pattern="[0-9]+" maxlength="2"
+                   id="input-tam-sapatao" name="tam_sapatao"
+                   value="{{ form_dados.get('tam_sapatao', '') }}"
+                   placeholder="Ex.: 40, 41, 42"
+                   oninput="this.value=this.value.replace(/\D/g,'')" disabled>
+          </div>
+
+          <div id="bloco-tam-botina" class="aba-calcado-card" hidden>
+            <span class="aba-calcado-titulo">👢 Botina</span>
+            <label for="input-tam-botina">Numeração da Botina (somente números) <span class="obrigatorio">*</span></label>
+            <input type="text" inputmode="numeric" pattern="[0-9]+" maxlength="2"
+                   id="input-tam-botina" name="tam_botina"
+                   value="{{ form_dados.get('tam_botina', '') }}"
+                   placeholder="Ex.: 40, 41, 42"
+                   oninput="this.value=this.value.replace(/\D/g,'')" disabled>
+          </div>
+
+          <div id="bloco-tam-bota" class="aba-calcado-card" hidden>
+            <span class="aba-calcado-titulo">🥾 Bota</span>
+            <label for="input-tam-bota">Numeração da Bota (somente números) <span class="obrigatorio">*</span></label>
+            <input type="text" inputmode="numeric" pattern="[0-9]+" maxlength="2"
+                   id="input-tam-bota" name="tam_bota"
+                   value="{{ form_dados.get('tam_bota', '') }}"
+                   placeholder="Ex.: 40, 41, 42"
+                   oninput="this.value=this.value.replace(/\D/g,'')" disabled>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Vestimenta -->
+    <section class="cartao bloco-pergunta">
+      <div class="titulo-pergunta">
+        5. Selecione a vestimenta necessária abaixo
+      </div>
+      {% set vest_marcadas = form_dados.get('vestimento', ()) %}
+      <div class="lista-opcoes">
+        {% for v in vestimentas %}
+        {% set eh_rec = v.id in padrao_ids_sel %}
+        <label class="opcao-item {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ v.id }}">
+          <input type="checkbox" name="vestimento" value="{{ v.nome }}"
+                 data-calcado="{{ tipo_calcado(v.nome) or '' }}"
+                 data-uniforme="{{ tipo_uniforme(v.nome) or '' }}"
+                 {{ 'checked' if v.nome in vest_marcadas }}>
+          <span>{{ v.nome }} <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span></span>
+        </label>
+        {% else %}
+        <p class="nota">Nenhuma vestimenta cadastrada no estoque no momento.</p>
+        {% endfor %}
+      </div>
+
+      <!-- Bloco dinâmico de tamanho de uniforme (aparece somente ao selecionar Camiseta ou Calça) -->
+      <div id="secao-tamanho-uniforme" class="subbloco-condicional" hidden>
+        <div class="titulo-pergunta">
+          Informe o tamanho de uniforme necessário <span class="obrigatorio">*</span>
+        </div>
+        <p class="subtitulo-pergunta">Será fornecida uma unidade de cada item solicitado. Caso necessite de mais unidades ou apenas um item específico, informe no campo de observações.</p>
+        {% set cam_sel = form_dados.get('camiseta', '') %}
+        {% set cal_sel = form_dados.get('calca', '') %}
+        <div class="tabela-rolavel">
+          <table class="matriz-tamanhos">
+            <thead>
+              <tr>
+                <th>Peça selecionada</th>
+                {% for t in tamanhos %}<th class="centro">{{ t }}</th>{% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="linha-tam-camiseta" hidden>
+                <td><strong>👕 Camiseta</strong> <span class="obrigatorio">*</span></td>
+                {% for t in tamanhos %}
+                <td class="centro">
+                  <input type="radio" name="camiseta" value="{{ t }}" {{ 'checked' if cam_sel == t }} title="Camiseta tamanho {{ t }}" disabled>
+                </td>
+                {% endfor %}
+              </tr>
+              <tr id="linha-tam-calca" hidden>
+                <td><strong>👖 Calça</strong> <span class="obrigatorio">*</span></td>
+                {% for t in tamanhos %}
+                <td class="centro">
+                  <input type="radio" name="calca" value="{{ t }}" {{ 'checked' if cal_sel == t }} title="Calça tamanho {{ t }}" disabled>
+                </td>
+                {% endfor %}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Observações -->
+    <section class="cartao bloco-pergunta">
+      <label class="titulo-pergunta" for="campo-obs">
+        6. Observações
+      </label>
+      <textarea id="campo-obs" name="observacao" rows="3" placeholder="Insira sua resposta">{{ form_dados.get('observacao', '') }}</textarea>
+    </section>
+
+    <div class="acoes" style="margin-bottom:2.5rem">
+      <button type="submit" class="btn primario grande">Enviar solicitação</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+<script>
+(() => {
+  const form = document.getElementById("form-solicitar");
+  if (!form) return;
+
+  const PADRAO_POR_CARGO = {{ padrao_por_cargo|tojson }};
+  const selectColab = document.getElementById("select-colaborador");
+  const avisoCargo = document.getElementById("aviso-cargo-colab");
+  const itensOpcao = Array.from(form.querySelectorAll(".opcao-item[data-epi-id]"));
+
+  function atualizarRecomendadosPeloCargo() {
+    if (!selectColab) return;
+    const opt = selectColab.options[selectColab.selectedIndex];
+    const cargo = (opt && opt.dataset.cargo ? opt.dataset.cargo : "").trim();
+    const idsRecomendados = new Set(PADRAO_POR_CARGO[cargo.toLowerCase()] || []);
+
+    for (const item of itensOpcao) {
+      const id = Number(item.dataset.epiId);
+      const rec = idsRecomendados.has(id);
+      item.classList.toggle("recomendado-cargo", rec);
+      const tag = item.querySelector(".tag-recomendado");
+      if (tag) tag.hidden = !rec;
+    }
+
+    if (avisoCargo) {
+      if (cargo && idsRecomendados.size > 0) {
+        avisoCargo.innerHTML = `👷 Cargo vinculado: <strong>${cargo}</strong> — Os equipamentos padrão do seu cargo estão destacados em verde abaixo.`;
+        avisoCargo.hidden = false;
+      } else if (cargo) {
+        avisoCargo.innerHTML = `👷 Cargo vinculado: <strong>${cargo}</strong>`;
+        avisoCargo.hidden = false;
+      } else {
+        avisoCargo.hidden = true;
+      }
+    }
+  }
+
+  if (selectColab) {
+    selectColab.addEventListener("change", atualizarRecomendadosPeloCargo);
+    atualizarRecomendadosPeloCargo();
+  }
+
+  const checkboxes = Array.from(form.querySelectorAll('input[type="checkbox"][name="epi"], input[type="checkbox"][name="vestimento"]'));
+  const secaoCalcado = document.getElementById("secao-tamanho-calcado");
+  const tiposCalcado = ["sapatao", "botina", "bota"];
+
+  const secaoUniforme = document.getElementById("secao-tamanho-uniforme");
+  const tiposUniforme = ["camiseta", "calca"];
+
+  function atualizarCamposCondicionais() {
+    const calcadosAtivos = new Set();
+    const uniformesAtivos = new Set();
+
+    for (const chk of checkboxes) {
+      if (chk.checked) {
+        if (chk.dataset.calcado) calcadosAtivos.add(chk.dataset.calcado);
+        if (chk.dataset.uniforme) uniformesAtivos.add(chk.dataset.uniforme);
+      }
+    }
+
+    // Atualiza abas de Sapatão, Botina e Bota
+    for (const tc of tiposCalcado) {
+      const bloco = document.getElementById(`bloco-tam-${tc}`);
+      const input = document.getElementById(`input-tam-${tc}`);
+      if (!bloco || !input) continue;
+      const ativo = calcadosAtivos.has(tc);
+      bloco.hidden = !ativo;
+      input.disabled = !ativo;
+      input.required = ativo;
+      if (!ativo) input.value = "";
+    }
+    if (secaoCalcado) {
+      secaoCalcado.hidden = calcadosAtivos.size === 0;
+    }
+
+    // Atualiza linhas de Camiseta e Calça
+    for (const tu of tiposUniforme) {
+      const linha = document.getElementById(`linha-tam-${tu}`);
+      if (!linha) continue;
+      const radios = Array.from(linha.querySelectorAll(`input[type="radio"][name="${tu}"]`));
+      const ativo = uniformesAtivos.has(tu);
+      linha.hidden = !ativo;
+      radios.forEach((r, idx) => {
+        r.disabled = !ativo;
+        r.required = ativo && idx === 0;
+        if (!ativo) r.checked = false;
+      });
+    }
+    if (secaoUniforme) {
+      secaoUniforme.hidden = uniformesAtivos.size === 0;
+    }
+  }
+
+  checkboxes.forEach(chk => chk.addEventListener("change", atualizarCamposCondicionais));
+  atualizarCamposCondicionais();
+})();
+</script>
+{% endblock %}

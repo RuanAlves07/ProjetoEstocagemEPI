@@ -1,0 +1,64 @@
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+{% macro status(e) %}
+  {% if e.status == 'zerado' %}<span class="badge vermelho">Sem estoque</span>
+  {% elif e.status == 'repor' %}<span class="badge amarelo">Repor</span>
+  {% else %}<span class="badge verde">OK</span>{% endif %}
+{% endmacro %}
+
+{% macro ca(e) %}
+  {% if e.ca_status == 'vencido' %}<span class="badge vermelho" title="CA vencido">{{ e.ca }} · vencido {{ e.validade_ca|data_br }}</span>
+  {% elif e.ca_status == 'vencendo' %}<span class="badge amarelo">{{ e.ca }} · vence {{ e.validade_ca|data_br }}</span>
+  {% elif e.ca %}{{ e.ca }}{% if e.validade_ca %} <small class="suave">até {{ e.validade_ca|data_br }}</small>{% endif %}
+  {% else %}<span class="suave">—</span>{% endif %}
+{% endmacro %}
+
+{# Tabela de movimentações. Admin pode cancelar. #}
+{% macro tabela_movs(movs, mostrar_epi=true, mostrar_colab=true, voltar='') %}
+<div class="tabela-rolavel">
+<table>
+  <thead><tr>
+    <th>Data</th><th>Tipo</th>{% if mostrar_epi %}<th>EPI</th>{% endif %}<th class="num">Qtd</th>
+    {% if mostrar_colab %}<th>Colaborador / Origem</th>{% endif %}<th>Detalhes</th><th>Por</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for m in movs %}
+    <tr class="{{ 'cancelada' if m.cancelada }}">
+      <td>{{ m.data|data_br }}</td>
+      <td><span class="badge tipo-{{ m.tipo }}">{{ TIPOS[m.tipo] }}</span></td>
+      {% if mostrar_epi %}<td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=m.epi_id) }}">{{ m.epi_nome }}</a>{% if m.ca %} <small class="suave">CA {{ m.ca }}</small>{% endif %}</td>{% endif %}
+      <td class="num">{{ '−' if m.tipo in ('saida', 'baixa', 'ajuste_menos') else '+' }}{{ m.quantidade }}</td>
+      {% if mostrar_colab %}<td>
+        {% if m.colaborador_id %}<a href="{{ url_for('cadastros.colaborador_ficha', colab_id=m.colaborador_id) }}">{{ m.colab_nome }}</a>{% if m.setor %} <small class="suave">{{ m.setor }}</small>{% endif %}
+        {% elif m.fornecedor %}{{ m.fornecedor }}{% else %}<span class="suave">—</span>{% endif %}
+      </td>{% endif %}
+      <td>
+        {% if m.local_destino %}📍 {{ m.local_destino }} · {% endif %}
+        {% if m.pedido_id %}<a href="{{ url_for('pedidos.detalhe', pedido_id=m.pedido_id) }}">Pedido #{{ m.pedido_id }}</a> · {% endif %}
+        {% if m.nota_fiscal %}NF {{ m.nota_fiscal }} · {% endif %}
+        {% if m.custo_unitario is not none %}{{ m.custo_unitario|dinheiro }}/un · {% endif %}
+        {{ m.motivo or '' }}{% if m.observacao %} <small class="suave">{{ m.observacao }}</small>{% endif %}
+        {% if m.tipo == 'saida' %} <a class="suave" href="{{ url_for('movimentos.comprovante', grupo=m.grupo) }}">comprovante</a>{% endif %}
+        {% if m.cancelada %}<br><small class="erro-texto">Cancelada por {{ m.cancelada_por_nome }} em {{ m.cancelada_em|hora_br }}: {{ m.cancelada_motivo }}</small>{% endif %}
+      </td>
+      <td><small>{{ m.usuario_nome }}<br><span class="suave">{{ m.criado_em|hora_br }}</span></small></td>
+      <td>
+        {% if eh_admin and not m.cancelada %}
+        <details class="cancelar">
+          <summary>Cancelar</summary>
+          <form method="post" action="{{ url_for('movimentos.cancelar', mov_id=m.id) }}">
+            {{ csrf() }}<input type="hidden" name="voltar" value="{{ voltar }}">
+            <input name="motivo" placeholder="Motivo do cancelamento" required>
+            <button class="btn perigo pequeno">Confirmar</button>
+          </form>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="vazio">Nenhuma movimentação encontrada.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}

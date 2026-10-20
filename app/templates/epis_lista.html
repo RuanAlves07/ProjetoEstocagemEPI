@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import status, ca with context %}
+{% block titulo %}EPIs{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>EPIs</h1>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('cadastros.epis_csv') }}">Exportar Excel (CSV)</a>
+    {% if pode_editar %}<a class="btn primario" href="{{ url_for('cadastros.epi_novo') }}">Novo EPI</a>{% endif %}
+  </div>
+</div>
+<form class="filtros" method="get">
+  <input name="q" value="{{ busca }}" placeholder="Buscar por nome, categoria ou CA">
+  <label class="check"><input type="checkbox" name="inativos" value="1" {{ 'checked' if mostrar_inativos }}> mostrar inativos</label>
+  <button class="btn">Filtrar</button>
+</form>
+<div class="cartao"><div class="tabela-rolavel"><table>
+  <thead><tr><th>EPI</th><th>Categoria</th><th>CA</th><th class="num">Saldo</th><th class="num">Mínimo</th><th class="num">Consumo/mês</th><th class="num">Dura (dias)</th><th>Situação</th></tr></thead>
+  <tbody>
+  {% for e in epis %}
+    <tr class="{{ 'inativo' if not e.ativo }}">
+      <td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}">{{ e.nome }}</a>{% if not e.ativo %} <span class="badge">inativo</span>{% endif %}</td>
+      <td>{{ e.categoria or '—' }}</td>
+      <td>{{ ca(e) }}</td>
+      <td class="num"><strong>{{ e.saldo }}</strong> <small class="suave">{{ e.unidade }}</small></td>
+      <td class="num">{{ e.estoque_minimo }}</td>
+      <td class="num">{{ e.consumo_mensal|num(1) }}</td>
+      <td class="num">{{ e.cobertura_dias|num if e.cobertura_dias is not none else '—' }}</td>
+      <td>{{ status(e) }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="vazio">Nenhum EPI cadastrado.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

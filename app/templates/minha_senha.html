@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Alterar senha{% endblock %}
+{% block conteudo %}
+<div class="cartao estreito-card">
+  <h1>Alterar minha senha</h1>
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <label>Senha atual <input name="atual" type="password" required autocomplete="current-password"></label>
+    <label>Nova senha (mín. 8 caracteres) <input name="senha" type="password" required minlength="8" autocomplete="new-password"></label>
+    <label>Confirmar nova senha <input name="confirmacao" type="password" required minlength="8" autocomplete="new-password"></label>
+    <button class="btn primario">Salvar</button>
+  </form>
+</div>
+{% endblock %}

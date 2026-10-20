@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ 'Novo EPI' if novo else 'Editar EPI' }}{% endblock %}
+{% block conteudo %}
+<div class="cartao estreito-card">
+  <h1>{{ 'Novo EPI' if novo else 'Editar EPI' }}</h1>
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <label>Nome (inclua tamanho/modelo se houver) <input name="nome" required autofocus value="{{ epi.nome or '' }}" placeholder="Ex.: Luva nitrílica G"></label>
+    <div class="linha">
+      <label>Categoria <input name="categoria" value="{{ epi.categoria or '' }}" placeholder="Ex.: Mãos, Cabeça, Pés"></label>
+      <label>Unidade <input name="unidade" value="{{ epi.unidade or 'un' }}" placeholder="un, par, cx"></label>
+    </div>
+    <div class="linha">
+      <label>Nº do CA <input name="ca" value="{{ epi.ca or '' }}"></label>
+      <label>Validade do CA <input name="validade_ca" type="date" value="{{ epi.validade_ca or '' }}"></label>
+    </div>
+    <div class="linha">
+      <label>Estoque mínimo <input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
+      <label>Prazo de reposição (dias) <input name="prazo_reposicao_dias" type="number" min="0" required value="{{ epi.prazo_reposicao_dias }}"></label>
+    </div>
+    <p class="nota">O <strong>estoque mínimo</strong> dispara o alerta de pedido. O <strong>prazo de reposição</strong> é quanto o fornecedor leva para entregar: o item também é sinalizado quando o estoque duraria menos que isso.</p>
+    {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if epi.ativo }}> EPI ativo (inativos não aparecem para movimentar)</label>{% endif %}
+    <div class="acoes">
+      <button class="btn primario">Salvar</button>
+      <a class="btn" href="{{ url_for('cadastros.epi_detalhe', epi_id=epi_id) if not novo else url_for('cadastros.epis_lista') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ 'Novo usuário' if novo else 'Editar usuário' }}{% endblock %}
+{% block conteudo %}
+<div class="cartao estreito-card">
+  <h1>{{ 'Novo usuário' if novo else 'Editar usuário' }}</h1>
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <label>Nome <input name="nome" required value="{{ u.nome or '' }}"></label>
+    {% if novo %}<label>Login <input name="login" required autocomplete="off" value="{{ u.login or '' }}"></label>
+    {% else %}<p>Login: <strong>{{ u.login }}</strong></p>{% endif %}
+    <label>Perfil
+      <select name="perfil">{% for k, v in PERFIS.items() %}<option value="{{ k }}" {{ 'selected' if u.perfil == k }}>{{ v }}</option>{% endfor %}</select>
+    </label>
+    <label>{{ 'Senha' if novo else 'Nova senha (deixe em branco para manter)' }} (mín. {{ SENHA_MIN }} caracteres)
+      <input name="senha" type="password" minlength="{{ SENHA_MIN }}" {{ 'required' if novo }} autocomplete="new-password"></label>
+    <label>Confirmar senha <input name="confirmacao" type="password" minlength="{{ SENHA_MIN }}" autocomplete="new-password"></label>
+    {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if u.ativo }}> Usuário ativo</label>{% endif %}
+    <div class="acoes"><button class="btn primario">Salvar</button> <a class="btn" href="{{ url_for('cadastros.usuarios_lista') }}">Cancelar</a></div>
+  </form>
+</div>
+{% endblock %}

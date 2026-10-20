@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Entrar{% endblock %}
+{% block conteudo %}
+<div class="cartao">
+  <h1>🦺 Estoque de EPIs</h1>
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <label>Login <input name="login" autofocus required autocomplete="username"></label>
+    <label>Senha <input name="senha" type="password" required autocomplete="current-password"></label>
+    <button class="btn primario">Entrar</button>
+  </form>
+</div>
+
+<div class="cartao destaque-pronto" style="text-align:center">
+  <h2 style="margin-top:0">📋 Solicitação de Uniforme e EPI</h2>
+  <p class="nota" style="margin:.4rem 0 .9rem">Colaborador de obra: solicite novos uniformes e EPIs diretamente pelo formulário público (não precisa de login).</p>
+  <a class="btn primario" href="{{ url_for('pedidos.solicitar') }}" style="width:100%">Abrir Formulário de Solicitação →</a>
+</div>
+{% endblock %}

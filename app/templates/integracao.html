@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block titulo %}Integração com o Forms{% endblock %}
+{% block conteudo %}
+<h1>Integração com o Microsoft Forms</h1>
+<p>O Power Automate envia cada resposta do formulário para o sistema, que cria o card do pedido automaticamente.</p>
+
+<section class="cartao">
+  <h2>Dados para o fluxo</h2>
+  <div class="formulario">
+    <label>URL (método POST) <input readonly value="{{ url_api }}" onclick="this.select()"></label>
+    <label>Cabeçalho <code>X-API-Key</code> (chave secreta — não compartilhe) <input readonly value="{{ chave }}" onclick="this.select()"></label>
+  </div>
+  <form method="post" onsubmit="return confirm('Gerar nova chave? O fluxo atual deixará de funcionar até ser atualizado.')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn">Gerar nova chave</button>
+  </form>
+  {% if request.scheme != 'https' %}<p class="aviso erro" style="margin-top:1rem">Esta página está em HTTP. Para o Power Automate (nuvem) o sistema precisa estar acessível por <strong>HTTPS</strong> na internet — veja o README.</p>{% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Montando o fluxo no Power Automate</h2>
+  <ol>
+    <li>Gatilho: <strong>Microsoft Forms → Quando uma nova resposta é enviada</strong> (escolha o formulário) e, em seguida, a ação <strong>Obter detalhes da resposta</strong>.</li>
+    <li>Ação <strong>HTTP</strong> (conector premium): método <code>POST</code>, URL e cabeçalhos abaixo.</li>
+    <li>Cabeçalhos: <code>Content-Type: application/json</code> e <code>X-API-Key: (a chave acima)</code>.</li>
+    <li>Corpo (JSON): preencha cada valor com a resposta correspondente do formulário (conteúdo dinâmico):</li>
+  </ol>
+<pre>{
+  "id":          "ID da resposta",
+  "nome":        "Nome",
+  "local":       "Local",
+  "motivo":      "Motivo",
+  "vestimento":  "Vestimento",
+  "epi":         "EPI",
+  "sapatao":     "Sapatão",
+  "camiseta":    "Camiseta",
+  "calca":       "Calça",
+  "observacao":  "Observação"
+}</pre>
+  <p class="nota">Só <code>nome</code> é obrigatório. O <code>id</code> evita pedido duplicado se o fluxo for reenviado. Perguntas de múltipla escolha são aceitas (o sistema separa os itens por “;” ou vírgula; “2x Luva G” vira quantidade 2).</p>
+  <p>Teste do terminal:</p>
+<pre>curl -X POST {{ url_api }} \
+  -H "Content-Type: application/json" -H "X-API-Key: {{ chave }}" \
+  -d '{"nome":"Fulano","local":"Obra A","motivo":"Reposição","epi":"Luva G; Óculos","sapatao":"Bota 40"}'</pre>
+</section>
+
+<section class="cartao">
+  <h2>Alternativa sem conector HTTP Premium (via planilha Excel do Forms)</h2>
+  <p>Se sua licença do Power Automate não incluir o conector <strong>HTTP</strong> (Premium), você pode usar a ação padrão <strong>Excel Online (Business) → Executar script (Office Script)</strong> na planilha onde o Forms grava as respostas, lendo exatamente as colunas <strong>H a P</strong>:</p>
+  <ul>
+    <li><strong>Coluna A</strong>: ID da resposta</li>
+    <li><strong>Coluna H</strong>: Nome · <strong>Coluna I</strong>: Local · <strong>Coluna J</strong>: Motivo</li>
+    <li><strong>Coluna K</strong>: Vestimento · <strong>Coluna L</strong>: EPI · <strong>Coluna M</strong>: Sapatão · <strong>Coluna N</strong>: Camiseta · <strong>Coluna O</strong>: Calça</li>
+    <li><strong>Coluna P</strong>: Observação</li>
+  </ul>
+  <p class="nota">Também é possível exportar a planilha do Forms como <code>.csv</code> e importar direto em <a href="{{ url_for('pedidos.lista') }}">Pedidos → Importar planilha do Forms (CSV)</a>.</p>
+</section>
+
+<section class="cartao">
+  <h2>Como cada resposta vira item de estoque</h2>
+  <p>Vestimento, EPI, Sapatão, Camiseta e Calça viram linhas do pedido. O sistema compara o texto com o nome dos EPIs cadastrados (ignora acentos e maiúsculas; para Camiseta “M” tenta também “Camiseta M”). O que não reconhecer aparece como <span class="badge amarelo">identificar</span>: a pessoa do almoxarifado escolhe o EPI uma vez e o sistema <strong>lembra</strong> para os próximos pedidos. Respostas como “Não” ou “Nenhum” são ignoradas.</p>
+</section>
+{% endblock %}
