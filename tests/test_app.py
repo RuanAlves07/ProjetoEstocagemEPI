@@ -236,6 +236,24 @@ class TestEstoque(Base):
         )
         self.assertIn("Em teste para promoção", r2.get_data(as_text=True))
 
+    def test_traducao_sql_postgres(self):
+        from app.db import _traduzir_sql_postgres
+        s1, p1 = _traduzir_sql_postgres("SELECT * FROM epis WHERE nome LIKE ? ORDER BY nome COLLATE NOCASE")
+        self.assertIn("ILIKE %s", s1)
+        self.assertNotIn("COLLATE NOCASE", s1)
+        self.assertFalse(p1)
+        s2, p2 = _traduzir_sql_postgres("INSERT OR IGNORE INTO cargo_epis_padrao (cargo, epi_id) VALUES (?, ?)")
+        self.assertTrue(s2.startswith("INSERT INTO"))
+        self.assertTrue(s2.endswith("ON CONFLICT DO NOTHING"))
+        self.assertFalse(p2)
+        s3, p3 = _traduzir_sql_postgres(
+            "INSERT INTO movimentacoes (epi_id, criado_em) VALUES (:id, datetime('now','localtime'))"
+        )
+        self.assertIn("%(id)s", s3)
+        self.assertIn("HH24:MI:SS", s3)
+        self.assertTrue(s3.endswith("RETURNING id"))
+        self.assertTrue(p3)
+
 
 if __name__ == "__main__":
     unittest.main()

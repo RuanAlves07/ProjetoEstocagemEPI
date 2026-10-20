@@ -320,7 +320,7 @@ def exportar_csv():
         """SELECT p.id, p.recebido_em, p.solicitante, p.local_destino, p.motivo, p.observacao, p.status,
                   c.nome AS colaborador, p.retirado_por_nome, p.retirado_descricao, p.retirado_em,
                   uf.nome AS separado_por, ue.nome AS entregue_por,
-                  (SELECT GROUP_CONCAT(i.quantidade || 'x ' || COALESCE(e.nome, i.texto_original), '; ')
+                  (SELECT GROUP_CONCAT(CAST(i.quantidade AS TEXT) || 'x ' || COALESCE(e.nome, i.texto_original), '; ')
                    FROM pedido_itens i LEFT JOIN epis e ON e.id = i.epi_id
                    WHERE i.pedido_id = p.id AND i.ignorado = 0) AS itens
            FROM pedidos p

@@ -75,18 +75,33 @@ def popular():
             uid = u_admin["id"]
 
         # Limpa dados anteriores de demonstração (mantendo a tabela usuarios intacta)
-        db.executescript("""
-            DELETE FROM colaborador_epis_solicitados;
-            DELETE FROM colaborador_epis_padrao;
-            DELETE FROM cargo_epis_padrao;
-            DELETE FROM movimentacoes;
-            DELETE FROM pedido_itens;
-            DELETE FROM pedidos;
-            DELETE FROM epi_apelidos;
-            DELETE FROM epis;
-            DELETE FROM colaboradores;
-            DELETE FROM sqlite_sequence WHERE name IN ('colaborador_epis_solicitados','movimentacoes','pedido_itens','pedidos','epis','colaboradores');
-        """)
+        if getattr(db, "eh_postgres", False):
+            db.executescript("""
+                TRUNCATE TABLE
+                    colaborador_epis_solicitados,
+                    colaborador_epis_padrao,
+                    cargo_epis_padrao,
+                    movimentacoes,
+                    pedido_itens,
+                    pedidos,
+                    epi_apelidos,
+                    epis,
+                    colaboradores
+                RESTART IDENTITY CASCADE;
+            """)
+        else:
+            db.executescript("""
+                DELETE FROM colaborador_epis_solicitados;
+                DELETE FROM colaborador_epis_padrao;
+                DELETE FROM cargo_epis_padrao;
+                DELETE FROM movimentacoes;
+                DELETE FROM pedido_itens;
+                DELETE FROM pedidos;
+                DELETE FROM epi_apelidos;
+                DELETE FROM epis;
+                DELETE FROM colaboradores;
+                DELETE FROM sqlite_sequence WHERE name IN ('colaborador_epis_solicitados','movimentacoes','pedido_itens','pedidos','epis','colaboradores');
+            """)
 
         # 2. Cadastra os 25 EPIs e as 8 Vestimentas reais do formulário UNIFORME E EPI
         catalogo_epis = [
@@ -496,6 +511,7 @@ def popular():
                 uid,
             ),
         )
+        db.commit()
 
         print("Base de demonstração com os 33 itens e 158 colaboradores reais criada com sucesso!")
 

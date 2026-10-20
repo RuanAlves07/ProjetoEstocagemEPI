@@ -46,11 +46,12 @@ def relatorios():
         """SELECT e.id, e.nome, e.unidade,
                   SUM(CASE WHEN m.tipo = 'entrada' THEN m.quantidade ELSE 0 END) AS entradas,
                   SUM(CASE WHEN m.tipo = 'saida' THEN m.quantidade ELSE 0 END) AS entregas,
-                  SUM(CASE WHEN m.tipo = 'baixa' THEN m.quantidade ELSE 0 END) AS baixas
+                  SUM(CASE WHEN m.tipo = 'baixa' THEN m.quantidade ELSE 0 END) AS baixas,
+                  SUM(CASE WHEN m.tipo IN ('saida', 'baixa') THEN m.quantidade ELSE 0 END) AS total_saidas
            FROM movimentacoes m JOIN epis e ON e.id = m.epi_id
            WHERE m.cancelada = 0 AND m.data BETWEEN ? AND ? AND m.tipo IN ('entrada', 'saida', 'baixa')
-           GROUP BY e.id
-           ORDER BY (entregas + baixas) DESC, e.nome COLLATE NOCASE""", p).fetchall()
+           GROUP BY e.id, e.nome, e.unidade
+           ORDER BY total_saidas DESC, e.nome COLLATE NOCASE""", p).fetchall()
 
     por_setor = db.execute(
         """SELECT COALESCE(setor, '(sem setor)') AS nome, SUM(quantidade) AS total,
@@ -68,7 +69,7 @@ def relatorios():
         """SELECT c.id, c.nome, c.setor, SUM(m.quantidade) AS total, COUNT(DISTINCT m.grupo) AS entregas
            FROM movimentacoes m JOIN colaboradores c ON c.id = m.colaborador_id
            WHERE m.cancelada = 0 AND m.tipo = 'saida' AND m.data BETWEEN ? AND ?
-           GROUP BY c.id ORDER BY total DESC LIMIT 15""", p).fetchall()
+           GROUP BY c.id, c.nome, c.setor ORDER BY total DESC LIMIT 15""", p).fetchall()
 
     por_mes = db.execute(
         """SELECT substr(data, 1, 7) AS mes,
@@ -76,7 +77,7 @@ def relatorios():
                   SUM(CASE WHEN tipo IN ('saida', 'baixa') THEN quantidade ELSE 0 END) AS saidas
            FROM movimentacoes
            WHERE cancelada = 0 AND tipo IN ('entrada', 'saida', 'baixa') AND data BETWEEN ? AND ?
-           GROUP BY mes ORDER BY mes""", p).fetchall()
+           GROUP BY substr(data, 1, 7) ORDER BY mes""", p).fetchall()
 
     maximos = {
         "ranking": max([r["entregas"] + r["baixas"] for r in ranking] or [1]) or 1,
