@@ -63,7 +63,23 @@ def popular():
         db = get_db()
         h = hoje()
 
-        # 1. Garante ao menos um usuário admin (preserva os que você já criou)
+        # 1. Se estiver populando Postgres e houver usuários locais no SQLite, sincroniza os logins/senhas
+        import os
+        import sqlite3
+        caminho_sqlite_local = os.path.join(os.path.dirname(__file__), "instance", "epi.sqlite")
+        if getattr(db, "eh_postgres", False) and os.path.exists(caminho_sqlite_local):
+            conn_local = sqlite3.connect(caminho_sqlite_local)
+            conn_local.row_factory = sqlite3.Row
+            for u in conn_local.execute("SELECT nome, login, senha_hash, perfil, ativo FROM usuarios").fetchall():
+                existe = db.execute("SELECT id FROM usuarios WHERE LOWER(login) = LOWER(?)", (u["login"],)).fetchone()
+                if not existe:
+                    db.execute(
+                        "INSERT INTO usuarios (nome, login, senha_hash, perfil, ativo) VALUES (?, ?, ?, ?, ?)",
+                        (u["nome"], u["login"], u["senha_hash"], u["perfil"], u["ativo"]),
+                    )
+            conn_local.close()
+
+        # Garante ao menos um usuário admin (preserva os que você já criou)
         u_admin = db.execute("SELECT id FROM usuarios WHERE perfil = 'admin' ORDER BY id LIMIT 1").fetchone()
         if not u_admin:
             cur = db.execute(
@@ -517,4 +533,8 @@ def popular():
 
 
 if __name__ == "__main__":
+    import os
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        os.environ["DATABASE_URL"] = sys.argv[1].strip()
     popular()

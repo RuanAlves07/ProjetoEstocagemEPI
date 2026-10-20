@@ -96,11 +96,20 @@ class _PostgresConn:
 
         self._psycopg2 = psycopg2
         self._extras = psycopg2.extras
-        # Corrige prefixo postgres:// antigo caso necessário
+        # Corrige prefixo postgres:// antigo e remove colchetes acidentais [SENHA] do template do Supabase
         if dsn.startswith("postgres://"):
             dsn = "postgresql://" + dsn[len("postgres://"):]
+        dsn = re.sub(r":\[([^\]@]+)\]@", r":\1@", dsn)
         self._conn = psycopg2.connect(dsn)
         self._conn.autocommit = True
+
+    def commit(self):
+        if not self._conn.autocommit:
+            self._conn.commit()
+
+    def rollback(self):
+        if not self._conn.autocommit:
+            self._conn.rollback()
 
     def execute(self, sql, params=None):
         sql_pg, precisa_id = _traduzir_sql_postgres(sql)
