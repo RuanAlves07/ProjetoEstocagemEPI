@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from flask import Blueprint, render_template, request
 
-from . import estoque
+from . import estoque, pedidos
 from .db import get_db
 from .movimentos import consultar_movimentos
 from .util import hoje, parse_data
@@ -20,16 +20,20 @@ def inicio():
                    key=lambda e: (ordem[e["status"]], e["cobertura_dias"] if e["cobertura_dias"] is not None else 1e9))
     ca_alertas = sorted((e for e in epis if e["ca_status"] in ("vencido", "vencendo")),
                         key=lambda e: e["validade_ca"])
-    mais_saem = sorted((e for e in epis if e["consumo"] > 0), key=lambda e: -e["consumo"])[:5]
+    mais_saem = sorted((e for e in epis if e["consumo"] > 0), key=lambda e: -e["consumo"])[:8]
 
     inicio_mes = hoje().replace(day=1).isoformat()
     totais = {r["tipo"]: r["total"] for r in db.execute(
         """SELECT tipo, SUM(quantidade) AS total FROM movimentacoes
            WHERE cancelada = 0 AND data >= ? GROUP BY tipo""", (inicio_mes,))}
+    pedidos_abertos = pedidos.carregar(db, status=pedidos.ABERTOS, limite=6)
+    colaboradores_ativos = db.execute("SELECT COUNT(*) FROM colaboradores WHERE ativo = 1").fetchone()[0]
     return render_template(
         "painel.html", epis=epis, repor=repor, ca_alertas=ca_alertas, mais_saem=mais_saem,
         total_entradas=totais.get("entrada", 0), total_entregas=totais.get("saida", 0),
-        ultimas=consultar_movimentos(db, {}, limite=8), janela=estoque.JANELA_CONSUMO_DIAS,
+        pedidos_abertos=pedidos_abertos, colaboradores_ativos=colaboradores_ativos,
+        STATUS_PEDIDO=pedidos.STATUS,
+        ultimas=consultar_movimentos(db, {}, limite=10), janela=estoque.JANELA_CONSUMO_DIAS,
     )
 
 

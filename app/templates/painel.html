@@ -2,20 +2,59 @@
 {% from '_macros.html' import status, ca, tabela_movs with context %}
 {% block titulo %}Painel{% endblock %}
 {% block conteudo %}
-<h1>Painel</h1>
-
-<div class="indicadores">
-  <a class="indicador {{ 'alerta' if pedidos_a_atender }}" href="{{ url_for('pedidos.lista') }}"><span class="valor">{{ pedidos_a_atender }}</span><span>pedidos para separar</span></a>
-  <div class="indicador"><span class="valor">{{ epis|length }}</span><span>EPIs ativos</span></div>
-  <a class="indicador {{ 'alerta' if repor }}" href="#repor"><span class="valor">{{ repor|length }}</span><span>para repor</span></a>
-  <div class="indicador"><span class="valor">{{ total_entradas|num }}</span><span>unid. recebidas no mês</span></div>
-  <div class="indicador"><span class="valor">{{ total_entregas|num }}</span><span>unid. entregues no mês</span></div>
-  <div class="indicador {{ 'alerta' if ca_alertas }}"><span class="valor">{{ ca_alertas|length }}</span><span>CAs vencidos / a vencer</span></div>
+<div class="painel-topo cabecalho">
+  <div>
+    <h1>Painel</h1>
+    <p class="nota" style="margin:-.4rem 0 0">Visão geral em tempo real do estoque, pedidos das obras, consumo e alertas de reposição.</p>
+  </div>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('pedidos.solicitar') }}">📋 Formulário de Solicitação</a>
+    {% if tem_perm('ver_pedidos') %}<a class="btn" href="{{ url_for('pedidos.lista') }}">📦 Fila de Pedidos</a>{% endif %}
+    {% if pode_movimentar %}
+      <a class="btn primario" href="{{ url_for('movimentos.movimentar', tipo='saida') }}">+ Entregar EPI</a>
+      <a class="btn" href="{{ url_for('movimentos.movimentar', tipo='entrada') }}">+ Entrada</a>
+    {% endif %}
+  </div>
 </div>
 
-<div class="grade-2">
-  <section class="cartao" id="repor">
-    <h2>Hora de pedir</h2>
+<div class="indicadores indicadores-painel">
+  <a class="indicador {{ 'alerta' if pedidos_a_atender }}" href="{{ url_for('pedidos.lista') }}">
+    <span class="valor">{{ pedidos_a_atender }}</span>
+    <span>pedidos para separar</span>
+  </a>
+  <a class="indicador" href="{{ url_for('cadastros.epis_lista') }}">
+    <span class="valor">{{ epis|length }}</span>
+    <span>EPIs ativos</span>
+  </a>
+  <a class="indicador {{ 'alerta' if repor }}" href="#repor">
+    <span class="valor">{{ repor|length }}</span>
+    <span>para repor</span>
+  </a>
+  <div class="indicador">
+    <span class="valor">{{ total_entradas|num }}</span>
+    <span>unid. recebidas no mês</span>
+  </div>
+  <div class="indicador">
+    <span class="valor">{{ total_entregas|num }}</span>
+    <span>unid. entregues no mês</span>
+  </div>
+  <a class="indicador" href="{{ url_for('cadastros.colaboradores_lista') }}">
+    <span class="valor">{{ colaboradores_ativos }}</span>
+    <span>colaboradores ativos</span>
+  </a>
+  <div class="indicador {{ 'alerta' if ca_alertas }}">
+    <span class="valor">{{ ca_alertas|length }}</span>
+    <span>CAs vencidos / a vencer</span>
+  </div>
+</div>
+
+<div class="painel-grade-principal">
+  <!-- Coluna 1: Hora de pedir (Reposição) -->
+  <section class="cartao painel-cartao-repor" id="repor">
+    <div class="cabecalho" style="margin-bottom:.6rem">
+      <h2 style="margin:0">Hora de pedir</h2>
+      <a class="suave" style="font-size:.86rem" href="{{ url_for('cadastros.epis_csv') }}">Exportar planilha →</a>
+    </div>
     {% if repor %}
     <div class="tabela-rolavel"><table>
       <thead><tr><th>EPI</th><th class="num">Saldo</th><th class="num">Mín.</th><th class="num">Dura (dias)</th><th class="num">Sugestão</th><th></th></tr></thead>
@@ -35,8 +74,12 @@
     {% else %}<p class="vazio">Nenhum item precisa de reposição agora. ✅</p>{% endif %}
   </section>
 
-  <section class="cartao">
-    <h2>Mais saem (últimos {{ janela }} dias)</h2>
+  <!-- Coluna 2: Mais saem + CAs -->
+  <section class="cartao painel-cartao-consumo">
+    <div class="cabecalho" style="margin-bottom:.6rem">
+      <h2 style="margin:0">Mais saem (últimos {{ janela }} dias)</h2>
+      {% if tem_perm('ver_relatorios') %}<a class="suave" style="font-size:.86rem" href="{{ url_for('painel.relatorios') }}">Relatórios →</a>{% endif %}
+    </div>
     {% if mais_saem %}
     <table><tbody>
       {% for e in mais_saem %}
@@ -47,21 +90,48 @@
       </tr>
       {% endfor %}
     </tbody></table>
-    <p><a href="{{ url_for('painel.relatorios') }}">Ver relatórios completos →</a></p>
     {% else %}<p class="vazio">Ainda não há saídas registradas.</p>{% endif %}
 
     {% if ca_alertas %}
-    <h2>CAs para atualizar</h2>
+    <h2 style="margin-top:1.3rem">CAs para atualizar</h2>
     <table><tbody>
       {% for e in ca_alertas %}<tr><td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}">{{ e.nome }}</a></td><td>{{ ca(e) }}</td></tr>{% endfor %}
     </tbody></table>
     {% endif %}
   </section>
+
+  <!-- Coluna 3: Fila rápida de Pedidos em Aberto -->
+  <section class="cartao painel-cartao-pedidos">
+    <div class="cabecalho" style="margin-bottom:.6rem">
+      <h2 style="margin:0">Pedidos em aberto</h2>
+      {% if tem_perm('ver_pedidos') %}<a class="suave" style="font-size:.86rem" href="{{ url_for('pedidos.lista') }}">Ver fila completa →</a>{% endif %}
+    </div>
+    {% if pedidos_abertos %}
+    <div class="painel-lista-pedidos">
+      {% for p in pedidos_abertos %}
+      <div class="painel-pedido-item status-{{ p.status }}">
+        <div class="painel-pedido-topo">
+          <a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}"><strong>#{{ p.id }} · {{ p.solicitante }}</strong></a>
+          <span class="badge status-{{ p.status }}">{{ STATUS_PEDIDO[p.status] }}</span>
+        </div>
+        <div class="suave" style="font-size:.84rem">
+          {% if p.local_destino %}📍 {{ p.local_destino }} · {% endif %}
+          {{ p.total_itens }} item(ns) · {{ p.recebido_em|hora_br }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="vazio">Nenhum pedido aguardando atendimento no momento. ✅</p>
+    {% endif %}
+  </section>
 </div>
 
 <section class="cartao">
-  <h2>Últimas movimentações</h2>
+  <div class="cabecalho" style="margin-bottom:.6rem">
+    <h2 style="margin:0">Últimas movimentações</h2>
+    {% if tem_perm('ver_movimentos') %}<a href="{{ url_for('movimentos.lista') }}">Ver todas →</a>{% endif %}
+  </div>
   {{ tabela_movs(ultimas, voltar='/') }}
-  <p><a href="{{ url_for('movimentos.lista') }}">Ver todas →</a></p>
 </section>
 {% endblock %}

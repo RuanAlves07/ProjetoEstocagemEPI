@@ -15,18 +15,18 @@
     <button type="button" class="btn-menu-mobile nao-imprimir" id="btn-menu-mobile" aria-label="Abrir menu" aria-expanded="false">☰ Menu</button>
   </div>
   <nav class="nav-principal">
-    <a href="{{ url_for('painel.inicio') }}" class="{{ 'ativo' if ep == 'painel.inicio' }}">Painel</a>
-    <a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar') }}">Pedidos <span class="contador" id="badge-pedidos" {{ 'hidden' if not pedidos_a_atender }}>{{ pedidos_a_atender }}</span></a>
+    {% if tem_perm('ver_painel') %}<a href="{{ url_for('painel.inicio') }}" class="{{ 'ativo' if ep == 'painel.inicio' }}">Painel</a>{% endif %}
+    {% if tem_perm('ver_pedidos') %}<a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar') }}">Pedidos <span class="contador" id="badge-pedidos" {{ 'hidden' if not pedidos_a_atender }}>{{ pedidos_a_atender }}</span></a>{% endif %}
     <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep == 'pedidos.solicitar' }}">Formulário</a>
-    <a href="{{ url_for('cadastros.epis_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.epi') }}">EPIs</a>
-    <a href="{{ url_for('cadastros.colaboradores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.colab') or ep == 'cadastros.cargos_padrao' }}">Colaboradores</a>
-    <a href="{{ url_for('movimentos.lista') }}" class="{{ 'ativo' if ep in ('movimentos.lista',) }}">Movimentações</a>
-    <a href="{{ url_for('painel.relatorios') }}" class="{{ 'ativo' if ep == 'painel.relatorios' }}">Relatórios</a>
-    {% if eh_admin %}<a href="{{ url_for('pedidos.integracao') }}" class="{{ 'ativo' if ep == 'pedidos.integracao' }}">Integração</a>{% endif %}
-    {% if eh_admin %}<a href="{{ url_for('cadastros.usuarios_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.usuario') }}">Usuários</a>{% endif %}
+    {% if tem_perm('ver_epis') %}<a href="{{ url_for('cadastros.epis_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.epi') }}">EPIs</a>{% endif %}
+    {% if tem_perm('ver_fornecedores') %}<a href="{{ url_for('cadastros.fornecedores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.fornecedor') }}">Fornecedores</a>{% endif %}
+    {% if tem_perm('ver_colaboradores') %}<a href="{{ url_for('cadastros.colaboradores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.colab') or ep == 'cadastros.cargos_padrao' }}">Colaboradores</a>{% endif %}
+    {% if tem_perm('ver_movimentos') %}<a href="{{ url_for('movimentos.lista') }}" class="{{ 'ativo' if ep in ('movimentos.lista',) }}">Movimentações</a>{% endif %}
+    {% if tem_perm('ver_relatorios') %}<a href="{{ url_for('painel.relatorios') }}" class="{{ 'ativo' if ep == 'painel.relatorios' }}">Relatórios</a>{% endif %}
+    {% if eh_admin %}<a href="{{ url_for('cadastros.usuarios_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.usuario') or ep.startswith('cadastros.perfil') }}">Usuários</a>{% endif %}
   </nav>
   <div class="usuario">
-    {% if pode_editar %}
+    {% if pode_movimentar %}
     <details class="menu">
       <summary class="btn primario">+ Movimentar</summary>
       <div class="menu-itens">
@@ -37,7 +37,7 @@
       </div>
     </details>
     {% endif %}
-    <a href="{{ url_for('auth.minha_senha') }}" title="Alterar senha">{{ usuario['nome'] }}</a>
+    <a href="{{ url_for('auth.minha_senha') }}" title="Alterar login ou senha">{{ usuario['nome'] }}</a>
     <form method="post" action="{{ url_for('auth.sair') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn link">Sair</button>
@@ -46,21 +46,29 @@
 </header>
 
 <nav class="barra-inferior-mobile nao-imprimir" aria-label="Navegação rápida mobile">
+  {% if tem_perm('ver_painel') %}
   <a href="{{ url_for('painel.inicio') }}" class="{{ 'ativo' if ep == 'painel.inicio' }}">
     <span class="icone-mob">📊</span><span>Painel</span>
   </a>
+  {% endif %}
+  {% if tem_perm('ver_pedidos') %}
   <a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar') }}">
     <span class="icone-mob">📦{% if pedidos_a_atender %}<em class="badge-mob" id="badge-pedidos-mob">{{ pedidos_a_atender }}</em>{% endif %}</span><span>Pedidos</span>
   </a>
+  {% endif %}
   <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep == 'pedidos.solicitar' }}">
     <span class="icone-mob">📋</span><span>Formulário</span>
   </a>
+  {% if tem_perm('ver_epis') %}
   <a href="{{ url_for('cadastros.epis_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.epi') }}">
     <span class="icone-mob">🦺</span><span>EPIs</span>
   </a>
+  {% endif %}
+  {% if tem_perm('ver_colaboradores') %}
   <a href="{{ url_for('cadastros.colaboradores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.colab') or ep == 'cadastros.cargos_padrao' }}">
     <span class="icone-mob">👷</span><span>Equipe</span>
   </a>
+  {% endif %}
 </nav>
 {% endif %}
 <main class="{{ 'estreito' if not usuario and request.endpoint != 'pedidos.solicitar' }}">
@@ -69,7 +77,7 @@
   {% endwith %}
   {% block conteudo %}{% endblock %}
 </main>
-{% if usuario and pode_editar %}
+{% if usuario and tem_perm('gerenciar_pedidos') %}
 <aside id="dock-pedidos" hidden>
   <div class="dock-cab"><strong>🔔 <span id="dock-qtd">0</span> novo(s) pedido(s)</strong><button type="button" class="btn link" id="dock-min" title="Minimizar">−</button></div>
   <div id="dock-corpo"></div>

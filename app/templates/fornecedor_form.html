@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ 'Novo fornecedor' if novo else 'Editar fornecedor' }}{% endblock %}
+{% block conteudo %}
+<div class="cartao cartao-centralizado">
+  <h1>{{ 'Novo fornecedor' if novo else 'Editar fornecedor' }}</h1>
+  <p class="nota" style="margin-top:-.4rem">Cadastre as informações fiscais, endereço, contatos comerciais e condições de entrega do fornecedor.</p>
+
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <div class="linha">
+      <label>
+        <span class="rotulo-campo">Nome Fantasia / Nome do Fornecedor <span class="obrigatorio">*</span></span>
+        <input name="nome" required autofocus value="{{ f.nome or '' }}" placeholder="Ex.: Marluvas Equipamentos, Casa do EPI…">
+      </label>
+      <label>
+        <span class="rotulo-campo">Razão Social</span>
+        <input name="razao_social" value="{{ f.razao_social or '' }}" placeholder="Ex.: Marluvas Calçados de Segurança Ltda">
+      </label>
+    </div>
+
+    <div class="linha">
+      <label>
+        <span class="rotulo-campo">CNPJ</span>
+        <input name="cnpj" value="{{ f.cnpj or '' }}" placeholder="00.000.000/0001-00">
+      </label>
+      <label>
+        <span class="rotulo-campo">Inscrição Estadual</span>
+        <input name="inscricao_estadual" value="{{ f.inscricao_estadual or '' }}" placeholder="Opcional">
+      </label>
+    </div>
+
+    <h2 style="margin:.6rem 0 0;font-size:1.02rem">Contato Comercial / Representante</h2>
+    <div class="linha">
+      <label>
+        <span class="rotulo-campo">Nome do Vendedor / Contato</span>
+        <input name="contato_nome" value="{{ f.contato_nome or '' }}" placeholder="Ex.: Carlos (Comercial)">
+      </label>
+      <label>
+        <span class="rotulo-campo">Telefone / WhatsApp</span>
+        <input name="telefone" value="{{ f.telefone or '' }}" placeholder="Ex.: (47) 99999-0000">
+      </label>
+      <label>
+        <span class="rotulo-campo">E-mail de Pedidos / Cotação</span>
+        <input name="email" type="email" value="{{ f.email or '' }}" placeholder="vendas@fornecedor.com.br">
+      </label>
+    </div>
+
+    <h2 style="margin:.6rem 0 0;font-size:1.02rem">Endereço e Localização</h2>
+    <div class="linha">
+      <label style="flex:2">
+        <span class="rotulo-campo">Endereço completo (Rua, Nº, Bairro, Complemento)</span>
+        <input name="endereco" value="{{ f.endereco or '' }}" placeholder="Ex.: Rua XV de Novembro, 1200, Distrito Industrial">
+      </label>
+      <label>
+        <span class="rotulo-campo">Cidade / UF</span>
+        <input name="cidade_uf" value="{{ f.cidade_uf or '' }}" placeholder="Ex.: Joinville / SC">
+      </label>
+      <label style="max-width:160px">
+        <span class="rotulo-campo">CEP</span>
+        <input name="cep" value="{{ f.cep or '' }}" placeholder="89200-000">
+      </label>
+    </div>
+
+    <h2 style="margin:.6rem 0 0;font-size:1.02rem">Condições Comerciais e Fornecimento</h2>
+    <div class="linha">
+      <label style="max-width:220px">
+        <span class="rotulo-campo">Prazo médio de entrega (dias)</span>
+        <input name="prazo_entrega_dias" type="number" min="0" value="{{ f.prazo_entrega_dias if f.prazo_entrega_dias is not none else 15 }}">
+      </label>
+      <label>
+        <span class="rotulo-campo">Condição de pagamento habitual</span>
+        <input name="condicao_pagamento" value="{{ f.condicao_pagamento or '' }}" placeholder="Ex.: Boleto 28/56 dias, PIX à vista…">
+      </label>
+      <label>
+        <span class="rotulo-campo">Principais categorias fornecidas</span>
+        <input name="categorias_fornecidas" value="{{ f.categorias_fornecidas or '' }}" placeholder="Ex.: Calçados, Luvas, Uniformes, Respiratório">
+      </label>
+    </div>
+
+    <label>
+      <span class="rotulo-campo">Observações (Dados bancários, pedido mínimo, site…)</span>
+      <input name="observacao" value="{{ f.observacao or '' }}" placeholder="Informações adicionais sobre negociação ou frete">
+    </label>
+
+    {% if not novo %}
+      <label class="check">
+        <input type="checkbox" name="ativo" value="1" {{ 'checked' if f.ativo }}> Fornecedor ativo
+      </label>
+    {% endif %}
+
+    <div class="acoes" style="margin-top:.4rem">
+      <button class="btn primario">Salvar fornecedor</button>
+      <a class="btn" href="{{ url_for('cadastros.fornecedor_detalhe', forn_id=forn_id) if not novo else url_for('cadastros.fornecedores_lista') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,55 +1,108 @@
-# Estoque de EPIs
+# 🦺 Sistema de Gestão de Estoque e Pedidos de EPIs e Uniformes
 
-Sistema web para controlar **pedidos do Microsoft Forms (estilo comanda de restaurante), entradas, saídas (entregas por colaborador) e saldo de EPIs**, com alertas de reposição e relatórios para prestação de contas.
+Aplicação web completa (**Web Desktop em tela inteira + Web Mobile responsiva**) para controle de inventário de EPIs e uniformes, formulário público de solicitação para obras, fila de separação estilo comanda, padronização de kits por cargo, fichas de colaboradores, gestão de fornecedores e controle granular de perfis de acesso.
 
-## Como rodar
+Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **PostgreSQL (Supabase)** + deploy serverless na **Vercel**.
+
+---
+
+## ✨ Principais Funcionalidades
+
+### 1. Formulário Público de Solicitação (`/solicitar`)
+- **Acesso público (sem necessidade de login)**: pode ser disponibilizado via link direto ou QR Code para os colaboradores nas obras pelo celular ou computador.
+- **Data automática**: a data e hora do pedido são registradas automaticamente no momento em que o colaborador finaliza o envio.
+- **Recomendação inteligente por Cargo**: ao selecionar o nome do colaborador, o sistema identifica o cargo dele e destaca automaticamente na lista (em verde) os equipamentos do seu kit com a tag **`(recomendado pelo cargo)`**.
+- **Seletores dinâmicos e condicionais de numeração e tamanho**:
+  - **Calçados (`Sapatão`, `Botina` e `Bota`)**: abrem abas numéricas independentes (restritas a **somente números**) exclusivamente para os tipos de calçado marcados no pedido.
+  - **Uniformes (`Camiseta` e `Calça`)**: abrem seletores de tamanho nos padrões **`M, G, GG, G1, G2, G3, G4 e G5`** somente quando camiseta ou calça são selecionadas.
+
+### 2. Colaboradores e Padronização por Cargo (`/colaboradores` e `/colaboradores/cargos`)
+- **Padrão de EPIs por Cargo (`/colaboradores/cargos`)**:
+  - Lista todos os cargos cadastrados com a quantidade de colaboradores e de equipamentos vinculados.
+  - Ao clicar sobre o nome de um cargo, abre a lista de equipamentos do inventário para marcar/desmarcar o kit padrão daquela função (a definição de quais produtos compõem o kit padrão é feita exclusivamente no Cargo).
+- **Perfil Individual do Colaborador (`/colaboradores/<id>`)**:
+  - **Aba `Equipamentos utilizados por padrão`**: exibe somente os equipamentos que pertencem ao padrão do cargo do colaborador e traz a coluna **`Tamanho / Numeração`**, permitindo deixar gravados no perfil os números de **Bota, Sapatão e Botina** (`Nº 33` a `Nº 48`) e as letras de **Camiseta e Calça** (`M` a `G5`).
+  - **Aba `Equipamentos solicitados`**: lista tudo o que o colaborador já pediu ou recebeu fora do padrão do cargo dele (ex.: período de teste em outra função para possível promoção ou atividade específica na obra), com campo de **Observação** para registrar o motivo.
+  - **Aba `Ficha de EPIs entregues`**: histórico completo de entregas com geração de comprovante para impressão e assinatura.
+
+### 3. Gestão de Fornecedores (`/fornecedores`)
+- Cadastro completo de fornecedores de EPIs e uniformes: **Nome Fantasia**, **Razão Social**, **CNPJ**, **Inscrição Estadual**, **Vendedor/Contato**, **Telefone/WhatsApp**, **E-mail**, **Endereço completo**, **Cidade/UF**, **CEP**, **Prazo médio de entrega**, **Condição de pagamento**, **Categorias fornecidas** e **Observações**.
+- Ficha detalhada do fornecedor (`/fornecedores/<id>`) com indicadores de notas fiscais registradas, total de unidades compradas, valor acumulado em entradas, histórico de compras e atalho direto para registrar nova entrada de estoque daquele fornecedor.
+
+### 4. Fluxo de Pedidos (Comanda → Separação → Baixa → Retirada) (`/pedidos`)
+1. **Chegada do pedido**: pedidos enviados em `/solicitar` entram imediatamente na fila com alerta visual e sonoro no canto da tela.
+2. **Em separação / Pendentes**: o almoxarifado pode iniciar a separação imediatamente ou guardar o pedido em *Pendentes (para mais tarde)*.
+3. **Checklist de separação e baixa automática**: ao marcar todos os itens separados e clicar em **Finalizar pedido**, o sistema valida o saldo e o CA, dá **baixa automática no estoque** e muda o status para **Pronto para retirada**.
+4. **Registro de retirada e comprovante**: registra quem retirou (próprio colaborador, encarregado ou portador), data/hora e emite o comprovante de entrega.
+
+### 5. Painel em Tela Inteira, Estoque e Relatórios (`/`, `/epis`, `/movimentos`, `/relatorios`)
+- **Painel (`/`)**: layout distribuído em tela inteira com 7 indicadores em tempo real, tabela **Hora de pedir** (sugestão automática de compra baseada no estoque mínimo e cobertura em dias), ranking **Mais saem**, **CAs para atualizar**, **Pedidos em aberto** e **Últimas movimentações**.
+- **Livro-razão auditável (`/movimentos`)**: entradas com NF e fornecedor, entregas a colaboradores, baixas por avaria/perda e ajustes de inventário. Lançamentos nunca são apagados (apenas cancelados/estornados mediante justificativa).
+- **Relatórios e Exportação CSV (`/relatorios`)**: análises por período, setor, obra/local de destino, colaborador e evolução mensal, além de exportação CSV compatível com Excel.
+
+### 6. Usuários, Perfis Customizáveis e Permissões (`/usuarios`)
+- Dividido em duas abas limpas (acesso exclusivo do **Administrador**):
+  - **`Usuários Cadastrados`**: listagem de usuários com possibilidade de criar novas contas e editar **Nome**, **Login de acesso**, **Perfil**, **Senha** e **Situação (Ativo/Inativo)**.
+  - **`Perfis e Permissão`**: lista todos os perfis criados. Ao clicar sobre o nome de um perfil (ou criar um **+ Novo perfil**), abre a tela de customização com **Nome do perfil**, **Descrição do que faz** e os checkboxes para liberar ou bloquear o acesso a cada aba e ação do sistema.
+
+---
+
+## 🚀 Como Rodar Localmente
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt     # Windows: .venv\Scripts\pip ...
-.venv/bin/python run.py                       # abre em http://localhost:5000
+.venv/bin/pip install -r requirements.txt     # Windows: .venv\Scripts\pip install -r requirements.txt
+.venv/bin/python run.py                       # Abre em http://localhost:5000
 ```
 
-- Pela rede interna, os colegas acessam `http://IP-DO-COMPUTADOR:5000` (descubra o IP com `ipconfig`/`ip a`; libere a porta no firewall). Para só este PC: `python run.py --host 127.0.0.1`.
-- No primeiro acesso o sistema pede para criar o **administrador**. Não existe senha padrão.
-- Opcional (servidor mais robusto): `pip install waitress` — o `run.py` passa a usá-lo automaticamente.
-- Testes: `.venv/bin/python -m unittest discover -s tests -t .`
+- **Popular base de demonstração** (cadastra os 33 itens reais entre EPIs e vestimentas, 9 cargos padronizados, 3 fornecedores, 158 colaboradores das obras e pedidos de exemplo, preservando seus usuários):
+  ```bash
+  .venv/bin/python popular_teste.py
+  ```
+- **Executar a suíte de testes automatizados**:
+  ```bash
+  .venv/bin/python -m unittest discover -s tests -v
+  ```
 
-## Fluxo de Pedidos (Microsoft Forms → Comanda → Separação → Retirada)
+---
 
-1. **Chegada do pedido**: quando o formulário é respondido (ou importado da planilha com as colunas **H a P**: *Nome, Local, Motivo, Vestimento, EPI, Sapatão, Camiseta, Calça, Observação*), o sistema cria um **card de pedido** e toca um alerta sonoro na tela.
-2. **Iniciar separação ou Mais tarde**:
-   - **Mais tarde**: o pedido sai do alerta de novos e fica guardado na categoria **Pendentes (deixados para mais tarde)** em *Pedidos*.
-   - **Iniciar separação**: abre a tela do pedido com todos os itens solicitados e uma **checkbox** ao lado de cada item.
-3. **Identificação inteligente**: o sistema casa automaticamente os textos do formulário com os EPIs cadastrados (ex.: coluna *Camiseta* com valor `M` casa com `Camiseta M`). Se algum texto for novo, você seleciona o EPI correspondente uma única vez e o sistema **aprende** para os próximos pedidos.
-4. **Finalizar pedido**: quando todas as checkboxes estão marcadas, o botão **Finalizar pedido** é liberado. Ao clicar, o sistema **dá baixa automática no estoque** e muda o status para **Pronto para retirada**.
-5. **Controle de saída / quem retirou**: na retirada (mesmo quando quem retira é um gestor, encarregado de obras ou portador), você informa **quem retirou** e uma **descrição** (cargo/obra), registrando data e hora e gerando o comprovante para assinatura.
+## ☁️ Deploy em Produção (Supabase + Vercel)
 
-### Configurando a integração com o Microsoft Forms
+O projeto já possui configuração nativa para rodar em nuvem com **Supabase (PostgreSQL)** e **Vercel**:
 
-No menu **Integração** (visível para o Administrador) estão a URL (`POST /api/pedidos`), a chave `X-API-Key` e o passo a passo para:
-- **Power Automate** (gatilho do Microsoft Forms ou Excel Online enviando JSON com `nome`, `local`, `motivo`, `vestimento`, `epi`, `sapatao`, `camiseta`, `calca`, `observacao`).
-- **Importação direta de CSV** da planilha do Forms (lendo automaticamente as colunas H a P) ou **simulação manual** em *Pedidos*.
+1. **Banco de Dados (Supabase)**:
+   - Crie um projeto no [Supabase](https://supabase.com/) e copie a **Connection String (URI)** do *Session Pooler* (porta `5432`) ou *Transaction Pooler* (porta `6543`).
+   - As tabelas são criadas automaticamente a partir de [`app/schema_postgres.sql`](app/schema_postgres.sql) (ou você pode popular o banco remoto executando `.venv/bin/python popular_teste.py "postgresql://..."`).
+2. **Aplicação Web (Vercel)**:
+   -Os arquivos [`vercel.json`](vercel.json) e [`api/index.py`](api/index.py) já configuram o ambiente serverless Python.
+   - Ao importar o repositório na [Vercel](https://vercel.com/), defina em **Environment Variables**:
+     - `DATABASE_URL`: URI de conexão PostgreSQL do seu projeto no Supabase.
+     - `EPI_SECRET_KEY`: chave secreta para assinatura das sessões de login.
 
-## Primeiros passos
+---
 
-1. **EPIs**: cadastre cada item (se há tamanhos, um cadastro por tamanho: "Luva G", "Bota 40", "Camiseta M"), com CA, validade do CA, **estoque mínimo** e **prazo de reposição**.
-2. **Colaboradores**: cadastre nome, matrícula, setor e função.
-3. **Saldo inicial**: *+ Movimentar → Ajuste / saldo inicial*, motivo "Saldo inicial".
-4. A partir daí, atenda os **Pedidos** que chegam do Forms ou registre **Entradas**, **Entregas** e **Baixas** avulsas.
+## 📂 Estrutura do Projeto
 
-## O que responde às perguntas do RH/almoxarifado
-
-| Pergunta | Onde |
-|---|---|
-| O que entra | Movimentações → tipo *Entrada*; Relatórios → Entradas × saídas por mês |
-| O que sai, para quem e para qual local | Pedidos (controle de saída); Movimentações; ficha do colaborador; Relatórios por local/setor/colaborador |
-| Item com mais saída | Painel ("Mais saem") e Relatórios → *Itens com mais saída* |
-| Hora de fazer novo pedido | Painel → *Hora de pedir*, com quantidade sugerida |
-| Prestar contas | Exportação CSV (abre no Excel) de pedidos/controle de saída, movimentações e estoque |
-
-## Dados e backup
-
-Tudo fica em `instance/epi.sqlite` (fora do git). **Faça cópia periódica desse arquivo** (com o sistema parado, ou usando `sqlite3 instance/epi.sqlite ".backup backup.sqlite"`). A chave de sessão fica em `instance/secret_key`.
-
-> Na rede interna o sistema usa HTTP simples. Quando for publicado na internet para receber chamadas do Power Automate na nuvem, coloque atrás de um proxy reverso com HTTPS (ex.: Caddy ou Nginx) e defina `EPI_PROXY=1` e `EPI_COOKIE_SECURE=1`.
+```text
+├── api/
+│   └── index.py               # Entrypoint WSGI para deploy serverless na Vercel
+├── app/
+│   ├── __init__.py            # Factory Flask, filtros Jinja e configuração híbrida SQLite/Postgres
+│   ├── auth.py                # Autenticação, CSRF, perfis dinâmicos e controle de permissões por rota
+│   ├── cadastros.py           # Rotas de EPIs, Fornecedores, Colaboradores, Cargos e Usuários/Perfis
+│   ├── db.py                  # Camada de banco híbrida (SQLite3 + adaptador PostgreSQL/Supabase)
+│   ├── estoque.py             # Regras de negócio de saldo, cobertura, validade de CA e movimentações
+│   ├── movimentos.py          # Entradas, entregas, baixas, ajustes e comprovantes
+│   ├── painel.py              # Painel em tela inteira e relatórios gerenciais
+│   ├── pedidos.py             # Serviço de pedidos, matching inteligente de itens e fluxo de separação
+│   ├── rotas_pedidos.py       # Rotas da fila de pedidos e do formulário público (/solicitar)
+│   ├── schema.sql             # Schema SQLite
+│   ├── schema_postgres.sql    # Schema PostgreSQL (Supabase)
+│   ├── static/                # CSS responsivo (Web Desktop + Web Mobile) e JavaScript
+│   └── templates/             # Templates HTML Jinja2
+├── tests/                     # Testes automatizados (estoque, acessos, perfis, fornecedores e pedidos)
+├── popular_teste.py           # Script de carga inicial com os 33 itens, 9 cargos e 158 colaboradores
+├── requirements.txt           # Dependências Python (Flask, psycopg2-binary)
+├── run.py                     # Inicializador local de desenvolvimento / rede interna
+└── vercel.json                # Configuração de rotas para a Vercel
+```

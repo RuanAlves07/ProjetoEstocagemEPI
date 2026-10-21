@@ -8,6 +8,7 @@ _TABELAS_COM_ID = (
     "usuarios",
     "epis",
     "colaboradores",
+    "fornecedores",
     "movimentacoes",
     "pedidos",
     "pedido_itens",
@@ -159,11 +160,63 @@ def init_db():
         caminho_pg = os.path.join(os.path.dirname(__file__), "schema_postgres.sql")
         with open(caminho_pg, encoding="utf-8") as f:
             conn.executescript(f.read())
+        _garantir_perfis_padrao(conn)
         return
     conn.execute("PRAGMA journal_mode = WAL")
     with open(os.path.join(os.path.dirname(__file__), "schema.sql"), encoding="utf-8") as f:
         conn.executescript(f.read())
     _migrar(conn)
+    _garantir_perfis_padrao(conn)
+
+
+def _garantir_perfis_padrao(conn):
+    """Garante que os 3 perfis base existam na tabela perfis_acesso sem sobrescrever ajustes já salvos."""
+    padroes = [
+        (
+            "admin",
+            "Administrador",
+            "Acesso total ao sistema, incluindo cancelamento de lançamentos e gerenciamento de usuários e perfis.",
+            "*",
+            1,
+        ),
+        (
+            "almoxarifado",
+            "Almoxarifado",
+            "Cadastros de EPIs, fornecedores e colaboradores, atendimento de pedidos, entradas, entregas, baixas e ajustes de estoque.",
+            "ver_painel,ver_pedidos,gerenciar_pedidos,ver_epis,editar_epis,ver_fornecedores,editar_fornecedores,ver_colaboradores,editar_colaboradores,ver_movimentos,registrar_movimentos,ver_relatorios",
+            1,
+        ),
+        (
+            "consulta",
+            "Consulta",
+            "Apenas visualização do painel, pedidos, catálogo de EPIs, fornecedores, colaboradores, histórico e relatórios.",
+            "ver_painel,ver_pedidos,ver_epis,ver_fornecedores,ver_colaboradores,ver_movimentos,ver_relatorios",
+            1,
+        ),
+    ]
+    for chave, nome, desc, perms, sis in padroes:
+        conn.execute(
+            "INSERT OR IGNORE INTO perfis_acesso (chave, nome, descricao, permissoes, sistema) VALUES (?, ?, ?, ?, ?)",
+            (chave, nome, desc, perms, sis),
+        )
+    # Garante que perfis padrão criados antes da aba Fornecedores recebam a permissão correspondente
+    for ch_padrao, novas_p in (
+        ("almoxarifado", ("ver_fornecedores", "editar_fornecedores")),
+        ("consulta", ("ver_fornecedores",)),
+    ):
+        row = conn.execute("SELECT permissoes FROM perfis_acesso WHERE chave = ?", (ch_padrao,)).fetchone()
+        if row and row["permissoes"] and row["permissoes"] != "*":
+            atuais = [p.strip() for p in row["permissoes"].split(",") if p.strip()]
+            alterado = False
+            for np in novas_p:
+                if np not in atuais:
+                    atuais.append(np)
+                    alterado = True
+            if alterado:
+                conn.execute(
+                    "UPDATE perfis_acesso SET permissoes = ? WHERE chave = ?",
+                    (",".join(atuais), ch_padrao),
+                )
 
 
 def _migrar(conn):
@@ -174,6 +227,29 @@ def _migrar(conn):
     if "local_destino" not in colunas:
         conn.execute("ALTER TABLE movimentacoes ADD COLUMN local_destino TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mov_pedido ON movimentacoes (pedido_id)")
+
+    # Remove o CHECK fixo da coluna perfil em bancos SQLite antigos para permitir perfis personalizados
+    info_usu = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'usuarios'"
+    ).fetchone()
+    if info_usu and info_usu["sql"] and "CHECK" in info_usu["sql"].upper():
+        conn.executescript("""
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE usuarios_novo (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome        TEXT NOT NULL,
+                login       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                senha_hash  TEXT NOT NULL,
+                perfil      TEXT NOT NULL,
+                ativo       INTEGER NOT NULL DEFAULT 1,
+                criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            );
+            INSERT INTO usuarios_novo (id, nome, login, senha_hash, perfil, ativo, criado_em)
+            SELECT id, nome, login, senha_hash, perfil, ativo, criado_em FROM usuarios;
+            DROP TABLE usuarios;
+            ALTER TABLE usuarios_novo RENAME TO usuarios;
+            PRAGMA foreign_keys = ON;
+        """)
 
 
 def init_app(app):

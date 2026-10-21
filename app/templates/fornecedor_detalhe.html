@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import tabela_movs with context %}
+{% block titulo %}{{ f.nome }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div>
+    <h1>{{ f.nome }} {% if not f.ativo %}<span class="badge">inativo</span>{% endif %}</h1>
+    <p class="suave" style="margin:-.4rem 0 0">
+      {% if f.razao_social %}<strong>{{ f.razao_social }}</strong> · {% endif %}
+      CNPJ: <strong>{{ f.cnpj or 'não informado' }}</strong>
+      {% if f.inscricao_estadual %} · IE: {{ f.inscricao_estadual }}{% endif %}
+    </p>
+  </div>
+  <div class="acoes">
+    {% if pode_movimentar and f.ativo %}
+      <a class="btn primario" href="{{ url_for('movimentos.movimentar', tipo='entrada', fornecedor=f.nome) }}">+ Registrar entrada deste fornecedor</a>
+    {% endif %}
+    {% if pode_editar %}
+      <a class="btn" href="{{ url_for('cadastros.fornecedor_editar', forn_id=f.id) }}">Editar fornecedor</a>
+    {% endif %}
+    <a class="btn" href="{{ url_for('cadastros.fornecedores_lista') }}">← Voltar</a>
+  </div>
+</div>
+
+<div class="indicadores" style="margin-top:1rem">
+  <div class="indicador">
+    <span class="valor">{{ total_notas }}</span>
+    <span>entradas / notas registradas</span>
+  </div>
+  <div class="indicador">
+    <span class="valor">{{ total_itens|num }}</span>
+    <span>unidades compradas</span>
+  </div>
+  <div class="indicador">
+    <span class="valor">{{ total_valor|dinheiro }}</span>
+    <span>total registrado em entradas</span>
+  </div>
+  <div class="indicador">
+    <span class="valor">{{ f.prazo_entrega_dias ~ ' dias' if f.prazo_entrega_dias is not none else '—' }}</span>
+    <span>prazo médio de entrega</span>
+  </div>
+</div>
+
+<section class="cartao">
+  <h2>Dados cadastrais e comerciais</h2>
+  <div class="dados-pedido" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.1rem">
+    <div>
+      <span class="suave">Vendedor / Contato</span>
+      <strong>{{ f.contato_nome or '—' }}</strong>
+    </div>
+    <div>
+      <span class="suave">Telefone / WhatsApp</span>
+      <strong>{{ f.telefone or '—' }}</strong>
+    </div>
+    <div>
+      <span class="suave">E-mail Comercial</span>
+      <strong>{{ f.email or '—' }}</strong>
+    </div>
+    <div>
+      <span class="suave">Endereço</span>
+      <strong>{{ f.endereco or '—' }}</strong>
+    </div>
+    <div>
+      <span class="suave">Cidade / UF e CEP</span>
+      <strong>{{ f.cidade_uf or '—' }}{% if f.cep %} · CEP {{ f.cep }}{% endif %}</strong>
+    </div>
+    <div>
+      <span class="suave">Condição de Pagamento</span>
+      <strong>{{ f.condicao_pagamento or '—' }}</strong>
+    </div>
+    <div>
+      <span class="suave">Categorias Fornecidas</span>
+      <strong>{{ f.categorias_fornecidas or '—' }}</strong>
+    </div>
+    <div>
+      <span class="suave">Observações</span>
+      <strong>{{ f.observacao or '—' }}</strong>
+    </div>
+  </div>
+</section>
+
+<section class="cartao">
+  <h2>Histórico de entradas / compras deste fornecedor ({{ entradas|length }})</h2>
+  {{ tabela_movs(entradas, mostrar_colab=false, voltar=request.path) }}
+</section>
+{% endblock %}

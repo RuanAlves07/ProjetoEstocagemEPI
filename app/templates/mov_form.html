@@ -17,7 +17,12 @@
         </select>
       </label>
       {% elif tipo == 'entrada' %}
-      <label>Fornecedor <input name="fornecedor" value="{{ form.fornecedor or '' }}"></label>
+      <label>Fornecedor
+        <input name="fornecedor" list="lista-fornecedores" value="{{ form.fornecedor or '' }}" placeholder="Selecione ou digite o fornecedor…">
+        <datalist id="lista-fornecedores">
+          {% for fn in fornecedores_lista or () %}<option value="{{ fn.nome }}">{% if fn.cnpj %}CNPJ {{ fn.cnpj }}{% endif %}</option>{% endfor %}
+        </datalist>
+      </label>
       <label>Nota fiscal <input name="nota_fiscal" value="{{ form.nota_fiscal or '' }}"></label>
       {% elif tipo == 'ajuste' %}
       <label>Tipo de ajuste

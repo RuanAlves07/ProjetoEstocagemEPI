@@ -1,18 +1,242 @@
 {% extends 'base.html' %}
-{% block titulo %}Usuários{% endblock %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ 'Perfis e Permissão' if aba == 'perfis' else 'Usuários' }}{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
-  <h1>Usuários</h1>
-  <div class="acoes"><a class="btn primario" href="{{ url_for('cadastros.usuario_novo') }}">Novo usuário</a></div>
+  <h1>{{ 'Perfis e Permissão' if aba == 'perfis' else 'Usuários Cadastrados' }}</h1>
+  <div class="acoes">
+    {% if aba == 'usuarios' %}
+      <a class="btn primario" href="{{ url_for('cadastros.usuario_novo') }}">+ Novo usuário</a>
+    {% elif aba == 'perfis' and not perfil_aberto and not novo_perfil %}
+      <a class="btn primario" href="{{ url_for('cadastros.usuarios_lista', aba='perfis', novo='1') }}">+ Novo perfil</a>
+    {% elif aba == 'perfis' %}
+      <a class="btn" href="{{ url_for('cadastros.usuarios_lista', aba='perfis') }}">← Voltar para todos os perfis</a>
+    {% endif %}
+  </div>
 </div>
-<div class="cartao"><table>
-  <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Situação</th><th></th></tr></thead>
-  <tbody>
-  {% for u in usuarios %}
-    <tr class="{{ 'inativo' if not u.ativo }}"><td>{{ u.nome }}</td><td>{{ u.login }}</td><td>{{ PERFIS[u.perfil] }}</td>
-      <td>{{ 'Ativo' if u.ativo else 'Inativo' }}</td><td><a href="{{ url_for('cadastros.usuario_editar', uid=u.id) }}">Editar</a></td></tr>
-  {% endfor %}
-  </tbody>
-</table></div>
-<p class="nota"><strong>Administrador:</strong> tudo, inclusive cancelar lançamentos e gerenciar usuários. <strong>Almoxarifado:</strong> cadastros, entradas, entregas, baixas e ajustes. <strong>Consulta:</strong> apenas visualiza painel, histórico e relatórios.</p>
+
+<div class="abas">
+  <a href="{{ url_for('cadastros.usuarios_lista', aba='usuarios') }}" class="{{ 'ativa' if aba == 'usuarios' }}">
+    Usuários Cadastrados ({{ usuarios|length }})
+  </a>
+  <a href="{{ url_for('cadastros.usuarios_lista', aba='perfis') }}" class="{{ 'ativa' if aba == 'perfis' }}">
+    Perfis e Permissão ({{ perfis_detalhados|length }})
+  </a>
+</div>
+
+{% if aba == 'usuarios' %}
+  {# ==================== ABA 1: SOMENTE USUÁRIOS CADASTRADOS ==================== #}
+  <section class="cartao">
+    <div class="tabela-rolavel">
+      <table>
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Login</th>
+            <th>Perfil</th>
+            <th>Situação</th>
+            <th class="num"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for u in usuarios %}
+          <tr class="{{ 'inativo' if not u.ativo }}">
+            <td><strong>{{ u.nome }}</strong></td>
+            <td>{{ u.login }}</td>
+            <td>
+              <a href="{{ url_for('cadastros.usuarios_lista', aba='perfis', perfil=u.perfil) }}">
+                {{ PERFIS.get(u.perfil, u.perfil) }}
+              </a>
+            </td>
+            <td>{{ 'Ativo' if u.ativo else 'Inativo' }}</td>
+            <td class="num">
+              <a class="btn pequeno" href="{{ url_for('cadastros.usuario_editar', uid=u.id) }}">Editar</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+{% else %}
+  {# ==================== ABA 2: PERFIS E PERMISSÃO ==================== #}
+
+  {% if novo_perfil %}
+    {# --- Tela para Criar um Novo Perfil --- #}
+    <section class="cartao cartao-centralizado">
+      <div class="cabecalho" style="margin-bottom:.8rem">
+        <div>
+          <h2 style="margin:0">Novo perfil de acesso</h2>
+          <p class="nota" style="margin:.2rem 0 0">Defina o nome do perfil, a descrição do que ele faz e marque os acessos de cada aba.</p>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('cadastros.perfil_novo') }}" class="formulario">
+        {{ csrf() }}
+        <div class="linha">
+          <label>
+            <span class="rotulo-campo">Nome do perfil <span class="obrigatorio">*</span></span>
+            <input name="nome" required autofocus placeholder="Ex.: Técnico de Segurança, Coordenador, RH…">
+          </label>
+          <label>
+            <span class="rotulo-campo">Descrição do que faz</span>
+            <input name="descricao" placeholder="Ex.: Consulta estoque e gerencia fichas de colaboradores">
+          </label>
+        </div>
+
+        <div>
+          <strong style="font-size:.95rem;display:block;margin-bottom:.5rem">Acessos customizáveis de cada aba</strong>
+          <div class="grade-permissoes">
+            {% for chave_p, rotulo_p, desc_p in catalogo_permissoes %}
+              <label class="item-permissao">
+                <input type="checkbox" name="permissoes" value="{{ chave_p }}"
+                       {{ 'checked' if chave_p in ('ver_painel', 'ver_pedidos', 'ver_epis', 'ver_colaboradores') }}>
+                <div>
+                  <strong>{{ rotulo_p }}</strong>
+                  <small>{{ desc_p }}</small>
+                </div>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="acoes" style="margin-top:.4rem">
+          <button class="btn primario">Criar perfil</button>
+          <a class="btn" href="{{ url_for('cadastros.usuarios_lista', aba='perfis') }}">Cancelar</a>
+        </div>
+      </form>
+    </section>
+
+  {% elif perfil_aberto %}
+    {# --- Tela de Customização do Perfil Selecionado --- #}
+    <section class="cartao cartao-centralizado">
+      <div class="cabecalho" style="margin-bottom:.8rem">
+        <div>
+          <h2 style="margin:0;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+            Perfil: {{ perfil_aberto.nome }}
+            <span class="badge">{{ perfil_aberto.qtd_usuarios }} usuário(s)</span>
+            {% if perfil_aberto.sistema %}<span class="badge verde">Padrão do sistema</span>{% else %}<span class="badge amarelo">Personalizado</span>{% endif %}
+          </h2>
+          <p class="nota" style="margin:.25rem 0 0">Personalize abaixo o nome, a descrição do que este perfil faz e quais abas/ações ele pode acessar.</p>
+        </div>
+        {% if not perfil_aberto.sistema and perfil_aberto.qtd_usuarios == 0 %}
+        <form method="post" action="{{ url_for('cadastros.perfil_remover', chave=perfil_aberto.chave) }}" style="margin:0">
+          {{ csrf() }}
+          <button class="btn perigo pequeno" onclick="return confirm('Deseja remover este perfil?')">Excluir perfil</button>
+        </form>
+        {% endif %}
+      </div>
+
+      {% if perfil_aberto.chave == 'admin' %}
+        <div class="formulario">
+          <div class="linha">
+            <label>
+              <span class="rotulo-campo">Nome do perfil</span>
+              <input value="{{ perfil_aberto.nome }}" disabled>
+            </label>
+            <label>
+              <span class="rotulo-campo">Descrição do que faz</span>
+              <input value="{{ perfil_aberto.descricao }}" disabled>
+            </label>
+          </div>
+          <div>
+            <strong style="font-size:.95rem;display:block;margin-bottom:.5rem">Acessos de cada aba</strong>
+            <div class="grade-permissoes">
+              {% for chave_p, rotulo_p, desc_p in catalogo_permissoes %}
+                <label class="item-permissao ativa">
+                  <input type="checkbox" checked disabled>
+                  <div>
+                    <strong>{{ rotulo_p }}</strong>
+                    <small>{{ desc_p }}</small>
+                  </div>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+          <p class="nota">O perfil <strong>Administrador</strong> possui acesso total permanente a todas as abas e configurações do sistema.</p>
+          <div class="acoes">
+            <a class="btn" href="{{ url_for('cadastros.usuarios_lista', aba='perfis') }}">← Voltar para a lista de perfis</a>
+          </div>
+        </div>
+      {% else %}
+        <form method="post" action="{{ url_for('cadastros.perfil_editar', chave=perfil_aberto.chave) }}" class="formulario">
+          {{ csrf() }}
+          <div class="linha">
+            <label>
+              <span class="rotulo-campo">Nome do perfil <span class="obrigatorio">*</span></span>
+              <input name="nome" required value="{{ perfil_aberto.nome }}">
+            </label>
+            <label>
+              <span class="rotulo-campo">Descrição do que faz</span>
+              <input name="descricao" value="{{ perfil_aberto.descricao }}" placeholder="Descreva a função deste perfil no sistema">
+            </label>
+          </div>
+
+          <div>
+            <strong style="font-size:.95rem;display:block;margin-bottom:.5rem">Acessos customizáveis de cada aba</strong>
+            <div class="grade-permissoes">
+              {% for chave_p, rotulo_p, desc_p in catalogo_permissoes %}
+                <label class="item-permissao {{ 'ativa' if chave_p in perfil_aberto.permissoes }}">
+                  <input type="checkbox" name="permissoes" value="{{ chave_p }}" {{ 'checked' if chave_p in perfil_aberto.permissoes }}>
+                  <div>
+                    <strong>{{ rotulo_p }}</strong>
+                    <small>{{ desc_p }}</small>
+                  </div>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="acoes" style="margin-top:.4rem">
+            <button class="btn primario">Salvar alterações do perfil</button>
+            <a class="btn" href="{{ url_for('cadastros.usuarios_lista', aba='perfis') }}">Voltar para a lista</a>
+          </div>
+        </form>
+      {% endif %}
+    </section>
+
+  {% else %}
+    {# --- Lista Limpa de Todos os Perfis Criados --- #}
+    <section class="cartao">
+      <p class="nota" style="margin:0 0 .8rem">Clique sobre o nome de um perfil abaixo para abrir e customizar o nome, a descrição e os acessos de cada aba.</p>
+      <div class="tabela-rolavel">
+        <table>
+          <thead>
+            <tr>
+              <th>Perfil</th>
+              <th>Descrição do que faz</th>
+              <th class="num">Usuários</th>
+              <th class="num">Permissões ativas</th>
+              <th class="num"></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for pf in perfis_detalhados %}
+            <tr>
+              <td>
+                <a href="{{ url_for('cadastros.usuarios_lista', aba='perfis', perfil=pf.chave) }}" style="font-weight:700;font-size:.98rem">
+                  {{ pf.nome }}
+                </a>
+                {% if not pf.sistema %}<span class="badge amarelo" style="margin-left:.35rem">Personalizado</span>{% endif %}
+              </td>
+              <td>{{ pf.descricao or '—' }}</td>
+              <td class="num">{{ pf.qtd_usuarios }}</td>
+              <td class="num">
+                <span class="badge {{ 'verde' if pf.permissoes|length == catalogo_permissoes|length else '' }}">
+                  {{ pf.permissoes|length }} de {{ catalogo_permissoes|length }}
+                </span>
+              </td>
+              <td class="num">
+                <a class="btn pequeno" href="{{ url_for('cadastros.usuarios_lista', aba='perfis', perfil=pf.chave) }}">Abrir perfil</a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+
+{% endif %}
 {% endblock %}

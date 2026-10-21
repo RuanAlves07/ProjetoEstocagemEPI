@@ -6,12 +6,23 @@ CREATE TABLE IF NOT EXISTS usuarios (
     nome        TEXT NOT NULL,
     login       TEXT NOT NULL UNIQUE,
     senha_hash  TEXT NOT NULL,
-    perfil      TEXT NOT NULL CHECK (perfil IN ('admin', 'almoxarifado', 'consulta')),
+    perfil      TEXT NOT NULL,
     ativo       INTEGER NOT NULL DEFAULT 1,
     criado_em   TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_login_lower ON usuarios (LOWER(login));
+
+CREATE TABLE IF NOT EXISTS perfis_acesso (
+    chave       TEXT PRIMARY KEY,
+    nome        TEXT NOT NULL,
+    descricao   TEXT,
+    permissoes  TEXT NOT NULL DEFAULT '',
+    sistema     INTEGER NOT NULL DEFAULT 0,
+    criado_em   TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
+);
 
 CREATE TABLE IF NOT EXISTS epis (
     id                    SERIAL PRIMARY KEY,
@@ -37,6 +48,28 @@ CREATE TABLE IF NOT EXISTS colaboradores (
     ativo      INTEGER NOT NULL DEFAULT 1,
     criado_em  TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
+
+CREATE TABLE IF NOT EXISTS fornecedores (
+    id                     SERIAL PRIMARY KEY,
+    nome                   TEXT NOT NULL UNIQUE,
+    razao_social           TEXT,
+    cnpj                   TEXT UNIQUE,
+    inscricao_estadual     TEXT,
+    contato_nome           TEXT,
+    telefone               TEXT,
+    email                  TEXT,
+    endereco               TEXT,
+    cidade_uf              TEXT,
+    cep                    TEXT,
+    prazo_entrega_dias     INTEGER DEFAULT 15,
+    condicao_pagamento     TEXT,
+    categorias_fornecidas  TEXT,
+    observacao             TEXT,
+    ativo                  INTEGER NOT NULL DEFAULT 1,
+    criado_em              TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fornecedores_nome_lower ON fornecedores (LOWER(nome));
 
 CREATE TABLE IF NOT EXISTS pedidos (
     id                  SERIAL PRIMARY KEY,
@@ -146,3 +179,11 @@ CREATE TABLE IF NOT EXISTS colaborador_epis_solicitados (
 );
 
 CREATE INDEX IF NOT EXISTS idx_colab_solicitados ON colaborador_epis_solicitados (colaborador_id);
+
+CREATE TABLE IF NOT EXISTS colaborador_tamanhos (
+    colaborador_id  INTEGER NOT NULL REFERENCES colaboradores (id),
+    chave           TEXT NOT NULL,
+    tamanho         TEXT NOT NULL,
+    atualizado_em   TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')),
+    PRIMARY KEY (colaborador_id, chave)
+);

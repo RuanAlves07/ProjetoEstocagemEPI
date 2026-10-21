@@ -145,7 +145,7 @@ def movimentar(tipo):
         abort(404)
     db = get_db()
     form = {"data": hoje().isoformat(), "colaborador_id": to_int(request.args.get("colaborador_id")),
-            "sentido": "mais"}
+            "fornecedor": limpar(request.args.get("fornecedor")), "sentido": "mais"}
     linhas = [{"epi_id": to_int(request.args.get("epi_id")), "quantidade": "", "custo_unitario": ""}]
 
     if request.method == "POST":
@@ -183,6 +183,8 @@ def movimentar(tipo):
         epis=estoque.epis_com_saldo(db),
         colaboradores=db.execute(
             "SELECT * FROM colaboradores WHERE ativo = 1 ORDER BY nome COLLATE NOCASE").fetchall(),
+        fornecedores_lista=db.execute(
+            "SELECT id, nome, cnpj FROM fornecedores WHERE ativo = 1 ORDER BY nome COLLATE NOCASE").fetchall(),
     )
 
 

@@ -94,6 +94,7 @@ def popular():
         if getattr(db, "eh_postgres", False):
             db.executescript("""
                 TRUNCATE TABLE
+                    colaborador_tamanhos,
                     colaborador_epis_solicitados,
                     colaborador_epis_padrao,
                     cargo_epis_padrao,
@@ -101,12 +102,14 @@ def popular():
                     pedido_itens,
                     pedidos,
                     epi_apelidos,
+                    fornecedores,
                     epis,
                     colaboradores
                 RESTART IDENTITY CASCADE;
             """)
         else:
             db.executescript("""
+                DELETE FROM colaborador_tamanhos;
                 DELETE FROM colaborador_epis_solicitados;
                 DELETE FROM colaborador_epis_padrao;
                 DELETE FROM cargo_epis_padrao;
@@ -114,9 +117,10 @@ def popular():
                 DELETE FROM pedido_itens;
                 DELETE FROM pedidos;
                 DELETE FROM epi_apelidos;
+                DELETE FROM fornecedores;
                 DELETE FROM epis;
                 DELETE FROM colaboradores;
-                DELETE FROM sqlite_sequence WHERE name IN ('colaborador_epis_solicitados','movimentacoes','pedido_itens','pedidos','epis','colaboradores');
+                DELETE FROM sqlite_sequence WHERE name IN ('colaborador_epis_solicitados','movimentacoes','pedido_itens','pedidos','fornecedores','epis','colaboradores');
             """)
 
         # 2. Cadastra os 25 EPIs e as 8 Vestimentas reais do formulário UNIFORME E EPI
@@ -214,7 +218,67 @@ def popular():
             )
             colab_id[nome] = cur.lastrowid
 
-        # 5. Registra entradas de estoque
+        # 5. Cadastra fornecedores e registra entradas de estoque
+        fornecedores_demo = [
+            (
+                "ProtegeSul EPIs Ltda",
+                "ProtegeSul Comércio de Equipamentos de Proteção Ltda",
+                "14.289.410/0001-52",
+                "256.819.044",
+                "Marcos Andrade",
+                "(47) 99142-3310",
+                "comercial@protegesul.com.br",
+                "Rua Dona Francisca, 4120, Distrito Industrial",
+                "Joinville / SC",
+                "89219-600",
+                7,
+                "Boleto 28/56 dias",
+                "Luvas, Óculos, Auditivo, Respiratório",
+                "Entrega própria sem custo de frete para Joinville e Araquari.",
+            ),
+            (
+                "Casa do EPI Joinville",
+                "Casa do EPI e Suprimentos Industriais S.A.",
+                "08.741.920/0001-18",
+                "254.110.982",
+                "Fernanda Koster",
+                "(47) 3433-8900",
+                "pedidos@casadoepijlle.com.br",
+                "Av. Getúlio Vargas, 980, Anita Garibaldi",
+                "Joinville / SC",
+                "89202-002",
+                10,
+                "Boleto 30 dias / PIX",
+                "Calçados, Capacetes, Vestimentas, Impermeáveis",
+                "Fornecedor principal de calçados de segurança e capas de chuva.",
+            ),
+            (
+                "Confecções Catarinense Uniformes",
+                "Indústria Têxtil e Confecções Catarinense Ltda",
+                "21.605.330/0001-80",
+                "258.442.190",
+                "Roberto Schulz",
+                "(47) 99610-7740",
+                "vendas@confeccoescatarinense.com.br",
+                "Rua Blumenau, 1540, América",
+                "Joinville / SC",
+                "89204-250",
+                15,
+                "50% pedido / 50% entrega",
+                "Camisetas Manga Curta/Longa, Calças Brim c/ Refletivo",
+                "Personalização com silk e faixa refletiva padrão das obras.",
+            ),
+        ]
+        for fn in fornecedores_demo:
+            db.execute(
+                """INSERT INTO fornecedores (
+                       nome, razao_social, cnpj, inscricao_estadual, contato_nome,
+                       telefone, email, endereco, cidade_uf, cep, prazo_entrega_dias,
+                       condicao_pagamento, categorias_fornecidas, observacao
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                fn,
+            )
+
         estoque.registrar(
             db, "entrada", lote_entrada_1,
             h - timedelta(days=58), uid,

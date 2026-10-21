@@ -75,6 +75,61 @@ class TestAcesso(Base):
         r = self.post("/login", {"login": "admin", "senha": "errada"})
         self.assertIn("incorretos", r.get_data(as_text=True))
 
+    def test_criar_perfil_ajustar_permissoes_e_alterar_login(self):
+        self.setup_admin()
+        # 1. Admin cria um novo perfil personalizado "RH" com acesso apenas a colaboradores (ver e editar) e EPIs (ver)
+        r_pf = self.post(
+            "/usuarios/perfis/novo",
+            {
+                "nome": "RH",
+                "descricao": "Gestão de colaboradores",
+                "permissoes": ["ver_epis", "ver_colaboradores", "editar_colaboradores"],
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(r_pf.status_code, 200)
+        self.assertIn("Perfil “RH” criado", r_pf.get_data(as_text=True))
+
+        # 2. Cria usuário com o novo perfil "rh"
+        self.post(
+            "/usuarios/novo",
+            {"nome": "Maria RH", "login": "maria.rh", "perfil": "rh", "senha": "senha1234", "confirmacao": "senha1234"},
+        )
+        with self.app.app_context():
+            uid = get_db().execute("SELECT id FROM usuarios WHERE login = 'maria.rh'").fetchone()["id"]
+
+        # 3. Admin altera o Login da Maria para "maria.gestao"
+        r_ed = self.post(
+            f"/usuarios/{uid}/editar",
+            {"nome": "Maria RH", "login": "maria.gestao", "perfil": "rh", "ativo": "1"},
+            follow_redirects=True,
+        )
+        self.assertEqual(r_ed.status_code, 200)
+        self.assertIn("maria.gestao", r_ed.get_data(as_text=True))
+
+        # 4. Maria loga com o novo login "maria.gestao"
+        cli = self.app.test_client()
+        r_log = self.post("/login", {"login": "maria.gestao", "senha": "senha1234"}, client=cli)
+        # Como o perfil RH não tem 'ver_painel', o sistema redireciona direto para a primeira rota permitida (/epis)
+        self.assertIn("/epis", r_log.headers["Location"])
+        self.assertEqual(cli.get("/epis").status_code, 200)
+        self.assertEqual(cli.get("/colaboradores/novo").status_code, 200)
+        # Não tem acesso a Relatórios nem a criar EPIs nem a gerenciar Perfis
+        self.assertEqual(cli.get("/relatorios").status_code, 403)
+        self.assertEqual(cli.get("/epis/novo").status_code, 403)
+        self.assertEqual(self.post("/usuarios/perfis/novo", {"nome": "Invasor"}, client=cli).status_code, 403)
+
+        # 5. Admin ajusta as permissões do perfil "rh" liberando 'ver_relatorios'
+        self.post(
+            "/usuarios/perfis/rh/editar",
+            {
+                "nome": "RH",
+                "descricao": "Gestão de colaboradores e relatórios",
+                "permissoes": ["ver_epis", "ver_colaboradores", "editar_colaboradores", "ver_relatorios"],
+            },
+        )
+        self.assertEqual(cli.get("/relatorios").status_code, 200)
+
 
 class TestEstoque(Base):
     def setUp(self):
@@ -207,10 +262,16 @@ class TestEstoque(Base):
 
     def test_perfil_colaborador_padrao_e_solicitados(self):
         epi_extra = self.criar_epi("Cinto Paraquedista")
+        epi_sapatao = self.criar_epi("Sapatão Bidensidade")
+        epi_camiseta = self.criar_epi("Camiseta Manga Curta", categoria="Vestimenta")
         self.mov("entrada", self.epi, 10)
         self.mov("entrada", epi_extra, 5)
         # Define o padrão para o cargo "Montador" via /colaboradores/cargos
-        r_cargo = self.post("/colaboradores/cargos", {"cargo": "Montador", "epi_id": [str(self.epi)]}, follow_redirects=True)
+        r_cargo = self.post(
+            "/colaboradores/cargos",
+            {"cargo": "Montador", "epi_id": [str(self.epi), str(epi_sapatao), str(epi_camiseta)]},
+            follow_redirects=True,
+        )
         self.assertEqual(r_cargo.status_code, 200)
         # Lista geral de cargos mostra "Montador" e clicar no nome do cargo abre os equipamentos padrão dele
         html_lista_cargos = self.c.get("/colaboradores/cargos").get_data(as_text=True)
@@ -222,6 +283,19 @@ class TestEstoque(Base):
         self.post(f"/colaboradores/{self.colab}/cargo", {"funcao": "Montador"}, follow_redirects=True)
         html_padrao = self.c.get(f"/colaboradores/{self.colab}?aba=padrao").get_data(as_text=True)
         self.assertIn("Montador", html_padrao)
+        self.assertIn("Luva G", html_padrao)
+        # Cinto Paraquedista não faz parte do cargo Montador, então não aparece na lista de utilizados por padrão
+        self.assertNotIn("Cinto Paraquedista", html_padrao)
+        # No perfil do colaborador é possível definir a numeração do calçado e o tamanho do uniforme
+        r_tam = self.post(
+            f"/colaboradores/{self.colab}/tamanhos",
+            {f"tam_epi_{epi_sapatao}": "41", f"tam_epi_{epi_camiseta}": "GG"},
+            follow_redirects=True,
+        )
+        self.assertEqual(r_tam.status_code, 200)
+        html_tam = r_tam.get_data(as_text=True)
+        self.assertIn('value="41" selected', html_tam)
+        self.assertIn('value="GG" selected', html_tam)
         # Entrega tanto o padrão do cargo quanto o fora do padrão
         self.mov("saida", self.epi, 1, colaborador_id=self.colab)
         self.mov("saida", epi_extra, 1, colaborador_id=self.colab)
@@ -253,6 +327,36 @@ class TestEstoque(Base):
         self.assertIn("HH24:MI:SS", s3)
         self.assertTrue(s3.endswith("RETURNING id"))
         self.assertTrue(p3)
+
+    def test_cadastro_fornecedores(self):
+        r_novo = self.post(
+            "/fornecedores/novo",
+            {
+                "nome": "ProtegeSul EPIs",
+                "razao_social": "ProtegeSul Ltda",
+                "cnpj": "14.289.410/0001-52",
+                "contato_nome": "Carlos",
+                "telefone": "(47) 99999-0000",
+                "email": "carlos@protegesul.com.br",
+                "endereco": "Rua XV, 100",
+                "cidade_uf": "Joinville / SC",
+                "cep": "89200-000",
+                "prazo_entrega_dias": "7",
+                "condicao_pagamento": "Boleto 28 dias",
+                "categorias_fornecidas": "Luvas, Calçados",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(r_novo.status_code, 200)
+        html_det = r_novo.get_data(as_text=True)
+        self.assertIn("ProtegeSul EPIs", html_det)
+        self.assertIn("14.289.410/0001-52", html_det)
+        self.assertIn("Joinville / SC", html_det)
+
+        # Lista de fornecedores exibe o fornecedor cadastrado
+        r_lista = self.c.get("/fornecedores")
+        self.assertEqual(r_lista.status_code, 200)
+        self.assertIn("ProtegeSul EPIs", r_lista.get_data(as_text=True))
 
 
 if __name__ == "__main__":

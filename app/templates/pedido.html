@@ -167,7 +167,7 @@
 <section class="cartao"><h2>Movimentações de estoque geradas</h2>{{ tabela_movs(movs, mostrar_colab=false, voltar=request.path) }}</section>
 {% endif %}
 
-{% if pode_editar and (em_aberto or (p.status == 'pronto' and eh_admin)) %}
+{% if pode_editar and (em_aberto or (p.status == 'pronto' and pode_cancelar)) %}
 <details class="cancelar-pedido">
   <summary>Cancelar este pedido</summary>
   <form method="post" action="{{ url_for('pedidos.cancelar', pedido_id=p.id) }}" class="linha-form">

@@ -7,8 +7,19 @@ from flask import (Blueprint, Response, abort, flash, g, jsonify, redirect, rend
                    request, url_for)
 from werkzeug.security import generate_password_hash
 
-from . import estoque
-from .auth import PERFIS, SENHA_MIN, _senha_valida, admin_required, escrita_required
+from . import estoque, pedidos
+from .auth import (
+    CATALOGO_PERMISSOES,
+    SENHA_MIN,
+    TODAS_PERMISSOES,
+    _senha_valida,
+    admin_required,
+    escrita_required,
+    gerar_chave_perfil,
+    obter_perfis_dict,
+    permissoes_do_perfil,
+    usuario_tem_permissao,
+)
 from .db import get_db
 from .util import hoje, limpar, parse_data, to_int
 
@@ -130,6 +141,162 @@ def epi_detalhe(epi_id):
     return render_template("epi_detalhe.html", epi=epi, movs=movs)
 
 
+# ---------------------------------------------------------- fornecedores
+
+def _ler_fornecedor(form):
+    campos_texto = (
+        "nome",
+        "razao_social",
+        "cnpj",
+        "inscricao_estadual",
+        "contato_nome",
+        "telefone",
+        "email",
+        "endereco",
+        "cidade_uf",
+        "cep",
+        "condicao_pagamento",
+        "categorias_fornecidas",
+        "observacao",
+    )
+    dados = {k: limpar(form.get(k)) for k in campos_texto}
+    dados["prazo_entrega_dias"] = to_int(form.get("prazo_entrega_dias"), 15)
+    erros = []
+    if not dados["nome"]:
+        erros.append("Informe o nome fantasia / nome do fornecedor.")
+    if dados["prazo_entrega_dias"] is not None and dados["prazo_entrega_dias"] < 0:
+        erros.append("O prazo médio de entrega não pode ser negativo.")
+    return dados, erros
+
+
+@bp.get("/fornecedores")
+def fornecedores_lista():
+    db = get_db()
+    mostrar_inativos = request.args.get("inativos") == "1"
+    busca = (request.args.get("q") or "").strip()
+    sql = "SELECT * FROM fornecedores WHERE 1=1"
+    params = []
+    if not mostrar_inativos:
+        sql += " AND ativo = 1"
+    if busca:
+        sql += (
+            " AND (nome LIKE ? OR razao_social LIKE ? OR cnpj LIKE ? "
+            "OR cidade_uf LIKE ? OR contato_nome LIKE ? OR categorias_fornecidas LIKE ?)"
+        )
+        params += [f"%{busca}%"] * 6
+    fornecedores = db.execute(sql + " ORDER BY nome COLLATE NOCASE", params).fetchall()
+
+    resumo_entradas = {}
+    for r in db.execute(
+        """SELECT LOWER(trim(fornecedor)) AS chave,
+                  COUNT(DISTINCT grupo) AS entradas,
+                  SUM(quantidade) AS itens_comprados,
+                  SUM(COALESCE(custo_unitario, 0) * quantidade) AS valor_total
+           FROM movimentacoes
+           WHERE tipo = 'entrada' AND cancelada = 0 AND fornecedor IS NOT NULL AND trim(fornecedor) != ''
+           GROUP BY LOWER(trim(fornecedor))"""
+    ):
+        resumo_entradas[r["chave"]] = r
+
+    return render_template(
+        "fornecedores_lista.html",
+        fornecedores=fornecedores,
+        resumo_entradas=resumo_entradas,
+        busca=busca,
+        mostrar_inativos=mostrar_inativos,
+    )
+
+
+@bp.route("/fornecedores/novo", methods=["GET", "POST"])
+@escrita_required
+def fornecedor_novo():
+    dados = {"prazo_entrega_dias": 15}
+    if request.method == "POST":
+        dados, erros = _ler_fornecedor(request.form)
+        if not erros:
+            try:
+                cur = get_db().execute(
+                    """INSERT INTO fornecedores (
+                           nome, razao_social, cnpj, inscricao_estadual,
+                           contato_nome, telefone, email, endereco, cidade_uf, cep,
+                           prazo_entrega_dias, condicao_pagamento, categorias_fornecidas, observacao
+                       ) VALUES (
+                           :nome, :razao_social, :cnpj, :inscricao_estadual,
+                           :contato_nome, :telefone, :email, :endereco, :cidade_uf, :cep,
+                           :prazo_entrega_dias, :condicao_pagamento, :categorias_fornecidas, :observacao
+                       )""",
+                    dados,
+                )
+                flash("Fornecedor cadastrado com sucesso.", "ok")
+                return redirect(url_for("cadastros.fornecedor_detalhe", forn_id=cur.lastrowid))
+            except sqlite3.IntegrityError:
+                erros.append("Já existe um fornecedor cadastrado com esse nome ou CNPJ.")
+        for e in erros:
+            flash(e, "erro")
+    return render_template("fornecedor_form.html", f=dados, novo=True)
+
+
+@bp.route("/fornecedores/<int:forn_id>/editar", methods=["GET", "POST"])
+@escrita_required
+def fornecedor_editar(forn_id):
+    db = get_db()
+    forn = db.execute("SELECT * FROM fornecedores WHERE id = ?", (forn_id,)).fetchone() or abort(404)
+    if request.method == "POST":
+        dados, erros = _ler_fornecedor(request.form)
+        dados["ativo"] = 1 if request.form.get("ativo") else 0
+        dados["id"] = forn_id
+        if not erros:
+            try:
+                db.execute(
+                    """UPDATE fornecedores SET
+                           nome=:nome, razao_social=:razao_social, cnpj=:cnpj,
+                           inscricao_estadual=:inscricao_estadual, contato_nome=:contato_nome,
+                           telefone=:telefone, email=:email, endereco=:endereco,
+                           cidade_uf=:cidade_uf, cep=:cep, prazo_entrega_dias=:prazo_entrega_dias,
+                           condicao_pagamento=:condicao_pagamento,
+                           categorias_fornecidas=:categorias_fornecidas,
+                           observacao=:observacao, ativo=:ativo
+                       WHERE id=:id""",
+                    dados,
+                )
+                flash("Dados do fornecedor atualizados.", "ok")
+                return redirect(url_for("cadastros.fornecedor_detalhe", forn_id=forn_id))
+            except sqlite3.IntegrityError:
+                erros.append("Já existe outro fornecedor cadastrado com esse nome ou CNPJ.")
+        for e in erros:
+            flash(e, "erro")
+        forn = dados
+    return render_template("fornecedor_form.html", f=forn, novo=False, forn_id=forn_id)
+
+
+@bp.get("/fornecedores/<int:forn_id>")
+def fornecedor_detalhe(forn_id):
+    db = get_db()
+    forn = db.execute("SELECT * FROM fornecedores WHERE id = ?", (forn_id,)).fetchone() or abort(404)
+    entradas = db.execute(
+        """SELECT m.*, e.nome AS epi_nome, e.unidade, u.nome AS usuario_nome, uc.nome AS cancelada_por_nome
+           FROM movimentacoes m
+           JOIN epis e ON e.id = m.epi_id
+           JOIN usuarios u ON u.id = m.usuario_id
+           LEFT JOIN usuarios uc ON uc.id = m.cancelada_por
+           WHERE m.tipo = 'entrada' AND m.fornecedor = ? COLLATE NOCASE
+           ORDER BY m.data DESC, m.id DESC""",
+        (forn["nome"],),
+    ).fetchall()
+    ativas = [m for m in entradas if not m["cancelada"]]
+    total_itens = sum(m["quantidade"] for m in ativas)
+    total_valor = sum((m["custo_unitario"] or 0) * m["quantidade"] for m in ativas)
+    total_notas = len({m["grupo"] for m in ativas})
+    return render_template(
+        "fornecedor_detalhe.html",
+        f=forn,
+        entradas=entradas,
+        total_itens=total_itens,
+        total_valor=total_valor,
+        total_notas=total_notas,
+    )
+
+
 # ---------------------------------------------------------- colaboradores
 
 def _setores():
@@ -209,7 +376,7 @@ def cargos_padrao():
     cargo_atual = limpar(request.values.get("cargo"))
 
     if request.method == "POST":
-        if not g.usuario or g.usuario["perfil"] not in ("admin", "almoxarifado"):
+        if not usuario_tem_permissao("editar_colaboradores"):
             abort(403)
         if not cargo_atual:
             if request.form.get("ajax") == "1":
@@ -440,6 +607,40 @@ def _solicitados_fora_do_padrao(db, colab_id, padrao_ids):
     return itens
 
 
+NUMEROS_CALCADO = tuple(str(n) for n in range(33, 49))
+
+
+def _obter_tamanhos_colaborador(db, colab_id):
+    return {
+        r["chave"].lower(): r["tamanho"]
+        for r in db.execute(
+            "SELECT chave, tamanho FROM colaborador_tamanhos WHERE colaborador_id = ?", (colab_id,)
+        )
+    }
+
+
+def _salvar_tamanho_item(db, colab_id, epi_row, valor):
+    valor = (valor or "").strip().upper()
+    tc = pedidos.tipo_calcado(epi_row["nome"])
+    tu = pedidos.tipo_uniforme(epi_row["nome"])
+    if not tc and not tu:
+        return None
+    if tc and valor and not valor.isdigit():
+        return f"A numeração de {epi_row['nome']} deve conter somente números."
+    if tu and valor and valor not in pedidos.TAMANHOS_UNIFORME:
+        return f"Tamanho inválido para {epi_row['nome']}."
+
+    chaves = [f"epi:{epi_row['id']}", f"tipo:{tc or tu}"]
+    for ch in chaves:
+        db.execute("DELETE FROM colaborador_tamanhos WHERE colaborador_id = ? AND chave = ? COLLATE NOCASE", (colab_id, ch))
+        if valor:
+            db.execute(
+                "INSERT INTO colaborador_tamanhos (colaborador_id, chave, tamanho) VALUES (?, ?, ?)",
+                (colab_id, ch, valor),
+            )
+    return None
+
+
 @bp.get("/colaboradores/<int:colab_id>")
 def colaborador_ficha(colab_id):
     db = get_db()
@@ -449,6 +650,29 @@ def colaborador_ficha(colab_id):
         aba = "padrao"
     epis = estoque.epis_com_saldo(db, somente_ativos=True)
     padrao_ids = _padrao_ids_colaborador(db, colab)
+    tamanhos_salvos = _obter_tamanhos_colaborador(db, colab_id)
+
+    epis_padrao = []
+    for e in epis:
+        if e["id"] not in padrao_ids:
+            continue
+        item = dict(e)
+        tc = pedidos.tipo_calcado(e["nome"])
+        tu = pedidos.tipo_uniforme(e["nome"])
+        if tc:
+            item["tipo_seletor"] = "numero"
+            item["subtipo_tam"] = {"sapatao": "Sapatão", "botina": "Botina", "bota": "Bota"}.get(tc, "Calçado")
+            item["tamanho_atual"] = tamanhos_salvos.get(f"epi:{e['id']}", tamanhos_salvos.get(f"tipo:{tc}", ""))
+        elif tu:
+            item["tipo_seletor"] = "letra"
+            item["subtipo_tam"] = {"camiseta": "Camiseta", "calca": "Calça"}.get(tu, "Uniforme")
+            item["tamanho_atual"] = tamanhos_salvos.get(f"epi:{e['id']}", tamanhos_salvos.get(f"tipo:{tu}", ""))
+        else:
+            item["tipo_seletor"] = None
+            item["subtipo_tam"] = None
+            item["tamanho_atual"] = ""
+        epis_padrao.append(item)
+
     cargo_colab = (colab["funcao"] or "").strip()
     qtd_no_cargo = (
         db.execute(
@@ -465,7 +689,10 @@ def colaborador_ficha(colab_id):
         colab=colab,
         aba=aba,
         epis=epis,
+        epis_padrao=epis_padrao,
         padrao_ids=padrao_ids,
+        numeros_calcado=NUMEROS_CALCADO,
+        tamanhos_uniforme=pedidos.TAMANHOS_UNIFORME,
         qtd_no_cargo=qtd_no_cargo,
         cargos=_cargos(db),
         solicitados=solicitados,
@@ -489,57 +716,48 @@ def colaborador_cargo(colab_id):
     return redirect(url_for("cadastros.colaborador_ficha", colab_id=colab_id, aba="padrao"))
 
 
+@bp.post("/colaboradores/<int:colab_id>/tamanhos")
+@escrita_required
+def colaborador_tamanhos(colab_id):
+    """Salva a numeração de calçados (Sapatão, Botina, Bota) e tamanho de uniformes (Camiseta, Calça) do colaborador."""
+    db = get_db()
+    db.execute("SELECT 1 FROM colaboradores WHERE id = ?", (colab_id,)).fetchone() or abort(404)
+
+    if request.form.get("ajax") == "1":
+        epi_id = to_int(request.form.get("epi_id"))
+        epi_row = db.execute("SELECT id, nome FROM epis WHERE id = ?", (epi_id,)).fetchone() if epi_id else None
+        if not epi_row:
+            return jsonify(erro="Equipamento inválido."), 400
+        erro = _salvar_tamanho_item(db, colab_id, epi_row, request.form.get("tamanho"))
+        if erro:
+            return jsonify(erro=erro), 400
+        return jsonify(ok=True)
+
+    erros = []
+    for chave_form, valor in request.form.items():
+        if not chave_form.startswith("tam_epi_"):
+            continue
+        epi_id = to_int(chave_form[len("tam_epi_"):])
+        epi_row = db.execute("SELECT id, nome FROM epis WHERE id = ?", (epi_id,)).fetchone() if epi_id else None
+        if epi_row:
+            erro = _salvar_tamanho_item(db, colab_id, epi_row, valor)
+            if erro:
+                erros.append(erro)
+    if erros:
+        for er in erros:
+            flash(er, "erro")
+    else:
+        flash("Tamanhos e numerações do colaborador salvos com sucesso.", "ok")
+    return redirect(url_for("cadastros.colaborador_ficha", colab_id=colab_id, aba="padrao"))
+
+
 @bp.post("/colaboradores/<int:colab_id>/padrao")
 @escrita_required
 def colaborador_padrao(colab_id):
-    db = get_db()
-    colab = db.execute("SELECT * FROM colaboradores WHERE id = ?", (colab_id,)).fetchone() or abort(404)
-    cargo = (colab["funcao"] or "").strip()
-
-    # Modo 1: clique individual de checkbox via fetch (AJAX)
+    """A alteração de quais produtos fazem parte do padrão é feita somente por Cargo (/colaboradores/cargos)."""
     if request.form.get("ajax") == "1":
-        epi_id = to_int(request.form.get("epi_id"))
-        if not epi_id or not db.execute("SELECT 1 FROM epis WHERE id = ?", (epi_id,)).fetchone():
-            return jsonify(erro="EPI inválido."), 400
-        if cargo:
-            if request.form.get("marcado") == "1":
-                db.execute("INSERT OR IGNORE INTO cargo_epis_padrao (cargo, epi_id) VALUES (?, ?)", (cargo, epi_id))
-            else:
-                db.execute("DELETE FROM cargo_epis_padrao WHERE cargo = ? COLLATE NOCASE AND epi_id = ?", (cargo, epi_id))
-            total = db.execute("SELECT COUNT(*) FROM cargo_epis_padrao WHERE cargo = ? COLLATE NOCASE", (cargo,)).fetchone()[0]
-        else:
-            if request.form.get("marcado") == "1":
-                db.execute(
-                    "INSERT OR IGNORE INTO colaborador_epis_padrao (colaborador_id, epi_id) VALUES (?, ?)",
-                    (colab_id, epi_id),
-                )
-            else:
-                db.execute(
-                    "DELETE FROM colaborador_epis_padrao WHERE colaborador_id = ? AND epi_id = ?",
-                    (colab_id, epi_id),
-                )
-            total = db.execute(
-                "SELECT COUNT(*) FROM colaborador_epis_padrao WHERE colaborador_id = ?", (colab_id,)
-            ).fetchone()[0]
-        return jsonify(ok=True, total=total)
-
-    # Modo 2: envio do formulário completo
-    ids = {to_int(x) for x in request.form.getlist("epi_id") if to_int(x)}
-    validos = {r["id"] for r in db.execute("SELECT id FROM epis")}
-    ids &= validos
-    if cargo:
-        db.execute("DELETE FROM cargo_epis_padrao WHERE cargo = ? COLLATE NOCASE", (cargo,))
-        for eid in ids:
-            db.execute("INSERT INTO cargo_epis_padrao (cargo, epi_id) VALUES (?, ?)", (cargo, eid))
-        flash(f"Padrão de equipamentos do cargo “{cargo}” salvo.", "ok")
-    else:
-        db.execute("DELETE FROM colaborador_epis_padrao WHERE colaborador_id = ?", (colab_id,))
-        for eid in ids:
-            db.execute(
-                "INSERT INTO colaborador_epis_padrao (colaborador_id, epi_id) VALUES (?, ?)",
-                (colab_id, eid),
-            )
-        flash("Equipamentos utilizados por padrão salvos.", "ok")
+        return jsonify(erro="A alteração dos equipamentos padrão é feita somente na aba de Cargos."), 403
+    flash("A alteração dos equipamentos utilizados por padrão deve ser feita diretamente no Cargo.", "erro")
     return redirect(url_for("cadastros.colaborador_ficha", colab_id=colab_id, aba="padrao"))
 
 
@@ -612,18 +830,129 @@ def colaborador_solicitado_remover(colab_id, reg_id):
     return redirect(url_for("cadastros.colaborador_ficha", colab_id=colab_id, aba="solicitados"))
 
 
-# --------------------------------------------------------------- usuários
+# --------------------------------------------------------------- usuários e perfis
+
+def _listar_perfis_detalhados(db):
+    contagem = {
+        r["perfil"].casefold(): r["n"]
+        for r in db.execute("SELECT perfil, COUNT(*) AS n FROM usuarios GROUP BY perfil")
+    }
+    perfis = []
+    for r in db.execute("SELECT * FROM perfis_acesso ORDER BY sistema DESC, nome COLLATE NOCASE"):
+        perms = permissoes_do_perfil(r["chave"], db)
+        perfis.append({
+            "chave": r["chave"],
+            "nome": r["nome"],
+            "descricao": r["descricao"] or "",
+            "sistema": bool(r["sistema"]),
+            "permissoes": perms,
+            "qtd_usuarios": contagem.get(r["chave"].casefold(), 0),
+        })
+    return perfis
+
 
 @bp.get("/usuarios")
 @admin_required
 def usuarios_lista():
-    usuarios = get_db().execute("SELECT * FROM usuarios ORDER BY nome COLLATE NOCASE").fetchall()
-    return render_template("usuarios_lista.html", usuarios=usuarios, PERFIS=PERFIS)
+    db = get_db()
+    aba = request.args.get("aba", "usuarios")
+    perfil_chave = limpar(request.args.get("perfil"))
+    novo_perfil = request.args.get("novo") == "1"
+    if perfil_chave or novo_perfil:
+        aba = "perfis"
+    if aba not in ("usuarios", "perfis"):
+        aba = "usuarios"
+    usuarios = db.execute("SELECT * FROM usuarios ORDER BY nome COLLATE NOCASE").fetchall()
+    perfis_dict = obter_perfis_dict(db)
+    perfis_detalhados = _listar_perfis_detalhados(db)
+    perfil_aberto = None
+    if perfil_chave:
+        perfil_aberto = next(
+            (p for p in perfis_detalhados if p["chave"].casefold() == perfil_chave.casefold()),
+            None,
+        )
+    return render_template(
+        "usuarios_lista.html",
+        usuarios=usuarios,
+        PERFIS=perfis_dict,
+        perfis_detalhados=perfis_detalhados,
+        catalogo_permissoes=CATALOGO_PERMISSOES,
+        aba=aba,
+        perfil_aberto=perfil_aberto,
+        novo_perfil=novo_perfil,
+    )
+
+
+@bp.post("/usuarios/perfis/novo")
+@admin_required
+def perfil_novo():
+    db = get_db()
+    nome = limpar(request.form.get("nome"))
+    descricao = limpar(request.form.get("descricao")) or ""
+    perms_marcadas = [p for p in request.form.getlist("permissoes") if p in TODAS_PERMISSOES]
+    if not nome:
+        flash("Informe o nome do novo perfil.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista", aba="perfis", novo="1"))
+    chave = gerar_chave_perfil(nome)
+    existe = db.execute(
+        "SELECT 1 FROM perfis_acesso WHERE chave = ? COLLATE NOCASE OR nome = ? COLLATE NOCASE",
+        (chave, nome),
+    ).fetchone()
+    if existe:
+        flash(f"Já existe um perfil chamado “{nome}”.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista", aba="perfis", novo="1"))
+    if not perms_marcadas:
+        perms_marcadas = ["ver_painel"]
+    db.execute(
+        "INSERT INTO perfis_acesso (chave, nome, descricao, permissoes, sistema) VALUES (?, ?, ?, ?, 0)",
+        (chave, nome, descricao, ",".join(perms_marcadas)),
+    )
+    flash(f"Perfil “{nome}” criado com sucesso! Você já pode atribuí-lo aos usuários.", "ok")
+    return redirect(url_for("cadastros.usuarios_lista", aba="perfis", perfil=chave))
+
+
+@bp.post("/usuarios/perfis/<chave>/editar")
+@admin_required
+def perfil_editar(chave):
+    db = get_db()
+    perfil_row = db.execute("SELECT * FROM perfis_acesso WHERE chave = ? COLLATE NOCASE", (chave,)).fetchone() or abort(404)
+    chave_real = perfil_row["chave"]
+    if chave_real.lower() == "admin":
+        flash("O perfil Administrador possui acesso total permanente ao sistema.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista", aba="perfis", perfil=chave_real))
+    nome = limpar(request.form.get("nome")) or perfil_row["nome"]
+    descricao = limpar(request.form.get("descricao")) if "descricao" in request.form else (perfil_row["descricao"] or "")
+    perms_marcadas = [p for p in request.form.getlist("permissoes") if p in TODAS_PERMISSOES]
+    db.execute(
+        "UPDATE perfis_acesso SET nome = ?, descricao = ?, permissoes = ? WHERE chave = ? COLLATE NOCASE",
+        (nome, descricao or "", ",".join(perms_marcadas), chave_real),
+    )
+    flash(f"Permissões do perfil “{nome}” atualizadas com sucesso.", "ok")
+    return redirect(url_for("cadastros.usuarios_lista", aba="perfis", perfil=chave_real))
+
+
+@bp.post("/usuarios/perfis/<chave>/remover")
+@admin_required
+def perfil_remover(chave):
+    db = get_db()
+    perfil_row = db.execute("SELECT * FROM perfis_acesso WHERE chave = ? COLLATE NOCASE", (chave,)).fetchone() or abort(404)
+    if perfil_row["sistema"]:
+        flash("Perfis padrão do sistema não podem ser excluídos (você pode ajustar as permissões deles).", "erro")
+        return redirect(url_for("cadastros.usuarios_lista", aba="perfis"))
+    em_uso = db.execute("SELECT COUNT(*) FROM usuarios WHERE perfil = ? COLLATE NOCASE", (perfil_row["chave"],)).fetchone()[0]
+    if em_uso:
+        flash(f"Não é possível excluir o perfil “{perfil_row['nome']}” pois há {em_uso} usuário(s) vinculado(s) a ele.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista", aba="perfis"))
+    db.execute("DELETE FROM perfis_acesso WHERE chave = ? COLLATE NOCASE", (perfil_row["chave"],))
+    flash(f"Perfil “{perfil_row['nome']}” removido.", "ok")
+    return redirect(url_for("cadastros.usuarios_lista", aba="perfis"))
 
 
 @bp.route("/usuarios/novo", methods=["GET", "POST"])
 @admin_required
 def usuario_novo():
+    db = get_db()
+    perfis_dict = obter_perfis_dict(db)
     dados = {"perfil": "almoxarifado"}
     if request.method == "POST":
         dados = {"nome": limpar(request.form.get("nome")), "login": limpar(request.form.get("login")),
@@ -632,20 +961,20 @@ def usuario_novo():
         erro = _senha_valida(senha, request.form.get("confirmacao", ""))
         if not dados["nome"] or not dados["login"]:
             erro = "Informe nome e login."
-        elif dados["perfil"] not in PERFIS:
+        elif dados["perfil"] not in perfis_dict:
             erro = "Perfil inválido."
         if erro:
             flash(erro, "erro")
         else:
             try:
-                get_db().execute(
+                db.execute(
                     "INSERT INTO usuarios (nome, login, senha_hash, perfil) VALUES (?, ?, ?, ?)",
                     (dados["nome"], dados["login"], generate_password_hash(senha), dados["perfil"]))
                 flash("Usuário criado.", "ok")
                 return redirect(url_for("cadastros.usuarios_lista"))
             except sqlite3.IntegrityError:
                 flash("Esse login já está em uso.", "erro")
-    return render_template("usuario_form.html", u=dados, novo=True, PERFIS=PERFIS, SENHA_MIN=SENHA_MIN)
+    return render_template("usuario_form.html", u=dados, novo=True, PERFIS=perfis_dict, SENHA_MIN=SENHA_MIN)
 
 
 @bp.route("/usuarios/<int:uid>/editar", methods=["GET", "POST"])
@@ -653,26 +982,33 @@ def usuario_novo():
 def usuario_editar(uid):
     db = get_db()
     u = db.execute("SELECT * FROM usuarios WHERE id = ?", (uid,)).fetchone() or abort(404)
+    perfis_dict = obter_perfis_dict(db)
     if request.method == "POST":
         perfil = request.form.get("perfil")
         ativo = 1 if request.form.get("ativo") else 0
         nome = limpar(request.form.get("nome"))
+        novo_login = limpar(request.form.get("login")) or u["login"]
         senha = request.form.get("senha", "")
         erro = None
-        if not nome or perfil not in PERFIS:
-            erro = "Informe o nome e um perfil válido."
+        if not nome or not novo_login or perfil not in perfis_dict:
+            erro = "Informe o nome, o login e um perfil válido."
         elif uid == g.usuario["id"] and (perfil != "admin" or not ativo):
             erro = "Você não pode remover seu próprio acesso de administrador."
         elif senha:
             erro = _senha_valida(senha, request.form.get("confirmacao", ""))
         if erro:
             flash(erro, "erro")
+            u = {"id": uid, "nome": nome, "login": novo_login, "perfil": perfil, "ativo": ativo}
         else:
-            db.execute("UPDATE usuarios SET nome = ?, perfil = ?, ativo = ? WHERE id = ?",
-                       (nome, perfil, ativo, uid))
-            if senha:
-                db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
-                           (generate_password_hash(senha), uid))
-            flash("Usuário atualizado.", "ok")
-            return redirect(url_for("cadastros.usuarios_lista"))
-    return render_template("usuario_form.html", u=u, novo=False, PERFIS=PERFIS, SENHA_MIN=SENHA_MIN)
+            try:
+                db.execute("UPDATE usuarios SET nome = ?, login = ?, perfil = ?, ativo = ? WHERE id = ?",
+                           (nome, novo_login, perfil, ativo, uid))
+                if senha:
+                    db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+                               (generate_password_hash(senha), uid))
+                flash("Usuário atualizado com sucesso.", "ok")
+                return redirect(url_for("cadastros.usuarios_lista"))
+            except sqlite3.IntegrityError:
+                flash("Esse login já está em uso por outro usuário.", "erro")
+                u = {"id": uid, "nome": nome, "login": novo_login, "perfil": perfil, "ativo": ativo}
+    return render_template("usuario_form.html", u=u, novo=False, PERFIS=perfis_dict, SENHA_MIN=SENHA_MIN)

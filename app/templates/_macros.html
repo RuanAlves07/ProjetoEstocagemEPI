@@ -43,7 +43,7 @@
       </td>
       <td><small>{{ m.usuario_nome }}<br><span class="suave">{{ m.criado_em|hora_br }}</span></small></td>
       <td>
-        {% if eh_admin and not m.cancelada %}
+        {% if pode_cancelar and not m.cancelada %}
         <details class="cancelar">
           <summary>Cancelar</summary>
           <form method="post" action="{{ url_for('movimentos.cancelar', mov_id=m.id) }}">

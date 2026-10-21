@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block titulo %}Fornecedores{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div>
+    <h1>Fornecedores</h1>
+    <p class="nota" style="margin:-.4rem 0 0">Cadastro de fornecedores de EPIs e uniformes, CNPJ, contatos comerciais, endereço e condições de entrega.</p>
+  </div>
+  <div class="acoes">
+    {% if pode_editar %}
+      <a class="btn primario" href="{{ url_for('cadastros.fornecedor_novo') }}">+ Novo fornecedor</a>
+    {% endif %}
+  </div>
+</div>
+
+<form class="filtros">
+  <input name="q" value="{{ busca }}" placeholder="Buscar por nome, razão social, CNPJ, cidade, vendedor ou categoria…" style="min-width:320px">
+  <label class="check"><input type="checkbox" name="inativos" value="1" {{ 'checked' if mostrar_inativos }}> Mostrar inativos</label>
+  <button class="btn">Filtrar</button>
+  {% if busca or mostrar_inativos %}<a class="btn link" href="{{ url_for('cadastros.fornecedores_lista') }}">Limpar</a>{% endif %}
+</form>
+
+<div class="cartao">
+  <div class="tabela-rolavel">
+    <table>
+      <thead>
+        <tr>
+          <th>Fornecedor</th>
+          <th>CNPJ</th>
+          <th>Contato / Vendedor</th>
+          <th>Cidade / Endereço</th>
+          <th>Categorias Fornecidas</th>
+          <th class="num">Prazo</th>
+          <th class="num">Entradas</th>
+          <th class="num">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for f in fornecedores %}
+        {% set res = resumo_entradas.get(f.nome.strip().lower()) %}
+        <tr class="{{ 'inativo' if not f.ativo }}">
+          <td>
+            <a href="{{ url_for('cadastros.fornecedor_detalhe', forn_id=f.id) }}"><strong>{{ f.nome }}</strong></a>
+            {% if not f.ativo %}<span class="badge">inativo</span>{% endif %}
+            {% if f.razao_social %}<br><small class="suave">{{ f.razao_social }}</small>{% endif %}
+          </td>
+          <td>{{ f.cnpj or '—' }}</td>
+          <td>
+            {% if f.contato_nome %}<strong>{{ f.contato_nome }}</strong><br>{% endif %}
+            {% if f.telefone %}<small>{{ f.telefone }}</small>{% endif %}
+            {% if f.email %}<br><small class="suave">{{ f.email }}</small>{% endif %}
+            {% if not f.contato_nome and not f.telefone and not f.email %}<span class="suave">—</span>{% endif %}
+          </td>
+          <td>
+            {% if f.cidade_uf %}<strong>{{ f.cidade_uf }}</strong>{% endif %}
+            {% if f.endereco %}<br><small class="suave">{{ f.endereco }}</small>{% endif %}
+            {% if not f.cidade_uf and not f.endereco %}<span class="suave">—</span>{% endif %}
+          </td>
+          <td>
+            {% if f.categorias_fornecidas %}{{ f.categorias_fornecidas }}{% else %}<span class="suave">—</span>{% endif %}
+          </td>
+          <td class="num">{{ f.prazo_entrega_dias ~ ' d' if f.prazo_entrega_dias is not none else '—' }}</td>
+          <td class="num">
+            {% if res %}
+              <span class="badge verde">{{ res.entradas }} NF(s)</span>
+            {% else %}
+              <span class="suave">0</span>
+            {% endif %}
+          </td>
+          <td class="num">
+            <a class="btn pequeno" href="{{ url_for('cadastros.fornecedor_detalhe', forn_id=f.id) }}">Ver ficha</a>
+            {% if pode_movimentar and f.ativo %}
+              <a class="btn pequeno" href="{{ url_for('movimentos.movimentar', tipo='entrada', fornecedor=f.nome) }}">+ Entrada</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="vazio">Nenhum fornecedor cadastrado.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

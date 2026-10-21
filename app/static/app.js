@@ -159,3 +159,29 @@ document.addEventListener('submit', function (ev) {
       });
   });
 })();
+
+// Seletores de Tamanho / Numeração na aba "Equipamentos utilizados por padrão" do perfil do colaborador
+(function () {
+  const form = document.getElementById('form-tamanhos-colab');
+  if (!form) return;
+  const url = form.dataset.ajaxUrl;
+  const status = document.getElementById('status-tamanhos-colab');
+
+  form.addEventListener('change', function (ev) {
+    const sel = ev.target.closest ? ev.target.closest('.sel-tamanho-colab') : null;
+    if (!sel || !url) return;
+    const dados = new FormData();
+    dados.append('ajax', '1');
+    dados.append('epi_id', sel.dataset.epiId || '');
+    dados.append('tamanho', sel.value || '');
+    dados.append('csrf_token', document.body.dataset.csrf);
+    fetch(url, { method: 'POST', body: dados, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok && status) {
+          status.textContent = 'Tamanho salvo automaticamente ✓';
+        }
+      })
+      .catch(function () {});
+  });
+})();

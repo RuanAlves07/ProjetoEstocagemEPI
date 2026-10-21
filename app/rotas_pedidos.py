@@ -7,7 +7,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
                    request, url_for)
 
 from . import estoque, pedidos
-from .auth import admin_required, escrita_required
+from .auth import admin_required, escrita_required, usuario_tem_permissao
 from .cadastros import _csv_response
 from .db import get_db
 from .estoque import ErroValidacao
@@ -306,7 +306,7 @@ def novos():
     """Consultado de tempos em tempos pelo navegador: cards dos pedidos recém-chegados."""
     db = get_db()
     cont = pedidos.contagens(db)
-    lista_novos = pedidos.carregar(db, status=("novo",)) if g.usuario["perfil"] != "consulta" else []
+    lista_novos = pedidos.carregar(db, status=("novo",)) if usuario_tem_permissao("gerenciar_pedidos") else []
     return jsonify(
         novos=len(lista_novos),
         a_atender=sum(cont.get(s, 0) for s in pedidos.A_ATENDER),
@@ -450,4 +450,4 @@ def retirar(pedido_id):
 def cancelar(pedido_id):
     return _executar(lambda: pedidos.cancelar(
         get_db(), pedido_id, limpar(request.form.get("motivo")), g.usuario["id"],
-        pode_estornar=g.usuario["perfil"] == "admin"), pedido_id, "Pedido cancelado.")
+        pode_estornar=usuario_tem_permissao("cancelar_estornar")), pedido_id, "Pedido cancelado.")
