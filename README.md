@@ -1,4 +1,4 @@
-# 🦺 Sistema de Gestão de Estoque e Pedidos de EPIs e Uniformes
+#  Sistema de Gestão de Estoque e Pedidos de EPIs e Uniformes
 
 Aplicação web completa (**Web Desktop em tela inteira + Web Mobile responsiva**) para controle de inventário de EPIs e uniformes, formulário público de solicitação para obras, fila de separação estilo comanda, padronização de kits por cargo, fichas de colaboradores, gestão de fornecedores e controle granular de perfis de acesso.
 
@@ -6,7 +6,7 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 
 ---
 
-## ✨ Principais Funcionalidades
+##  Principais Funcionalidades
 
 ### 1. Formulário Público de Solicitação (`/solicitar`)
 - **Acesso público (sem necessidade de login)**: pode ser disponibilizado via link direto ou QR Code para os colaboradores nas obras pelo celular ou computador.
@@ -47,7 +47,7 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 
 ---
 
-## 🚀 Como Rodar Localmente
+##  Como Rodar Localmente
 
 ```bash
 python3 -m venv .venv
@@ -66,7 +66,7 @@ python3 -m venv .venv
 
 ---
 
-## ☁️ Deploy em Produção (Supabase + Vercel)
+##  Deploy em Produção (Supabase + Vercel)
 
 O projeto já possui configuração nativa para rodar em nuvem com **Supabase (PostgreSQL)** e **Vercel**:
 
@@ -81,7 +81,7 @@ O projeto já possui configuração nativa para rodar em nuvem com **Supabase (P
 
 ---
 
-## 📂 Estrutura do Projeto
+##  Estrutura do Projeto
 
 ```text
 ├── api/
