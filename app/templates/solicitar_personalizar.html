@@ -5,17 +5,15 @@
 <div class="form-publico-container editor-forms-container">
   <div class="cartao barra-compartilhar">
     <div>
-      <strong>🛠️ Construtor e Personalizador do Formulário Interno</strong>
-      <span class="nota">Edite perguntas, adicione cidades, inclua novos equipamentos e insira fotos em cada opção para facilitar a identificação visual na obra.</span>
+      <strong>MODO EDITOR: Formulário de EPI - Colaboradores</strong>
     </div>
     <div class="acoes">
-      <a class="btn pequeno" href="{{ url_for('pedidos.solicitar') }}">👁️ Ver como Colaborador</a>
       <button type="submit" form="form-personalizar" class="btn pequeno primario">💾 Salvar Alterações</button>
     </div>
   </div>
 
   <nav class="abas" style="margin-bottom:1rem">
-    <a href="{{ url_for('pedidos.solicitar') }}">👁️ Visualizar Formulário (Visão do Colaborador)</a>
+    <a href="{{ url_for('pedidos.solicitar') }}">👷‍♂️ Visualizar Formulário (Visão do Colaborador)</a>
     <a href="{{ url_for('pedidos.personalizar_formulario') }}" class="ativo">✏️ Personalizar Formulário (Cidades, EPIs, Imagens e Perguntas)</a>
   </nav>
 

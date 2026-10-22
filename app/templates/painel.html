@@ -8,7 +8,6 @@
     <p class="nota" style="margin:-.4rem 0 0">Visão geral em tempo real do estoque, pedidos das obras, consumo e alertas de reposição.</p>
   </div>
   <div class="acoes">
-    <a class="btn" href="{{ url_for('pedidos.solicitar') }}">📋 Formulário de Solicitação</a>
     {% if tem_perm('ver_pedidos') %}<a class="btn" href="{{ url_for('pedidos.lista') }}">📦 Fila de Pedidos</a>{% endif %}
     {% if pode_movimentar %}
       <a class="btn primario" href="{{ url_for('movimentos.movimentar', tipo='saida') }}">+ Entregar EPI</a>
