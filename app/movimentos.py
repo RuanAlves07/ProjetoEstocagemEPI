@@ -25,7 +25,7 @@ TITULOS = {
 # ------------------------------------------------------------ consulta
 
 def consultar_movimentos(db, f, limite=50, offset=0):
-    sql = """SELECT m.*, e.nome AS epi_nome, e.unidade, c.nome AS colab_nome, c.matricula,
+    sql = """SELECT m.*, e.nome AS epi_nome, e.tamanho AS epi_tamanho, e.unidade, c.nome AS colab_nome, c.matricula,
                     c.funcao AS colab_funcao, u.nome AS usuario_nome, uc.nome AS cancelada_por_nome
              FROM movimentacoes m
              JOIN epis e ON e.id = m.epi_id

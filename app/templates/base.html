@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}Estoque de EPIs{% endblock %} · Estoque de EPIs</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='icone.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icone.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body{% if usuario %} data-csrf="{{ csrf_token() }}" data-novos-url="{{ url_for('pedidos.novos') }}"{% endif %}>
@@ -11,7 +13,10 @@
 {% set ep = request.endpoint or '' %}
 <header class="topo" id="topo-sistema">
   <div class="topo-barra-mobile">
-    <a class="marca" href="{{ url_for('painel.inicio') }}">🦺 Estoque de EPIs</a>
+    <a class="marca" href="{{ url_for('painel.inicio') }}">
+      <img src="{{ url_for('static', filename='icone.png') }}" alt="Logo EPI" class="logo-marca">
+      <span>Estoque de EPIs</span>
+    </a>
     <button type="button" class="btn-menu-mobile nao-imprimir" id="btn-menu-mobile" aria-label="Abrir menu" aria-expanded="false">☰ Menu</button>
   </div>
   <nav class="nav-principal">

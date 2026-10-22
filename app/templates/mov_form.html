@@ -46,7 +46,7 @@
           <td>
             <select name="epi_id" required>
               <option value="">Selecione…</option>
-              {% for e in epis %}<option value="{{ e.id }}" {{ 'selected' if it.epi_id == e.id }}>{{ e.nome }}{% if tipo == 'saida' and e.ca %} · CA {{ e.ca }}{% endif %} — saldo {{ e.saldo }} {{ e.unidade }}</option>{% endfor %}
+              {% for e in epis %}<option value="{{ e.id }}" {{ 'selected' if it.epi_id == e.id }}>{{ e.nome }}{% if e.tamanho %} (Tam. {{ e.tamanho }}){% endif %}{% if tipo == 'saida' and e.ca %} · CA {{ e.ca }}{% endif %} — saldo {{ e.saldo }} {{ e.unidade }}</option>{% endfor %}
             </select>
           </td>
           <td class="num"><input type="number" name="quantidade" min="1" step="1" required value="{{ it.quantidade }}"></td>

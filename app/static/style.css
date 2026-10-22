@@ -13,7 +13,10 @@ main { width: 100%; max-width: 100%; margin: 0 auto; padding: 1.4rem 2.2rem; } m
 .rotulo-campo { display: inline-flex; align-items: center; gap: .25rem; line-height: 1.2; }
 
 .topo { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; background: #14213d; color: #fff; padding: .65rem 2.2rem; }
-.topo a { color: #fff; } .marca { font-weight: 700; font-size: 1.1rem; }
+.topo a { color: #fff; }
+.marca { display: inline-flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.15rem; color: #fff; text-decoration: none; }
+.marca:hover { text-decoration: none; opacity: .92; }
+.logo-marca { width: 30px; height: 30px; object-fit: contain; display: block; flex-shrink: 0; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
 .topo-barra-mobile { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
 .btn-menu-mobile, .barra-inferior-mobile { display: none; }
 .topo nav { display: flex; gap: .2rem; flex-wrap: wrap; flex: 1; }

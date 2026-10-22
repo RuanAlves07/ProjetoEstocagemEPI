@@ -18,7 +18,7 @@
 
 {% if pode_editar and cfg_caepi is defined %}
 <details class="editar-item" style="margin-bottom:.9rem">
-  <summary class="btn pequeno">⚙️ Base CAEPI · Atualização Automática de CAs (20:00){% if cfg_caepi.ultima_sincronizacao %} · Última: {{ cfg_caepi.ultima_sincronizacao|hora_br }}{% endif %}</summary>
+  <summary class="btn pequeno">API CA EPI {% if cfg_caepi.ultima_sincronizacao %} · Última: {{ cfg_caepi.ultima_sincronizacao|hora_br }}{% endif %}</summary>
   <form method="post" action="{{ url_for('cadastros.epis_sincronizar_caepi') }}" enctype="multipart/form-data" class="cartao formulario" style="margin-top:.5rem">
     {{ csrf() }}
     <p class="nota" style="margin:0">
@@ -48,16 +48,34 @@
 </details>
 {% endif %}
 <form class="filtros" method="get">
-  <input name="q" value="{{ busca }}" placeholder="Buscar por nome, categoria ou CA">
+  <input name="q" value="{{ busca }}" placeholder="Buscar por nome, categoria, CA ou tamanho...">
+  {% if tamanhos_disponiveis %}
+  <select name="tamanho" onchange="this.form.submit()">
+    <option value="">Todos os tamanhos</option>
+    {% for tm in tamanhos_disponiveis %}
+    <option value="{{ tm }}" {{ 'selected' if filtro_tam == tm|lower }}>{{ 'Nº ' ~ tm if tm.isdigit() else 'Tam. ' ~ tm }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
   <label class="check"><input type="checkbox" name="inativos" value="1" {{ 'checked' if mostrar_inativos }}> mostrar inativos</label>
   <button class="btn">Filtrar</button>
+  {% if busca or filtro_tam %}<a href="{{ url_for('cadastros.epis_lista') }}" class="btn">Limpar</a>{% endif %}
 </form>
 <div class="cartao"><div class="tabela-rolavel"><table>
-  <thead><tr><th>EPI</th><th>Categoria</th><th>CA</th><th class="num">Saldo</th><th class="num">Mínimo</th><th class="num">Consumo/mês</th><th class="num">Dura (dias)</th><th>Situação</th></tr></thead>
+  <thead><tr><th>EPI</th><th>Tamanho / Nº</th><th>Categoria</th><th>CA</th><th class="num">Saldo</th><th class="num">Mínimo</th><th class="num">Consumo/mês</th><th class="num">Dura (dias)</th><th>Situação</th></tr></thead>
   <tbody>
   {% for e in epis %}
     <tr class="{{ 'inativo' if not e.ativo }}">
-      <td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}">{{ e.nome }}</a>{% if not e.ativo %} <span class="badge">inativo</span>{% endif %}</td>
+      <td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}"><strong>{{ e.nome }}</strong></a>{% if not e.ativo %} <span class="badge">inativo</span>{% endif %}</td>
+      <td>
+        {% if e.tamanho %}
+          <span class="badge {{ 'azul' if e.tamanho.isdigit() else 'verde' }}" style="font-weight:700">
+            {{ 'Nº ' ~ e.tamanho if e.tamanho.isdigit() else 'Tam. ' ~ e.tamanho }}
+          </span>
+        {% else %}
+          <span class="suave">—</span>
+        {% endif %}
+      </td>
       <td>{{ e.categoria or '—' }}</td>
       <td>{{ ca(e) }}</td>
       <td class="num"><strong>{{ e.saldo }}</strong> <small class="suave">{{ e.unidade }}</small></td>
@@ -67,7 +85,7 @@
       <td>{{ status(e) }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="8" class="vazio">Nenhum EPI cadastrado.</td></tr>
+    <tr><td colspan="9" class="vazio">Nenhum EPI cadastrado.</td></tr>
   {% endfor %}
   </tbody>
 </table></div></div>

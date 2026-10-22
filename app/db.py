@@ -248,10 +248,44 @@ def _migrar(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mov_pedido ON movimentacoes (pedido_id)")
 
     colunas_epis = {r["name"] for r in conn.execute("PRAGMA table_info(epis)")}
+    if "tamanho" not in colunas_epis:
+        conn.execute("ALTER TABLE epis ADD COLUMN tamanho TEXT")
     if "imagem_url" not in colunas_epis:
         conn.execute("ALTER TABLE epis ADD COLUMN imagem_url TEXT")
     if "exibir_no_forms" not in colunas_epis:
         conn.execute("ALTER TABLE epis ADD COLUMN exibir_no_forms INTEGER NOT NULL DEFAULT 1")
+
+    # Garante que a tabela epis permita o mesmo nome com tamanhos diferentes (ex.: Botina 40 e Botina 41)
+    info_epis = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'epis'"
+    ).fetchone()
+    if info_epis and info_epis["sql"] and "UNIQUE" in info_epis["sql"].upper():
+        conn.executescript("""
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE epis_novo (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome                  TEXT NOT NULL COLLATE NOCASE,
+                tamanho               TEXT,
+                categoria             TEXT,
+                ca                    TEXT,
+                validade_ca           TEXT,
+                unidade               TEXT NOT NULL DEFAULT 'un',
+                estoque_minimo        INTEGER NOT NULL DEFAULT 0 CHECK (estoque_minimo >= 0),
+                prazo_reposicao_dias  INTEGER NOT NULL DEFAULT 15 CHECK (prazo_reposicao_dias >= 0),
+                imagem_url            TEXT,
+                exibir_no_forms       INTEGER NOT NULL DEFAULT 1,
+                ativo                 INTEGER NOT NULL DEFAULT 1,
+                criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            );
+            INSERT INTO epis_novo (id, nome, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo, prazo_reposicao_dias, imagem_url, exibir_no_forms, ativo, criado_em)
+            SELECT id, nome, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo, prazo_reposicao_dias, imagem_url, exibir_no_forms, ativo, criado_em FROM epis;
+            DROP TABLE epis;
+            ALTER TABLE epis_novo RENAME TO epis;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_tamanho ON epis(nome, COALESCE(tamanho, ''));
+            PRAGMA foreign_keys = ON;
+        """)
+    else:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_tamanho ON epis(nome, COALESCE(tamanho, ''))")
 
     colunas_pedidos = {r["name"] for r in conn.execute("PRAGMA table_info(pedidos)")}
     if "ressalva_observacao" not in colunas_pedidos:

@@ -70,6 +70,10 @@ def create_app(config=None):
     app.register_blueprint(movimentos.bp)
     app.register_blueprint(rotas_pedidos.bp)
 
+    @app.route("/favicon.ico")
+    def favicon():
+        return app.send_static_file("icone.png")
+
     @app.errorhandler(400)
     @app.errorhandler(403)
     @app.errorhandler(404)

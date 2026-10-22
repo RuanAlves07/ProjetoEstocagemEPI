@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS perfis_acesso (
 
 CREATE TABLE IF NOT EXISTS epis (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome                  TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    nome                  TEXT NOT NULL COLLATE NOCASE,
+    tamanho               TEXT,
     categoria             TEXT,
     ca                    TEXT,
     validade_ca           TEXT,

@@ -5,26 +5,23 @@
 <div class="form-publico-container">
   {% if not usuario %}
   <div class="topo-publico">
-    <span>🦺 <strong>Sistema de Controle de EPIs</strong> · Formulário Público</span>
-    <a class="btn pequeno" href="{{ url_for('auth.login') }}">🔒 Área Restrita (Almoxarifado)</a>
+    <span style="display:inline-flex;align-items:center;gap:.5rem"><img src="{{ url_for('static', filename='icone.png') }}" alt="Logo EPI" style="width:24px;height:24px;object-fit:contain"> <strong>Sistema de Controle de EPIs</strong> · Formulário Público</span>
+    <a class="btn pequeno" href="{{ url_for('auth.login') }}">🔒 Área Restrita</a>
   </div>
   {% else %}
   <div class="cartao barra-compartilhar">
     <div>
-      <strong>🔗 Link público do formulário:</strong>
-      <code id="url-publica">{{ url_for('pedidos.solicitar', _external=True) }}</code>
-      <span class="nota">(Qualquer colaborador pode acessar sem login)</span>
+      <strong>Visualização atual do formulário</strong>
     </div>
     <div class="acoes">
       <button type="button" class="btn pequeno" onclick="navigator.clipboard.writeText(document.getElementById('url-publica').textContent);this.textContent='✓ Link copiado!';">Copiar link</button>
       {% if pode_personalizar_forms %}
-      <a class="btn pequeno primario" href="{{ url_for('pedidos.personalizar_formulario') }}">✏️ Personalizar Formulário</a>
       {% endif %}
     </div>
   </div>
   {% if pode_personalizar_forms %}
   <nav class="abas" style="margin-bottom:1rem">
-    <a href="{{ url_for('pedidos.solicitar') }}" class="ativo">👁️ Visualizar Formulário (Visão do Colaborador)</a>
+    <a href="{{ url_for('pedidos.solicitar') }}" class="ativo">👷‍♂️ Visualizar Formulário (Visão do Colaborador)</a>
     <a href="{{ url_for('pedidos.personalizar_formulario') }}">✏️ Personalizar Formulário (Cidades, EPIs, Imagens e Perguntas)</a>
   </nav>
   {% endif %}

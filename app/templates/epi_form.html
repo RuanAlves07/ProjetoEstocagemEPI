@@ -11,7 +11,7 @@
     <!-- Bloco de busca automática pelo Nº do CA (API_BaseCAEPI) -->
     <div style="padding:.9rem 1rem;background:#f0f6ff;border:1px solid #bfd6f6;border-left:4px solid var(--cor-primaria);border-radius:8px;display:flex;flex-direction:column;gap:.55rem">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
-        <strong style="color:var(--cor-primaria-esc);font-size:.95rem">🔎 Preenchimento Automático pelo Nº do CA (Base CAEPI)</strong>
+        <strong style="color:var(--cor-primaria-esc);font-size:.95rem">Preenchimento Automático pelo Nº do CA</strong>
         <span class="badge">Atualização diária às 20:00</span>
       </div>
       <p class="nota" style="margin:0">
@@ -26,7 +26,7 @@
           </div>
         </label>
         <label style="max-width:210px">
-          <span>Validade do CA (automática)</span>
+          <span>Validade do CA</span>
           <input name="validade_ca" id="campo-validade-ca" type="date" value="{{ epi.validade_ca or '' }}">
         </label>
       </div>
@@ -34,12 +34,51 @@
     </div>
 
     <label>
-      <span class="rotulo-campo">Nome do EPI / Vestimenta (inclua tamanho/modelo se houver)</span>
-      <input name="nome" id="campo-nome-epi" value="{{ epi.nome or '' }}" placeholder="Preenchido automaticamente pelo CA ou digite manualmente">
+      <span class="rotulo-campo">Nome do EPI / Vestimenta</span>
+      <input name="nome" id="campo-nome-epi" value="{{ epi.nome or '' }}" placeholder="Preenchido automaticamente pelo CA ou digite manualmente" oninput="autoDestacarSecaoTamanho()">
     </label>
     <div class="linha">
-      <label>Categoria <input name="categoria" id="campo-categoria-epi" value="{{ epi.categoria or '' }}" placeholder="Ex.: Mãos, Calçados, Olhos e Face, Vestimenta"></label>
+      <label>Categoria <input name="categoria" id="campo-categoria-epi" value="{{ epi.categoria or '' }}" placeholder="Ex.: Calçados, Vestimenta, Mãos, Olhos e Face" oninput="autoDestacarSecaoTamanho()"></label>
       <label>Unidade <input name="unidade" id="campo-unidade-epi" value="{{ epi.unidade or 'un' }}" placeholder="un, par, cx"></label>
+    </div>
+
+    <!-- Bloco Dedicado de Tamanho / Numeração (Estocagem por tamanho) -->
+    <div class="bloco-tamanho-epi" style="padding:.9rem 1rem;background:#fbfdff;border:1px solid #bfdbfe;border-left:4px solid #0284c7;border-radius:8px;display:flex;flex-direction:column;gap:.65rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
+        <strong style="color:#0369a1;font-size:.95rem">📏 Grade de Tamanho / Numeração (Estocagem Específica)</strong>
+        <span class="nota" style="margin:0">Botas/Botinas/Sapatões: <strong>Número</strong> · Camisetas/Calças: <strong>Letra</strong></span>
+      </div>
+      <p class="nota" style="margin:0">
+        Cada tamanho é um produto separado no estoque (saldo próprio). Selecione abaixo ou digite:
+      </p>
+
+      <div class="linha" style="align-items:flex-end">
+        <label style="flex:1">
+          <span class="rotulo-campo">Tamanho / Numeração do Produto</span>
+          <input name="tamanho" id="campo-tamanho-epi" value="{{ epi.tamanho or '' }}" placeholder="Ex.: 39, 40, 41 (Calçados) ou P, M, G, GG (Camisetas e Calças)..." autocomplete="off" oninput="atualizarChipsTamanhoVisual(this.value)">
+        </label>
+        <button type="button" class="btn pequeno" onclick="limparTamanhoEpi()" style="white-space:nowrap;margin-bottom:.2rem">✕ Sem tamanho / Único</button>
+      </div>
+
+      <!-- Seletor Rápido: Numeração de Calçados (Bota, Botina, Sapatão) -->
+      <div id="seletor-calcados-chips" style="display:flex;flex-direction:column;gap:.3rem;padding:.5rem .6rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
+        <span style="font-weight:600;font-size:.85rem;color:#1e293b">👞 Numeração de Calçados (Bota, Botina, Sapatão):</span>
+        <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+          {% for n in range(33, 49) %}
+          <button type="button" class="btn pequeno chip-tam {{ 'primario' if epi.tamanho == (n|string) else '' }}" data-tam="{{ n }}" onclick="selecionarTamanhoEpi('{{ n }}')">{{ n }}</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Seletor Rápido: Letras de Uniformes e Vestimentas (Camisetas, Calças, Camisas, Jaquetas) -->
+      <div id="seletor-uniformes-chips" style="display:flex;flex-direction:column;gap:.3rem;padding:.5rem .6rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
+        <span style="font-weight:600;font-size:.85rem;color:#1e293b">👕 Letras de Vestimentas (Camisetas e Calças):</span>
+        <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+          {% for t in ['PP', 'P', 'M', 'G', 'GG', 'XG', 'EXG', 'G1', 'G2', 'G3', 'G4', 'G5'] %}
+          <button type="button" class="btn pequeno chip-tam {{ 'primario' if epi.tamanho == t else '' }}" data-tam="{{ t }}" onclick="selecionarTamanhoEpi('{{ t }}')">{{ t }}</button>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     <div class="linha">
       <label><span class="rotulo-campo">Estoque mínimo <span class="obrigatorio">*</span></span><input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
@@ -116,6 +155,7 @@ async function buscarDadosCaEpi(forcarSobrescritaNome) {
     if (inpNome && nomeSug && (!inpNome.value.trim() || forcarSobrescritaNome)) {
       inpNome.value = nomeSug;
     }
+    autoDestacarSecaoTamanho();
 
     if (aviso) {
       const sit = d.situacao || "VÁLIDO";
@@ -136,16 +176,61 @@ async function buscarDadosCaEpi(forcarSobrescritaNome) {
   }
 }
 
+function selecionarTamanhoEpi(tam) {
+  const inp = document.getElementById("campo-tamanho-epi");
+  if (inp) {
+    inp.value = tam;
+    atualizarChipsTamanhoVisual(tam);
+  }
+}
+
+function limparTamanhoEpi() {
+  const inp = document.getElementById("campo-tamanho-epi");
+  if (inp) {
+    inp.value = "";
+    atualizarChipsTamanhoVisual("");
+  }
+}
+
+function atualizarChipsTamanhoVisual(valor) {
+  const v = (valor || "").trim().toUpperCase();
+  document.querySelectorAll(".chip-tam").forEach(b => {
+    const bt = (b.getAttribute("data-tam") || "").trim().toUpperCase();
+    b.classList.toggle("primario", bt === v && v !== "");
+  });
+}
+
+function autoDestacarSecaoTamanho() {
+  const nome = (document.getElementById("campo-nome-epi")?.value || "").toLowerCase();
+  const cat = (document.getElementById("campo-categoria-epi")?.value || "").toLowerCase();
+  const secCalc = document.getElementById("seletor-calcados-chips");
+  const secUnif = document.getElementById("seletor-uniformes-chips");
+
+  const ehCalcado = cat.includes("calcado") || cat.includes("calçado") || nome.includes("bota") || nome.includes("botina") || nome.includes("sapato") || nome.includes("sapatao") || nome.includes("sapatão");
+  const ehVestimenta = cat.includes("vestimenta") || nome.includes("camisa") || nome.includes("camiseta") || nome.includes("calca") || nome.includes("calça") || nome.includes("jaqueta") || nome.includes("uniforme") || nome.includes("blusao") || nome.includes("macacao") || nome.includes("macacão");
+
+  if (secCalc) {
+    secCalc.style.borderColor = ehCalcado ? "#0284c7" : "#e2e8f0";
+    secCalc.style.background = ehCalcado ? "#eff6ff" : "#fff";
+  }
+  if (secUnif) {
+    secUnif.style.borderColor = ehVestimenta ? "#0284c7" : "#e2e8f0";
+    secUnif.style.background = ehVestimenta ? "#eff6ff" : "#fff";
+  }
+}
+
 (() => {
   const inpCa = document.getElementById("campo-ca-epi");
-  if (!inpCa) return;
-  inpCa.addEventListener("change", () => buscarDadosCaEpi(false));
-  inpCa.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      buscarDadosCaEpi(true);
-    }
-  });
+  if (inpCa) {
+    inpCa.addEventListener("change", () => buscarDadosCaEpi(false));
+    inpCa.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        buscarDadosCaEpi(true);
+      }
+    });
+  }
+  autoDestacarSecaoTamanho();
 })();
 </script>
 {% endblock %}

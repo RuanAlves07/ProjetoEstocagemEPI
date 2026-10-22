@@ -92,6 +92,8 @@ def _montar_relatorio_tamanhos(db, de_iso, ate_iso, epis_saldo, filtro_subtipo="
         epi_info = mapa_epis.get(epi_id)
         if not epi_info:
             return ""
+        if epi_info.get("tamanho"):
+            return epi_info["tamanho"]
         sub = _subtipo_item(epi_info["nome"])
         if texto_orig:
             t = _extrair_tamanho_texto(texto_orig, sub)

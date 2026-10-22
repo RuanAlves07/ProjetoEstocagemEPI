@@ -169,7 +169,7 @@
           <select name="epi_id" required>
             <option value="">Selecione o equipamento…</option>
             {% for e in epis %}
-            <option value="{{ e.id }}">{{ e.nome }}{% if e.id in padrao_ids %} (já é padrão do cargo){% endif %} — saldo: {{ e.saldo }} {{ e.unidade }}</option>
+            <option value="{{ e.id }}">{{ e.nome }}{% if e.tamanho %} (Tam. {{ e.tamanho }}){% endif %}{% if e.id in padrao_ids %} (já é padrão do cargo){% endif %} — saldo: {{ e.saldo }} {{ e.unidade }}</option>
             {% endfor %}
           </select>
         </label>

@@ -26,7 +26,7 @@
     <tr class="{{ 'cancelada' if m.cancelada }}">
       <td>{{ m.data|data_br }}</td>
       <td><span class="badge tipo-{{ m.tipo }}">{{ TIPOS[m.tipo] }}</span></td>
-      {% if mostrar_epi %}<td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=m.epi_id) }}">{{ m.epi_nome }}</a>{% if m.ca %} <small class="suave">CA {{ m.ca }}</small>{% endif %}</td>{% endif %}
+      {% if mostrar_epi %}<td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=m.epi_id) }}"><strong>{{ m.epi_nome }}</strong></a>{% if m.epi_tamanho %} <span class="badge {{ 'azul' if m.epi_tamanho.isdigit() else 'verde' }}" style="font-weight:700">Tam. {{ m.epi_tamanho }}</span>{% endif %}{% if m.ca %} <small class="suave">CA {{ m.ca }}</small>{% endif %}</td>{% endif %}
       <td class="num">{{ '−' if m.tipo in ('saida', 'baixa', 'ajuste_menos') else '+' }}{{ m.quantidade }}</td>
       {% if mostrar_colab %}<td>
         {% if m.colaborador_id %}<a href="{{ url_for('cadastros.colaborador_ficha', colab_id=m.colaborador_id) }}">{{ m.colab_nome }}</a>{% if m.setor %} <small class="suave">{{ m.setor }}</small>{% endif %}

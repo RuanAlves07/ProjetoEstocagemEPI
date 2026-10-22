@@ -34,14 +34,26 @@ def epis_lista():
     caepi.verificar_sincronizacao_diaria_20h(db)
     mostrar_inativos = request.args.get("inativos") == "1"
     busca = (request.args.get("q") or "").strip().lower()
+    filtro_tam = (request.args.get("tamanho") or "").strip().lower()
     epis = estoque.epis_com_saldo(db, somente_ativos=not mostrar_inativos)
+
+    tamanhos_disponiveis = sorted(
+        {e["tamanho"].strip().upper() for e in epis if e.get("tamanho") and e["tamanho"].strip()},
+        key=lambda x: (0, int(x), x) if x.isdigit() else (1, 0, x)
+    )
+
     if busca:
         epis = [e for e in epis if busca in e["nome"].lower() or busca in (e["categoria"] or "").lower()
-                or busca in (e["ca"] or "").lower()]
+                or busca in (e["ca"] or "").lower() or busca in (e.get("tamanho") or "").lower()]
+    if filtro_tam:
+        epis = [e for e in epis if (e.get("tamanho") or "").strip().lower() == filtro_tam]
+
     return render_template(
         "epis_lista.html",
         epis=epis,
         busca=busca,
+        filtro_tam=filtro_tam,
+        tamanhos_disponiveis=tamanhos_disponiveis,
         mostrar_inativos=mostrar_inativos,
         cfg_caepi=caepi.obter_config_caepi(db),
     )
@@ -101,6 +113,15 @@ def _csv_response(buffer, nome):
                     headers={"Content-Disposition": f"attachment; filename={nome}"})
 
 
+def _validar_duplicidade_epi(db, nome, tamanho, epi_id=None):
+    sql = "SELECT id FROM epis WHERE LOWER(nome) = LOWER(?) AND LOWER(COALESCE(tamanho, '')) = LOWER(?) "
+    params = [nome, tamanho or ""]
+    if epi_id:
+        sql += "AND id != ? "
+        params.append(epi_id)
+    return db.execute(sql, params).fetchone()
+
+
 def _ler_epi(form, files=None, imagem_atual=None):
     erros = []
     ca_digitado = limpar(form.get("ca"))
@@ -108,6 +129,10 @@ def _ler_epi(form, files=None, imagem_atual=None):
     info_ca = caepi.consultar_ca(get_db(), ca_norm) if ca_norm else None
 
     nome_form = limpar(form.get("nome"))
+    tamanho_form = limpar(form.get("tamanho"))
+    if tamanho_form:
+        tamanho_form = tamanho_form.upper()
+
     categoria_form = limpar(form.get("categoria"))
     unidade_form = limpar(form.get("unidade"))
     validade_form = limpar(form.get("validade_ca"))
@@ -125,6 +150,7 @@ def _ler_epi(form, files=None, imagem_atual=None):
 
     dados = {
         "nome": nome_form,
+        "tamanho": tamanho_form or None,
         "categoria": categoria_form,
         "ca": ca_norm,
         "unidade": unidade_form or "un",
@@ -158,20 +184,35 @@ def _ler_epi(form, files=None, imagem_atual=None):
 @bp.route("/epis/novo", methods=["GET", "POST"])
 @escrita_required
 def epi_novo():
-    dados = {"unidade": "un", "estoque_minimo": 0, "prazo_reposicao_dias": 15, "exibir_no_forms": 1, "imagem_url": None}
+    dados = {
+        "tamanho": None,
+        "unidade": "un",
+        "estoque_minimo": 0,
+        "prazo_reposicao_dias": 15,
+        "exibir_no_forms": 1,
+        "imagem_url": None,
+    }
     if request.method == "POST":
         dados, erros = _ler_epi(request.form, request.files)
+        db = get_db()
+        if not erros and _validar_duplicidade_epi(db, dados["nome"], dados.get("tamanho")):
+            msg = f"Já existe um EPI cadastrado com o nome “{dados['nome']}”"
+            msg += f" no tamanho {dados['tamanho']}." if dados.get("tamanho") else "."
+            erros.append(msg)
+
         if not erros:
             try:
-                cur = get_db().execute(
-                    """INSERT INTO epis (nome, categoria, ca, validade_ca, unidade, estoque_minimo,
+                cur = db.execute(
+                    """INSERT INTO epis (nome, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo,
                                          prazo_reposicao_dias, imagem_url, exibir_no_forms)
-                       VALUES (:nome, :categoria, :ca, :validade_ca, :unidade, :estoque_minimo,
-                               :prazo_reposicao_dias, :imagem_url, :exibir_no_forms)""", dados)
-                flash("EPI cadastrado. Para lançar o saldo atual, use Movimentar → Ajuste (+).", "ok")
+                       VALUES (:nome, :tamanho, :categoria, :ca, :validade_ca, :unidade,
+                               :estoque_minimo, :prazo_reposicao_dias, :imagem_url, :exibir_no_forms)""",
+                    dados,
+                )
+                flash("EPI cadastrado com sucesso. Para lançar o saldo inicial, use Movimentar → Entrada ou Ajuste (+).", "ok")
                 return redirect(url_for("cadastros.epi_detalhe", epi_id=cur.lastrowid))
             except sqlite3.IntegrityError:
-                erros.append("Já existe um EPI com esse nome. Inclua o tamanho/modelo no nome para diferenciar.")
+                erros.append("Já existe um EPI cadastrado com esse nome e tamanho.")
         for e in erros:
             flash(e, "erro")
     return render_template("epi_form.html", epi=dados, novo=True)
@@ -186,17 +227,21 @@ def epi_editar(epi_id):
         dados, erros = _ler_epi(request.form, request.files, imagem_atual=epi["imagem_url"])
         dados["ativo"] = 1 if request.form.get("ativo") else 0
         dados["id"] = epi_id
+        if not erros and _validar_duplicidade_epi(db, dados["nome"], dados.get("tamanho"), epi_id=epi_id):
+            msg = f"Já existe outro EPI cadastrado com o nome “{dados['nome']}”"
+            msg += f" no tamanho {dados['tamanho']}." if dados.get("tamanho") else "."
+            erros.append(msg)
         if not erros:
             try:
                 db.execute(
-                    """UPDATE epis SET nome=:nome, categoria=:categoria, ca=:ca, validade_ca=:validade_ca,
+                    """UPDATE epis SET nome=:nome, tamanho=:tamanho, categoria=:categoria, ca=:ca, validade_ca=:validade_ca,
                        unidade=:unidade, estoque_minimo=:estoque_minimo,
                        prazo_reposicao_dias=:prazo_reposicao_dias, imagem_url=:imagem_url,
                        exibir_no_forms=:exibir_no_forms, ativo=:ativo WHERE id=:id""", dados)
-                flash("EPI atualizado.", "ok")
+                flash("EPI atualizado com sucesso.", "ok")
                 return redirect(url_for("cadastros.epi_detalhe", epi_id=epi_id))
             except sqlite3.IntegrityError:
-                erros.append("Já existe um EPI com esse nome.")
+                erros.append("Já existe outro EPI cadastrado com esse nome e tamanho.")
         for e in erros:
             flash(e, "erro")
         epi = dados
@@ -209,10 +254,15 @@ def epi_detalhe(epi_id):
     existe = db.execute("SELECT 1 FROM epis WHERE id = ?", (epi_id,)).fetchone()
     if not existe:
         abort(404)
-    epi = next(e for e in estoque.epis_com_saldo(db, somente_ativos=False) if e["id"] == epi_id)
+    todos = estoque.epis_com_saldo(db, somente_ativos=False)
+    epi = next((e for e in todos if e["id"] == epi_id), None) or abort(404)
     from .movimentos import consultar_movimentos
     movs = consultar_movimentos(db, {"epi_id": epi_id}, limite=100)
-    return render_template("epi_detalhe.html", epi=epi, movs=movs)
+    outros_tamanhos = [
+        e for e in todos
+        if e["nome"].strip().casefold() == epi["nome"].strip().casefold() and e["id"] != epi_id
+    ]
+    return render_template("epi_detalhe.html", epi=epi, movs=movs, outros_tamanhos=outros_tamanhos)
 
 
 # ---------------------------------------------------------- fornecedores

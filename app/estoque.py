@@ -48,7 +48,7 @@ def epis_com_saldo(db, somente_ativos=True):
             LEFT JOIN movimentacoes m ON m.epi_id = e.id AND m.cancelada = 0
             {where}
             GROUP BY e.id
-            ORDER BY e.nome COLLATE NOCASE""",
+            ORDER BY e.nome COLLATE NOCASE, e.tamanho COLLATE NOCASE""",
         (desde,),
     ).fetchall()
     return [enriquecer(l) for l in linhas]

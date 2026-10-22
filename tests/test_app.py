@@ -455,6 +455,98 @@ class TestEstoque(Base):
             row = get_db().execute("SELECT validade_ca FROM epis WHERE ca = '40362'").fetchone()
             self.assertEqual(row["validade_ca"], "2030-12-31")
 
+    def test_cadastro_epi_tamanho_numeracao_e_letra(self):
+        # 1. Cadastra Botina com Numeração 40 e outra com Numeração 41 (mesmo modelo, produtos separados)
+        r40 = self.post("/epis/novo", {
+            "nome": "Botina Nobuck Marrom",
+            "tamanho": "40",
+            "categoria": "Calçados",
+            "unidade": "par",
+            "estoque_minimo": "5",
+            "prazo_reposicao_dias": "10",
+        }, follow_redirects=True)
+        self.assertEqual(r40.status_code, 200)
+        self.assertIn("Botina Nobuck Marrom", r40.get_data(as_text=True))
+        self.assertIn("40", r40.get_data(as_text=True))
+
+        r41 = self.post("/epis/novo", {
+            "nome": "Botina Nobuck Marrom",
+            "tamanho": "41",
+            "categoria": "Calçados",
+            "unidade": "par",
+            "estoque_minimo": "5",
+            "prazo_reposicao_dias": "10",
+        }, follow_redirects=True)
+        self.assertEqual(r41.status_code, 200)
+        self.assertIn("Botina Nobuck Marrom", r41.get_data(as_text=True))
+        self.assertIn("41", r41.get_data(as_text=True))
+
+        # 2. Tentar cadastrar duplicata exata (mesmo modelo e mesmo tamanho) deve ser barrado
+        r_dup = self.post("/epis/novo", {
+            "nome": "Botina Nobuck Marrom",
+            "tamanho": "40",
+            "categoria": "Calçados",
+            "unidade": "par",
+            "estoque_minimo": "5",
+            "prazo_reposicao_dias": "10",
+        }, follow_redirects=True)
+        self.assertIn("Já existe", r_dup.get_data(as_text=True))
+
+        # 3. Cadastra Camiseta com Letra M e Letra G
+        r_m = self.post("/epis/novo", {
+            "nome": "Camiseta Gola Polo",
+            "tamanho": "M",
+            "categoria": "Vestimenta",
+            "unidade": "un",
+            "estoque_minimo": "10",
+            "prazo_reposicao_dias": "15",
+        }, follow_redirects=True)
+        self.assertEqual(r_m.status_code, 200)
+
+        r_g = self.post("/epis/novo", {
+            "nome": "Camiseta Gola Polo",
+            "tamanho": "G",
+            "categoria": "Vestimenta",
+            "unidade": "un",
+            "estoque_minimo": "10",
+            "prazo_reposicao_dias": "15",
+        }, follow_redirects=True)
+        self.assertEqual(r_g.status_code, 200)
+
+        # 4. Cadastra Calça também por letra (M e G)
+        r_calca_m = self.post("/epis/novo", {
+            "nome": "Calça Brim Cinza",
+            "tamanho": "M",
+            "categoria": "Vestimenta",
+            "unidade": "un",
+            "estoque_minimo": "8",
+            "prazo_reposicao_dias": "15",
+        }, follow_redirects=True)
+        self.assertEqual(r_calca_m.status_code, 200)
+
+        r_calca_g = self.post("/epis/novo", {
+            "nome": "Calça Brim Cinza",
+            "tamanho": "G",
+            "categoria": "Vestimenta",
+            "unidade": "un",
+            "estoque_minimo": "8",
+            "prazo_reposicao_dias": "15",
+        }, follow_redirects=True)
+        self.assertEqual(r_calca_g.status_code, 200)
+
+        with self.app.app_context():
+            from app.db import get_db
+            db = get_db()
+            tams_calca = [r[0] for r in db.execute("SELECT tamanho FROM epis WHERE nome = 'Calça Brim Cinza' ORDER BY tamanho").fetchall()]
+            self.assertEqual(tams_calca, ["G", "M"])
+
+        # 5. Lista de EPIs e filtro por tamanho
+        r_lista_tam = self.c.get("/epis?tamanho=40")
+        self.assertEqual(r_lista_tam.status_code, 200)
+        html_lista = r_lista_tam.get_data(as_text=True)
+        self.assertIn("Botina Nobuck Marrom", html_lista)
+        self.assertIn("Nº 40", html_lista)
+
 
 if __name__ == "__main__":
     unittest.main()

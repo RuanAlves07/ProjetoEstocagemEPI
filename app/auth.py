@@ -46,7 +46,7 @@ _IMPLICITAS = {
     "registrar_movimentos": "ver_movimentos",
 }
 
-ROTAS_PUBLICAS = {"auth.login", "auth.setup", "static", "pedidos.api_criar", "pedidos.solicitar"}
+ROTAS_PUBLICAS = {"auth.login", "auth.setup", "static", "pedidos.api_criar", "pedidos.solicitar", "favicon"}
 # A API usa chave própria (X-API-Key) e o formulário público pode ser enviado sem sessão prévia
 CSRF_ISENTAS = {"pedidos.api_criar", "pedidos.solicitar"}
 SENHA_MIN = 8

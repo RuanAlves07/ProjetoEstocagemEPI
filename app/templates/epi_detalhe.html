@@ -3,7 +3,7 @@
 {% block titulo %}{{ epi.nome }}{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
-  <h1>{{ epi.nome }} {% if not epi.ativo %}<span class="badge">inativo</span>{% endif %}</h1>
+  <h1>{{ epi.nome }} {% if epi.tamanho %}<span class="badge {{ 'azul' if epi.tamanho.isdigit() else 'verde' }}" style="font-size:1.1rem;padding:.3rem .75rem;vertical-align:middle">{{ 'Nº ' ~ epi.tamanho if epi.tamanho.isdigit() else 'Tam. ' ~ epi.tamanho }}</span>{% endif %} {% if not epi.ativo %}<span class="badge">inativo</span>{% endif %}</h1>
   <div class="acoes">
     {% if pode_editar and epi.ativo %}
       <a class="btn primario" href="{{ url_for('movimentos.movimentar', tipo='saida', epi_id=epi.id) }}">Entregar</a>
@@ -19,7 +19,24 @@
   <div class="indicador"><span class="valor">{{ epi.cobertura_dias|num if epi.cobertura_dias is not none else '—' }}</span><span>dias de estoque</span></div>
   <div class="indicador {{ 'alerta' if epi.status != 'ok' }}"><span class="valor" style="font-size:1.1rem">{{ status(epi) }}</span><span>{% if epi.sugerido %}sugestão: pedir {{ epi.sugerido }}{% else %}situação{% endif %}</span></div>
 </div>
-<p>Categoria: <strong>{{ epi.categoria or '—' }}</strong> · CA: {{ ca(epi) }} · Prazo de reposição: <strong>{{ epi.prazo_reposicao_dias }} dias</strong></p>
+<p>Tamanho / Numeração: <strong>{{ ('Nº ' ~ epi.tamanho) if (epi.tamanho and epi.tamanho.isdigit()) else ('Tam. ' ~ epi.tamanho if epi.tamanho else 'Único / Não se aplica') }}</strong> · Categoria: <strong>{{ epi.categoria or '—' }}</strong> · CA: {{ ca(epi) }} · Prazo de reposição: <strong>{{ epi.prazo_reposicao_dias }} dias</strong></p>
+
+{% if outros_tamanhos %}
+<div class="cartao" style="margin-top:.75rem;margin-bottom:1rem;padding:.75rem 1rem;background:#f8fafc;border:1px solid #cbd5e1">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.3rem">
+    <strong style="font-size:.92rem;color:#0f172a">📦 Outros tamanhos disponíveis deste mesmo modelo ({{ epi.nome }}):</strong>
+    <span class="nota" style="margin:0">{{ outros_tamanhos|length }} outro(s) tamanho(s) em estoque</span>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
+    {% for ot in outros_tamanhos %}
+    <a href="{{ url_for('cadastros.epi_detalhe', epi_id=ot.id) }}" class="btn pequeno" style="text-decoration:none;display:inline-flex;align-items:center;gap:.35rem">
+      <strong>{{ 'Nº ' ~ ot.tamanho if ot.tamanho and ot.tamanho.isdigit() else ('Tam. ' ~ ot.tamanho if ot.tamanho else 'Único') }}</strong>
+      <span class="badge {{ 'verde' if ot.saldo > 0 else 'vermelho' }}">{{ ot.saldo }} {{ ot.unidade }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 <section class="cartao">
   <h2>Histórico</h2>
   {{ tabela_movs(movs, mostrar_epi=false, voltar=request.path) }}

@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS perfis_acesso (
 
 CREATE TABLE IF NOT EXISTS epis (
     id                    SERIAL PRIMARY KEY,
-    nome                  TEXT NOT NULL UNIQUE,
+    nome                  TEXT NOT NULL,
+    tamanho               TEXT,
     categoria             TEXT,
     ca                    TEXT,
     validade_ca           TEXT,
@@ -39,10 +40,13 @@ CREATE TABLE IF NOT EXISTS epis (
     criado_em             TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
+ALTER TABLE epis ADD COLUMN IF NOT EXISTS tamanho TEXT;
 ALTER TABLE epis ADD COLUMN IF NOT EXISTS imagem_url TEXT;
 ALTER TABLE epis ADD COLUMN IF NOT EXISTS exibir_no_forms INTEGER NOT NULL DEFAULT 1;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_lower ON epis (LOWER(nome));
+ALTER TABLE epis DROP CONSTRAINT IF EXISTS epis_nome_key;
+DROP INDEX IF EXISTS idx_epis_nome_lower;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_tamanho ON epis (LOWER(nome), COALESCE(tamanho, ''));
 
 CREATE TABLE IF NOT EXISTS colaboradores (
     id         SERIAL PRIMARY KEY,
