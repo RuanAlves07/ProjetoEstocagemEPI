@@ -228,6 +228,16 @@ def _migrar(conn):
         conn.execute("ALTER TABLE movimentacoes ADD COLUMN local_destino TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mov_pedido ON movimentacoes (pedido_id)")
 
+    colunas_epis = {r["name"] for r in conn.execute("PRAGMA table_info(epis)")}
+    if "imagem_url" not in colunas_epis:
+        conn.execute("ALTER TABLE epis ADD COLUMN imagem_url TEXT")
+    if "exibir_no_forms" not in colunas_epis:
+        conn.execute("ALTER TABLE epis ADD COLUMN exibir_no_forms INTEGER NOT NULL DEFAULT 1")
+
+    colunas_pedidos = {r["name"] for r in conn.execute("PRAGMA table_info(pedidos)")}
+    if "ressalva_observacao" not in colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN ressalva_observacao TEXT")
+
     # Remove o CHECK fixo da coluna perfil em bancos SQLite antigos para permitir perfis personalizados
     info_usu = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'usuarios'"

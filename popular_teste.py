@@ -167,10 +167,12 @@ def popular():
         lote_entrada_1 = []
         lote_entrada_2 = []
         for idx, (nome, cat, ca, val, un, est_min, prazo, custo, qtd_ini) in enumerate(catalogo_epis):
+            img_ilustrativa = pedidos.gerar_svg_ilustrativo_epi(nome)
             cur = db.execute(
-                """INSERT INTO epis (nome, categoria, ca, validade_ca, unidade, estoque_minimo, prazo_reposicao_dias)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (nome, cat, ca, val, un, est_min, prazo),
+                """INSERT INTO epis (nome, categoria, ca, validade_ca, unidade, estoque_minimo,
+                                     prazo_reposicao_dias, imagem_url, exibir_no_forms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                (nome, cat, ca, val, un, est_min, prazo, img_ilustrativa),
             )
             eid = cur.lastrowid
             epi_id[nome] = eid
@@ -564,6 +566,25 @@ def popular():
                 db.execute(
                     "INSERT INTO cargo_epis_padrao (cargo, epi_id) VALUES (?, ?)",
                     (cargo_nome, epi_id[nome_e]),
+                )
+
+        # Define numeração de calçados e tamanho de uniformes nos perfis dos colaboradores para relatórios de estocagem
+        numeros_ciclo = ["39", "40", "41", "42", "43", "44"]
+        tams_unif_ciclo = ["M", "G", "GG", "G1", "G2"]
+        for idx_c, (nome_c, cid) in enumerate(colab_id.items()):
+            num_c = "41" if nome_c == "Ruan Alves" else numeros_ciclo[idx_c % len(numeros_ciclo)]
+            tam_cam = "M" if nome_c == "Ruan Alves" else tams_unif_ciclo[idx_c % len(tams_unif_ciclo)]
+            tam_cal = "G" if nome_c == "Ruan Alves" else tams_unif_ciclo[(idx_c + 1) % len(tams_unif_ciclo)]
+            for ch_t, val_t in (
+                ("tipo:sapatao", num_c),
+                ("tipo:botina", num_c),
+                ("tipo:bota", num_c),
+                ("tipo:camiseta", tam_cam),
+                ("tipo:calca", tam_cal),
+            ):
+                db.execute(
+                    "INSERT INTO colaborador_tamanhos (colaborador_id, chave, tamanho) VALUES (?, ?, ?)",
+                    (cid, ch_t, val_t),
                 )
 
         # Exemplos de solicitações fora do padrão com observação (teste em outro cargo / necessidade específica)

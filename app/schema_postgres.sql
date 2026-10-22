@@ -33,9 +33,14 @@ CREATE TABLE IF NOT EXISTS epis (
     unidade               TEXT NOT NULL DEFAULT 'un',
     estoque_minimo        INTEGER NOT NULL DEFAULT 0 CHECK (estoque_minimo >= 0),
     prazo_reposicao_dias  INTEGER NOT NULL DEFAULT 15 CHECK (prazo_reposicao_dias >= 0),
+    imagem_url            TEXT,
+    exibir_no_forms       INTEGER NOT NULL DEFAULT 1,
     ativo                 INTEGER NOT NULL DEFAULT 1,
     criado_em             TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
+
+ALTER TABLE epis ADD COLUMN IF NOT EXISTS imagem_url TEXT;
+ALTER TABLE epis ADD COLUMN IF NOT EXISTS exibir_no_forms INTEGER NOT NULL DEFAULT 1;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_lower ON epis (LOWER(nome));
 
@@ -87,6 +92,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
     iniciado_em         TEXT,
     finalizado_por      INTEGER REFERENCES usuarios (id),
     finalizado_em       TEXT,
+    ressalva_observacao TEXT,
     grupo               TEXT,
     retirado_por_nome   TEXT,
     retirado_descricao  TEXT,
@@ -152,6 +158,8 @@ CREATE TABLE IF NOT EXISTS epi_apelidos (
 CREATE INDEX IF NOT EXISTS idx_pedidos_status ON pedidos (status);
 CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido ON pedido_itens (pedido_id);
 
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS ressalva_observacao TEXT;
+
 CREATE TABLE IF NOT EXISTS cargo_epis_padrao (
     cargo      TEXT NOT NULL,
     epi_id     INTEGER NOT NULL REFERENCES epis (id),
@@ -186,4 +194,18 @@ CREATE TABLE IF NOT EXISTS colaborador_tamanhos (
     tamanho         TEXT NOT NULL,
     atualizado_em   TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')),
     PRIMARY KEY (colaborador_id, chave)
+);
+
+CREATE TABLE IF NOT EXISTS base_caepi (
+    ca                  TEXT PRIMARY KEY,
+    validade_ca         TEXT,
+    situacao            TEXT,
+    nome_equipamento    TEXT,
+    descricao           TEXT,
+    categoria           TEXT,
+    unidade             TEXT NOT NULL DEFAULT 'un',
+    fabricante          TEXT,
+    cnpj_fabricante     TEXT,
+    referencia          TEXT,
+    atualizado_em       TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );

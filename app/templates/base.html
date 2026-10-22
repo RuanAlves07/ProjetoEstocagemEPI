@@ -16,8 +16,8 @@
   </div>
   <nav class="nav-principal">
     {% if tem_perm('ver_painel') %}<a href="{{ url_for('painel.inicio') }}" class="{{ 'ativo' if ep == 'painel.inicio' }}">Painel</a>{% endif %}
-    {% if tem_perm('ver_pedidos') %}<a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar') }}">Pedidos <span class="contador" id="badge-pedidos" {{ 'hidden' if not pedidos_a_atender }}>{{ pedidos_a_atender }}</span></a>{% endif %}
-    <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep == 'pedidos.solicitar' }}">Formulário</a>
+    {% if tem_perm('ver_pedidos') %}<a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar', 'pedidos.personalizar_formulario') and not ep.startswith('pedidos.form_') }}">Pedidos <span class="contador" id="badge-pedidos" {{ 'hidden' if not pedidos_a_atender }}>{{ pedidos_a_atender }}</span></a>{% endif %}
+    <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep in ('pedidos.solicitar', 'pedidos.personalizar_formulario') or ep.startswith('pedidos.form_') }}">Formulário</a>
     {% if tem_perm('ver_epis') %}<a href="{{ url_for('cadastros.epis_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.epi') }}">EPIs</a>{% endif %}
     {% if tem_perm('ver_fornecedores') %}<a href="{{ url_for('cadastros.fornecedores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.fornecedor') }}">Fornecedores</a>{% endif %}
     {% if tem_perm('ver_colaboradores') %}<a href="{{ url_for('cadastros.colaboradores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.colab') or ep == 'cadastros.cargos_padrao' }}">Colaboradores</a>{% endif %}
@@ -52,11 +52,11 @@
   </a>
   {% endif %}
   {% if tem_perm('ver_pedidos') %}
-  <a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar') }}">
+  <a href="{{ url_for('pedidos.lista') }}" class="{{ 'ativo' if ep.startswith('pedidos.') and ep not in ('pedidos.integracao', 'pedidos.solicitar', 'pedidos.personalizar_formulario') and not ep.startswith('pedidos.form_') }}">
     <span class="icone-mob">📦{% if pedidos_a_atender %}<em class="badge-mob" id="badge-pedidos-mob">{{ pedidos_a_atender }}</em>{% endif %}</span><span>Pedidos</span>
   </a>
   {% endif %}
-  <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep == 'pedidos.solicitar' }}">
+  <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if ep in ('pedidos.solicitar', 'pedidos.personalizar_formulario') or ep.startswith('pedidos.form_') }}">
     <span class="icone-mob">📋</span><span>Formulário</span>
   </a>
   {% if tem_perm('ver_epis') %}

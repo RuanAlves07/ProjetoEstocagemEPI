@@ -1,14 +1,52 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import status, ca with context %}
+{% from '_macros.html' import csrf, status, ca with context %}
 {% block titulo %}EPIs{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
   <h1>EPIs</h1>
   <div class="acoes">
+    {% if pode_editar %}
+    <form method="post" action="{{ url_for('cadastros.epis_sincronizar_caepi') }}" style="display:inline">
+      {{ csrf() }}
+      <button type="submit" class="btn" title="Consulta a Base CAEPI e atualiza automaticamente a validade de todos os CAs cadastrados">🔄 Sincronizar validades dos CAs</button>
+    </form>
+    {% endif %}
     <a class="btn" href="{{ url_for('cadastros.epis_csv') }}">Exportar Excel (CSV)</a>
     {% if pode_editar %}<a class="btn primario" href="{{ url_for('cadastros.epi_novo') }}">Novo EPI</a>{% endif %}
   </div>
 </div>
+
+{% if pode_editar and cfg_caepi is defined %}
+<details class="editar-item" style="margin-bottom:.9rem">
+  <summary class="btn pequeno">⚙️ Base CAEPI · Atualização Automática de CAs (20:00){% if cfg_caepi.ultima_sincronizacao %} · Última: {{ cfg_caepi.ultima_sincronizacao|hora_br }}{% endif %}</summary>
+  <form method="post" action="{{ url_for('cadastros.epis_sincronizar_caepi') }}" enctype="multipart/form-data" class="cartao formulario" style="margin-top:.5rem">
+    {{ csrf() }}
+    <p class="nota" style="margin:0">
+      O sistema mantém uma base local de CAs sincronizada automaticamente na janela diária das <strong>20:00</strong> (padrão <a href="https://github.com/JoaoAugustoMV/API_BaseCAEPI" target="_blank" rel="noopener">API_BaseCAEPI</a>). Ao cadastrar um EPI informando apenas o <strong>Nº do CA</strong>, a validade, o nome, a categoria e a unidade são puxados automaticamente.
+    </p>
+    {% if cfg_caepi.ultimo_resultado %}
+    <div class="aviso ok" style="margin:0;padding:.45rem .75rem;font-size:.86rem">{{ cfg_caepi.ultimo_resultado }}</div>
+    {% endif %}
+    <div class="linha">
+      <label style="flex:2">
+        <span>URL da instância <code>API_BaseCAEPI</code> (opcional — ex.: <code>http://localhost:5200</code>)</span>
+        <input type="text" name="api_url" value="{{ cfg_caepi.api_url or '' }}" placeholder="Deixe em branco para usar a Base CAEPI integrada do sistema">
+      </label>
+      <label style="flex:2">
+        <span>Importar arquivo oficial <code>tgg_export_caepi.zip</code> / <code>.txt</code> (opcional)</span>
+        <input type="file" name="arquivo_caepi" accept=".zip,.txt,.csv">
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="baixar_mte" value="1">
+      Tentar baixar base oficial completa diretamente do FTP do Ministério do Trabalho (MTE) agora
+    </label>
+    <div class="acoes">
+      <button type="submit" class="btn primario pequeno">Salvar e Sincronizar CAs agora</button>
+    </div>
+  </form>
+</details>
+{% endif %}
 <form class="filtros" method="get">
   <input name="q" value="{{ busca }}" placeholder="Buscar por nome, categoria ou CA">
   <label class="check"><input type="checkbox" name="inativos" value="1" {{ 'checked' if mostrar_inativos }}> mostrar inativos</label>

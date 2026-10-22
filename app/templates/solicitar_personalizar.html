@@ -1,0 +1,504 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Personalizar Formulário · Uniforme e EPI{% endblock %}
+{% block conteudo %}
+<div class="form-publico-container editor-forms-container">
+  <div class="cartao barra-compartilhar">
+    <div>
+      <strong>🛠️ Construtor e Personalizador do Formulário Interno</strong>
+      <span class="nota">Edite perguntas, adicione cidades, inclua novos equipamentos e insira fotos em cada opção para facilitar a identificação visual na obra.</span>
+    </div>
+    <div class="acoes">
+      <a class="btn pequeno" href="{{ url_for('pedidos.solicitar') }}">👁️ Ver como Colaborador</a>
+      <button type="submit" form="form-personalizar" class="btn pequeno primario">💾 Salvar Alterações</button>
+    </div>
+  </div>
+
+  <nav class="abas" style="margin-bottom:1rem">
+    <a href="{{ url_for('pedidos.solicitar') }}">👁️ Visualizar Formulário (Visão do Colaborador)</a>
+    <a href="{{ url_for('pedidos.personalizar_formulario') }}" class="ativo">✏️ Personalizar Formulário (Cidades, EPIs, Imagens e Perguntas)</a>
+  </nav>
+
+  <!-- Formulários auxiliares ocultos para ações rápidas sem aninhar <form> -->
+  <form id="form-ilustrar-todos" method="post" action="{{ url_for('pedidos.form_ilustrar_todos') }}" hidden>
+    {{ csrf() }}
+  </form>
+  <form id="form-restaurar-padrao" method="post" action="{{ url_for('pedidos.form_restaurar') }}"
+        onsubmit="return confirm('Restaurar os títulos, locais, motivos e tamanhos para o padrão original? (Os EPIs e suas fotos serão mantidos)');" hidden>
+    {{ csrf() }}
+  </form>
+
+  <!-- FORMULÁRIO PRINCIPAL DE EDIÇÃO -->
+  <form id="form-personalizar" method="post" action="{{ url_for('pedidos.personalizar_formulario') }}" enctype="multipart/form-data" class="form-publico">
+    {{ csrf() }}
+    <input type="hidden" name="atualizar_opcoes_epi" value="1">
+
+    <!-- CABEÇALHO DO FORMULÁRIO -->
+    <section class="cartao cabecalho-forms editor-bloco">
+      <div class="editor-badge-topo">Cabeçalho do Formulário</div>
+      <label class="rotulo-editor">
+        <span>Título principal do formulário <span class="obrigatorio">*</span></span>
+        <input type="text" name="titulo" value="{{ cfg_form.titulo }}" required class="input-titulo-forms">
+      </label>
+      <label class="rotulo-editor" style="margin-top:.55rem">
+        <span>Descrição / subtítulo de boas-vindas</span>
+        <textarea name="descricao" rows="2">{{ cfg_form.descricao }}</textarea>
+      </label>
+    </section>
+
+    <!-- 1. COLABORADOR -->
+    <section class="cartao bloco-pergunta editor-bloco">
+      <div class="editor-badge-topo">Pergunta 1 · Seleção de Colaborador</div>
+      <label class="rotulo-editor">
+        <span>Título da pergunta 1 <span class="obrigatorio">*</span></span>
+        <input type="text" name="pergunta_1_titulo" value="{{ cfg_form.pergunta_1_titulo }}" required>
+      </label>
+      <div class="nota" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-top:.25rem">
+        <span>A lista suspensa exibe automaticamente todos os colaboradores ativos cadastrados no sistema.</span>
+        {% if tem_perm('editar_colaboradores') %}
+        <a class="btn pequeno" href="{{ url_for('cadastros.colaborador_novo') }}">+ Cadastrar colaborador</a>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 2. CIDADES / LOCAIS DE ENTREGA -->
+    <section class="cartao bloco-pergunta editor-bloco" id="secao-q2">
+      <div class="editor-badge-topo">Pergunta 2 · Cidades / Locais de Entrega</div>
+      <label class="rotulo-editor">
+        <span>Título da pergunta 2 <span class="obrigatorio">*</span></span>
+        <input type="text" name="pergunta_2_titulo" value="{{ cfg_form.pergunta_2_titulo }}" required>
+      </label>
+
+      <div class="subsecao-editor">
+        <strong style="font-size:.9rem">Opções de Cidades / Obras disponíveis para escolha:</strong>
+        <div id="lista-locais-editor" class="grade-opcoes-editor">
+          {% for loc in cfg_form.locais %}
+          <div class="item-opcao-editavel">
+            <span class="icone-radio-falso">◯</span>
+            <input type="text" name="locais" value="{{ loc }}" placeholder="Nome da cidade ou obra">
+            <button type="button" class="btn pequeno perigo-suave" title="Remover cidade" onclick="removerItemOpcao(this)">✕</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="linha-adicionar-opcao">
+          <input type="text" id="input-novo-local" name="novo_local" placeholder="Digite uma nova cidade/obra (ex.: Joinville, Blumenau...)">
+          <button type="button" class="btn pequeno" onclick="adicionarOpcaoNaLista('lista-locais-editor', 'locais', 'input-novo-local', '◯')">+ Adicionar cidade</button>
+        </div>
+        <label class="check" style="margin-top:.4rem">
+          <input type="checkbox" name="permitir_outro_local" value="1" {{ 'checked' if cfg_form.permitir_outro_local }}>
+          Exibir também um campo aberto “Outra cidade ou obra” no formulário
+        </label>
+      </div>
+    </section>
+
+    <!-- 3. MOTIVO DA SOLICITAÇÃO -->
+    <section class="cartao bloco-pergunta editor-bloco" id="secao-q3">
+      <div class="editor-badge-topo">Pergunta 3 · Motivo da Solicitação</div>
+      <label class="rotulo-editor">
+        <span>Título da pergunta 3 <span class="obrigatorio">*</span></span>
+        <input type="text" name="pergunta_3_titulo" value="{{ cfg_form.pergunta_3_titulo }}" required>
+      </label>
+
+      <div class="subsecao-editor">
+        <strong style="font-size:.9rem">Opções de Motivo:</strong>
+        <div id="lista-motivos-editor" class="lista-opcoes-editor">
+          {% for m in cfg_form.motivos %}
+          <div class="item-opcao-editavel">
+            <span class="icone-radio-falso">◯</span>
+            <input type="text" name="motivos" value="{{ m }}" placeholder="Motivo da solicitação">
+            <button type="button" class="btn pequeno perigo-suave" title="Remover motivo" onclick="removerItemOpcao(this)">✕</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="linha-adicionar-opcao">
+          <input type="text" id="input-novo-motivo" name="novo_motivo" placeholder="Digite um novo motivo (ex.: Admissão, Extravio...)">
+          <button type="button" class="btn pequeno" onclick="adicionarOpcaoNaLista('lista-motivos-editor', 'motivos', 'input-novo-motivo', '◯')">+ Adicionar motivo</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL (EPI) + IMAGENS -->
+    <section class="cartao bloco-pergunta editor-bloco" id="secao-q4">
+      <div class="cabecalho" style="margin-bottom:.2rem">
+        <div class="editor-badge-topo">Pergunta 4 · Equipamentos de Proteção Individual (EPIs) &amp; Fotos</div>
+        <button type="submit" form="form-ilustrar-todos" class="btn pequeno" title="Cria ilustrações visuais claras para todos os itens que ainda não possuem foto">
+          ✨ Preencher ilustrações nos itens sem foto
+        </button>
+      </div>
+
+      <div class="linha">
+        <label class="rotulo-editor">
+          <span>Título da pergunta 4 <span class="obrigatorio">*</span></span>
+          <input type="text" name="pergunta_4_titulo" value="{{ cfg_form.pergunta_4_titulo }}" required>
+        </label>
+        <label class="rotulo-editor">
+          <span>Subtítulo / instrução de apoio</span>
+          <input type="text" name="pergunta_4_subtitulo" value="{{ cfg_form.pergunta_4_subtitulo }}">
+        </label>
+      </div>
+
+      <p class="nota" style="margin:.1rem 0 .4rem">
+        💡 <strong>Dica para facilitar no canteiro de obras:</strong> insira uma foto ou ilustração em cada EPI abaixo. Os colaboradores visualizarão a foto grande ao lado do nome na hora de marcar o pedido!
+      </p>
+
+      <div class="lista-epis-editor">
+        {% for e in epis_protecao %}
+        <div class="card-epi-editor {{ 'inativo-forms' if not e.exibir_no_forms }}" id="opcao-epi-{{ e.id }}">
+          <div class="epi-editor-preview">
+            {% if e.imagem_url %}
+            <img src="{{ e.imagem_url }}" alt="{{ e.nome }}" class="miniatura-epi-form" id="preview-epi-{{ e.id }}">
+            {% else %}
+            <div class="sem-imagem-placeholder" id="placeholder-epi-{{ e.id }}">📷 Sem foto</div>
+            <img src="" alt="{{ e.nome }}" class="miniatura-epi-form" id="preview-epi-{{ e.id }}" hidden>
+            {% endif %}
+          </div>
+
+          <div class="epi-editor-campos">
+            <div class="linha-nome-visivel">
+              <label class="check" title="Desmarque para ocultar este item do formulário público sem apagá-lo do estoque">
+                <input type="checkbox" name="epi_visivel" value="{{ e.id }}" {{ 'checked' if e.exibir_no_forms }}>
+                <span>Exibir no forms</span>
+              </label>
+              <input type="text" name="nome_epi_{{ e.id }}" value="{{ e.nome }}" class="input-nome-epi-editor" required>
+            </div>
+
+            <div class="linha-upload-epi">
+              <label class="btn pequeno btn-arquivo-img">
+                📷 Enviar foto
+                <input type="file" name="imagem_epi_{{ e.id }}" accept="image/*" hidden
+                       onchange="previsualizarImagemEpi(this, {{ e.id }})">
+              </label>
+              <input type="text" name="imagem_url_epi_{{ e.id }}"
+                     placeholder="Ou cole URL da imagem (https://...)"
+                     value="{{ e.imagem_url if e.imagem_url and not e.imagem_url.startswith('data:') else '' }}"
+                     class="input-url-img-curto">
+              <button type="button" class="btn pequeno" title="Aplicar desenho ilustrativo automático para este EPI"
+                      onclick="aplicarIlustracaoItem({{ e.id }})">✨ Ilustrar</button>
+              {% if e.imagem_url %}
+              <label class="check remover-img-check" title="Marque e salve para remover a imagem atual">
+                <input type="checkbox" name="remover_img_epi_{{ e.id }}" value="1"> Remover foto
+              </label>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <p class="nota">Nenhum EPI cadastrado.</p>
+        {% endfor %}
+      </div>
+
+      <!-- Subbloco condicional de numeração de calçado -->
+      <details class="subsecao-editor" style="margin-top:.5rem">
+        <summary style="cursor:pointer;font-weight:600;font-size:.9rem">⚙️ Configurar textos do bloco de Numeração de Calçado (Sapatão, Botina e Bota)</summary>
+        <div class="linha" style="margin-top:.6rem">
+          <label class="rotulo-editor">
+            <span>Título da pergunta de numeração de calçado</span>
+            <input type="text" name="pergunta_calcado_titulo" value="{{ cfg_form.pergunta_calcado_titulo }}">
+          </label>
+          <label class="rotulo-editor">
+            <span>Subtítulo / aviso sobre unidades</span>
+            <input type="text" name="pergunta_calcado_subtitulo" value="{{ cfg_form.pergunta_calcado_subtitulo }}">
+          </label>
+        </div>
+      </details>
+    </section>
+
+    <!-- 5. VESTIMENTA E TAMANHOS DE UNIFORME -->
+    <section class="cartao bloco-pergunta editor-bloco" id="secao-q5">
+      <div class="editor-badge-topo">Pergunta 5 · Vestimentas / Uniformes &amp; Grade de Tamanhos</div>
+      <div class="linha">
+        <label class="rotulo-editor">
+          <span>Título da pergunta 5 <span class="obrigatorio">*</span></span>
+          <input type="text" name="pergunta_5_titulo" value="{{ cfg_form.pergunta_5_titulo }}" required>
+        </label>
+        <label class="rotulo-editor">
+          <span>Subtítulo / instrução (opcional)</span>
+          <input type="text" name="pergunta_5_subtitulo" value="{{ cfg_form.pergunta_5_subtitulo }}">
+        </label>
+      </div>
+
+      <div class="lista-epis-editor">
+        {% for v in vestimentas %}
+        <div class="card-epi-editor {{ 'inativo-forms' if not v.exibir_no_forms }}" id="opcao-epi-{{ v.id }}">
+          <div class="epi-editor-preview">
+            {% if v.imagem_url %}
+            <img src="{{ v.imagem_url }}" alt="{{ v.nome }}" class="miniatura-epi-form" id="preview-epi-{{ v.id }}">
+            {% else %}
+            <div class="sem-imagem-placeholder" id="placeholder-epi-{{ v.id }}">📷 Sem foto</div>
+            <img src="" alt="{{ v.nome }}" class="miniatura-epi-form" id="preview-epi-{{ v.id }}" hidden>
+            {% endif %}
+          </div>
+
+          <div class="epi-editor-campos">
+            <div class="linha-nome-visivel">
+              <label class="check">
+                <input type="checkbox" name="epi_visivel" value="{{ v.id }}" {{ 'checked' if v.exibir_no_forms }}>
+                <span>Exibir no forms</span>
+              </label>
+              <input type="text" name="nome_epi_{{ v.id }}" value="{{ v.nome }}" class="input-nome-epi-editor" required>
+            </div>
+
+            <div class="linha-upload-epi">
+              <label class="btn pequeno btn-arquivo-img">
+                📷 Enviar foto
+                <input type="file" name="imagem_epi_{{ v.id }}" accept="image/*" hidden
+                       onchange="previsualizarImagemEpi(this, {{ v.id }})">
+              </label>
+              <input type="text" name="imagem_url_epi_{{ v.id }}"
+                     placeholder="Ou cole URL da imagem (https://...)"
+                     value="{{ v.imagem_url if v.imagem_url and not v.imagem_url.startswith('data:') else '' }}"
+                     class="input-url-img-curto">
+              <button type="button" class="btn pequeno" onclick="aplicarIlustracaoItem({{ v.id }})">✨ Ilustrar</button>
+              {% if v.imagem_url %}
+              <label class="check remover-img-check">
+                <input type="checkbox" name="remover_img_epi_{{ v.id }}" value="1"> Remover foto
+              </label>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <p class="nota">Nenhuma vestimenta cadastrada.</p>
+        {% endfor %}
+      </div>
+
+      <!-- Grade de tamanhos de uniforme -->
+      <div class="subsecao-editor" style="margin-top:.5rem">
+        <strong style="font-size:.9rem">Tamanhos de Uniforme (Camiseta e Calça):</strong>
+        <div id="lista-tamanhos-editor" class="grade-tamanhos-editor">
+          {% for t in cfg_form.tamanhos_uniforme %}
+          <div class="item-opcao-editavel curto">
+            <input type="text" name="tamanhos_uniforme" value="{{ t }}" placeholder="Tam.">
+            <button type="button" class="btn pequeno perigo-suave" title="Remover tamanho" onclick="removerItemOpcao(this)">✕</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="linha-adicionar-opcao">
+          <input type="text" id="input-novo-tamanho" name="novo_tamanho" placeholder="Novo tamanho (ex.: P, PP, XG...)" style="max-width:240px">
+          <button type="button" class="btn pequeno" onclick="adicionarOpcaoNaLista('lista-tamanhos-editor', 'tamanhos_uniforme', 'input-novo-tamanho', '')">+ Adicionar tamanho</button>
+        </div>
+      </div>
+
+      <details class="subsecao-editor" style="margin-top:.4rem">
+        <summary style="cursor:pointer;font-weight:600;font-size:.9rem">⚙️ Configurar textos do bloco de Tamanho de Uniforme</summary>
+        <div class="linha" style="margin-top:.6rem">
+          <label class="rotulo-editor">
+            <span>Título da matriz de tamanho de uniforme</span>
+            <input type="text" name="pergunta_uniforme_titulo" value="{{ cfg_form.pergunta_uniforme_titulo }}">
+          </label>
+          <label class="rotulo-editor">
+            <span>Subtítulo / aviso sobre unidades</span>
+            <input type="text" name="pergunta_uniforme_subtitulo" value="{{ cfg_form.pergunta_uniforme_subtitulo }}">
+          </label>
+        </div>
+      </details>
+    </section>
+
+    <!-- PERGUNTAS EXTRAS PERSONALIZADAS (ESTILO MICROSOFT FORMS) -->
+    <section class="cartao bloco-pergunta editor-bloco" id="secao-perguntas-extras">
+      <div class="editor-badge-topo">Perguntas Adicionais Personalizadas (Estilo Microsoft Forms)</div>
+      <p class="nota" style="margin:0">
+        Precisa perguntar mais alguma coisa no formulário (ex.: <em>“Turno de trabalho”</em>, <em>“Frente de serviço”</em> ou <em>“Precisa de entrega urgente?”</em>)? Adicione perguntas extras abaixo!
+      </p>
+
+      <div id="lista-perguntas-extras" style="display:flex;flex-direction:column;gap:.75rem">
+        {% for p_ex in cfg_form.perguntas_extras %}
+        <div class="subsecao-editor item-pergunta-extra">
+          <input type="hidden" name="extra_id" value="{{ p_ex.id }}">
+          <div class="linha">
+            <label class="rotulo-editor" style="flex:2">
+              <span>Título da pergunta extra</span>
+              <input type="text" name="extra_titulo" value="{{ p_ex.titulo }}" placeholder="Ex.: Informe a frente de obra / líder imediato">
+            </label>
+            <label class="rotulo-editor" style="flex:1">
+              <span>Tipo de resposta</span>
+              <select name="extra_tipo">
+                <option value="texto" {{ 'selected' if p_ex.tipo == 'texto' }}>Texto aberto</option>
+                <option value="unica" {{ 'selected' if p_ex.tipo == 'unica' }}>Escolha única (bolinhas)</option>
+                <option value="multipla" {{ 'selected' if p_ex.tipo == 'multipla' }}>Múltipla escolha (caixas)</option>
+              </select>
+            </label>
+          </div>
+          <label class="rotulo-editor" style="margin-top:.4rem">
+            <span>Opções (para escolha única ou múltipla — separe por ponto e vírgula <code>;</code> ou uma por linha)</span>
+            <input type="text" name="extra_opcoes" value="{{ p_ex.opcoes|join('; ') }}" placeholder="Ex.: Opção A; Opção B; Opção C">
+          </label>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.45rem">
+            <label class="check">
+              <input type="checkbox" name="extra_obrigatoria_idx" value="{{ loop.index0 }}" {{ 'checked' if p_ex.obrigatoria }}>
+              Pergunta obrigatória
+            </label>
+            <button type="button" class="btn pequeno perigo-suave" onclick="this.closest('.item-pergunta-extra').remove()">🗑️ Excluir pergunta</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <details class="subsecao-editor" style="margin-top:.4rem">
+        <summary class="btn pequeno" style="display:inline-flex">➕ Adicionar nova pergunta ao formulário</summary>
+        <div style="margin-top:.75rem;display:flex;flex-direction:column;gap:.55rem">
+          <div class="linha">
+            <label class="rotulo-editor" style="flex:2">
+              <span>Título da nova pergunta</span>
+              <input type="text" name="novo_extra_titulo" placeholder="Ex.: Qual o encarregado responsável na obra?">
+            </label>
+            <label class="rotulo-editor" style="flex:1">
+              <span>Tipo de resposta</span>
+              <select name="novo_extra_tipo">
+                <option value="texto">Texto aberto</option>
+                <option value="unica">Escolha única (bolinhas)</option>
+                <option value="multipla">Múltipla escolha (caixas)</option>
+              </select>
+            </label>
+          </div>
+          <label class="rotulo-editor">
+            <span>Opções (se for de escolha — separe por <code>;</code>)</span>
+            <input type="text" name="novo_extra_opcoes" placeholder="Ex.: Manhã; Tarde; Noite">
+          </label>
+          <label class="check">
+            <input type="checkbox" name="novo_extra_obrigatoria" value="1">
+            Tornar esta pergunta obrigatória
+          </label>
+        </div>
+      </details>
+    </section>
+
+    <!-- 6. OBSERVAÇÕES -->
+    <section class="cartao bloco-pergunta editor-bloco">
+      <div class="editor-badge-topo">Pergunta 6 · Campo de Observações</div>
+      <label class="rotulo-editor">
+        <span>Título da pergunta de observações <span class="obrigatorio">*</span></span>
+        <input type="text" name="pergunta_6_titulo" value="{{ cfg_form.pergunta_6_titulo }}" required>
+      </label>
+    </section>
+
+    <div class="acoes" style="margin-bottom:1.8rem;justify-content:space-between">
+      <div class="acoes">
+        <button type="submit" class="btn primario grande">💾 Salvar todas as alterações do formulário</button>
+        <a class="btn grande" href="{{ url_for('pedidos.solicitar') }}">👁️ Ver Formulário</a>
+      </div>
+      <button type="submit" form="form-restaurar-padrao" class="btn pequeno">↺ Restaurar textos e listas padrão</button>
+    </div>
+  </form>
+
+  <!-- BLOCO RÁPIDO PARA CADASTRAR NOVO EPI OU VESTIMENTA DIRETO NO FORMULÁRIO -->
+  <section class="cartao editor-bloco" id="bloco-novo-item-forms" style="margin-bottom:2.5rem">
+    <div class="editor-badge-topo">➕ Cadastrar Novo Equipamento (EPI) ou Vestimenta Direto no Formulário</div>
+    <p class="nota" style="margin-top:0">
+      Precisa incluir um equipamento ou uniforme novo nas perguntas 4 ou 5? Cadastre abaixo já com a foto e ele entrará automaticamente no formulário e no catálogo de estoque!
+    </p>
+    <form method="post" action="{{ url_for('pedidos.form_adicionar_epi') }}" enctype="multipart/form-data" class="formulario">
+      {{ csrf() }}
+      <div class="linha">
+        <label style="flex:2">
+          <span class="rotulo-campo">Nome da nova opção <span class="obrigatorio">*</span></span>
+          <input type="text" name="nome" required placeholder="Ex.: Protetor facial incolor, Cinto paraquedista, Japona térmica...">
+        </label>
+        <label style="flex:1">
+          <span>Em qual pergunta exibir?</span>
+          <select name="tipo_secao">
+            <option value="epi">4. Equipamento de Proteção Individual (EPI)</option>
+            <option value="vestimenta">5. Vestimenta / Uniforme</option>
+          </select>
+        </label>
+        <label style="max-width:120px">
+          <span>Unidade</span>
+          <input type="text" name="unidade" value="un" placeholder="un, par">
+        </label>
+      </div>
+      <div class="linha">
+        <label>
+          <span>Foto / Imagem do equipamento (PNG, JPG, WEBP ou SVG)</span>
+          <input type="file" name="imagem" accept="image/*">
+        </label>
+        <label>
+          <span>Ou URL da imagem (opcional)</span>
+          <input type="text" name="imagem_url" placeholder="https://...">
+        </label>
+      </div>
+      <label class="check">
+        <input type="checkbox" name="gerar_ilustracao" value="1" checked>
+        Se nenhuma foto for enviada, gerar ilustração visual automática para este equipamento
+      </label>
+      <div class="acoes">
+        <button type="submit" class="btn primario">+ Adicionar opção ao formulário</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<!-- Formulário auxiliar para ilustrar um único EPI rapidamente -->
+<form id="form-ilustrar-unico" method="post" action="" hidden>
+  {{ csrf() }}
+  <input type="hidden" name="acao" value="ilustrar">
+</form>
+
+<script>
+function removerItemOpcao(btn) {
+  const container = btn.parentElement.parentElement;
+  if (container && container.querySelectorAll(".item-opcao-editavel").length <= 1) {
+    alert("Mantenha ao menos uma opção na lista.");
+    return;
+  }
+  btn.parentElement.remove();
+}
+
+function adicionarOpcaoNaLista(idLista, nomeInput, idCampoNovo, iconeTexto) {
+  const lista = document.getElementById(idLista);
+  const campoNovo = document.getElementById(idCampoNovo);
+  if (!lista || !campoNovo) return;
+  const valor = campoNovo.value.trim();
+  if (!valor) {
+    campoNovo.focus();
+    return;
+  }
+  const div = document.createElement("div");
+  div.className = "item-opcao-editavel" + (nomeInput === "tamanhos_uniforme" ? " curto" : "");
+  if (iconeTexto) {
+    const span = document.createElement("span");
+    span.className = "icone-radio-falso";
+    span.textContent = iconeTexto;
+    div.appendChild(span);
+  }
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.name = nomeInput;
+  inp.value = valor;
+  div.appendChild(inp);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn pequeno perigo-suave";
+  btn.textContent = "✕";
+  btn.onclick = function() { removerItemOpcao(btn); };
+  div.appendChild(btn);
+
+  lista.appendChild(div);
+  campoNovo.value = "";
+  campoNovo.focus();
+}
+
+function previsualizarImagemEpi(inputFile, epiId) {
+  const arq = inputFile.files && inputFile.files[0];
+  if (!arq) return;
+  const img = document.getElementById("preview-epi-" + epiId);
+  const ph = document.getElementById("placeholder-epi-" + epiId);
+  const leitor = new FileReader();
+  leitor.onload = function(ev) {
+    if (img) {
+      img.src = ev.target.result;
+      img.hidden = false;
+    }
+    if (ph) ph.hidden = true;
+  };
+  leitor.readAsDataURL(arq);
+}
+
+function aplicarIlustracaoItem(epiId) {
+  const f = document.getElementById("form-ilustrar-unico");
+  if (!f) return;
+  f.action = "/solicitar/personalizar/epi/" + epiId + "/imagem";
+  f.submit();
+}
+</script>
+{% endblock %}

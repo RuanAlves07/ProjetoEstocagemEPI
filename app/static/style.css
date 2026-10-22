@@ -222,6 +222,64 @@ details.cancelar-pedido { margin-bottom: 2rem; } details.cancelar-pedido summary
 textarea { font: inherit; padding: .5rem .65rem; border: 1px solid #c3cad6; border-radius: 6px; background: #fff; width: 100%; resize: vertical; }
 textarea:focus { outline: 2px solid #9db9f0; border-color: var(--cor-primaria); }
 
+/* Opções de EPI com imagem no formulário público (/solicitar) */
+.grade-opcoes-epi-imagem { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .6rem; }
+.opcao-item.opcao-com-imagem { padding: .55rem .7rem; gap: .7rem; min-height: 4.8rem; }
+.moldura-img-epi { position: relative; flex: 0 0 auto; width: 64px; height: 64px; border-radius: 8px; border: 1px solid #d5deec; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.img-opcao-epi { width: 100%; height: 100%; object-fit: contain; display: block; }
+.btn-zoom-img { position: absolute; right: 2px; bottom: 2px; background: #14213dcc; color: #fff; border: none; border-radius: 5px; font-size: .72rem; padding: .1rem .25rem; cursor: pointer; line-height: 1; }
+.btn-zoom-img:hover { background: var(--cor-primaria); }
+.texto-opcao-epi { display: flex; flex-direction: column; gap: .15rem; line-height: 1.25; }
+.texto-opcao-epi strong { font-weight: 600; font-size: .95rem; }
+
+/* Modal de zoom da imagem do EPI */
+.modal-zoom-epi { position: fixed; inset: 0; background: #0b1324b8; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.modal-zoom-epi[hidden] { display: none !important; }
+.modal-zoom-conteudo { background: #fff; border-radius: 12px; padding: 1.1rem 1.25rem; max-width: 480px; width: 100%; box-shadow: 0 12px 36px #0005; }
+
+/* Construtor / Personalizador do Formulário (/solicitar/personalizar) */
+.editor-forms-container { max-width: 880px; }
+.editor-bloco { border-left: 4px solid var(--cor-primaria); }
+.editor-badge-topo { font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--cor-primaria); margin-bottom: .15rem; }
+.rotulo-editor { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .88rem; color: #1e293b; width: 100%; }
+.input-titulo-forms { font-size: 1.15rem; font-weight: 700; }
+.subsecao-editor { background: #f8fafd; border: 1px solid #dce4f2; border-radius: 8px; padding: .8rem .95rem; display: flex; flex-direction: column; gap: .55rem; }
+.grade-opcoes-editor { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .45rem; }
+.lista-opcoes-editor { display: flex; flex-direction: column; gap: .4rem; }
+.grade-tamanhos-editor { display: flex; flex-wrap: wrap; gap: .45rem; }
+.item-opcao-editavel { display: flex; align-items: center; gap: .35rem; background: #fff; border: 1px solid #d5deec; border-radius: 6px; padding: .25rem .4rem; }
+.item-opcao-editavel.curto { width: 115px; }
+.item-opcao-editavel input { border: none; padding: .25rem .35rem; font-size: .9rem; width: 100%; background: transparent; }
+.item-opcao-editavel input:focus { outline: 1px solid var(--cor-primaria); border-radius: 4px; background: #fff; }
+.icone-radio-falso { color: var(--suave); font-size: .9rem; user-select: none; }
+.linha-adicionar-opcao { display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; margin-top: .2rem; }
+.linha-adicionar-opcao input { flex: 1; min-width: 200px; }
+.perigo-suave { color: var(--vermelho); border-color: #f3c2c4; background: #fff5f5; padding: .15rem .45rem; }
+.perigo-suave:hover { background: var(--vermelho); color: #fff; border-color: var(--vermelho); }
+
+.lista-epis-editor { display: flex; flex-direction: column; gap: .55rem; }
+.card-epi-editor { display: flex; align-items: center; gap: .85rem; padding: .65rem .8rem; background: #fbfcfe; border: 1px solid #dce4f2; border-radius: 8px; }
+.card-epi-editor.inativo-forms { opacity: .62; background: #f3f5f8; }
+.epi-editor-preview { flex: 0 0 auto; width: 68px; height: 68px; display: flex; align-items: center; justify-content: center; }
+.miniatura-epi-form { width: 68px; height: 68px; object-fit: contain; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; padding: 2px; }
+.sem-imagem-placeholder { width: 68px; height: 68px; border-radius: 8px; border: 1px dashed #b4c2d8; background: #f1f5f9; color: var(--suave); font-size: .74rem; font-weight: 600; display: flex; align-items: center; justify-content: center; text-align: center; padding: .2rem; }
+.epi-editor-campos { flex: 1; display: flex; flex-direction: column; gap: .45rem; min-width: 0; }
+.linha-nome-visivel { display: flex; align-items: center; gap: .65rem; flex-wrap: wrap; }
+.input-nome-epi-editor { flex: 1; min-width: 180px; font-weight: 600; }
+.linha-upload-epi { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+.input-url-img-curto { flex: 1; min-width: 170px; font-size: .84rem; padding: .3rem .5rem; }
+.btn-arquivo-img { cursor: pointer; margin: 0; }
+.remover-img-check { font-size: .82rem; color: var(--vermelho); margin: 0; }
+
+/* Sinalização "Analisar" e "Finalizar com ressalva" na separação de pedidos */
+.badge-analisar { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; font-weight: 700; }
+.alerta-analise { background: #fffbeb; border-color: #f59e0b; border-left: 4px solid #d97706; color: #78350f; }
+tr.linha-analisar { background: #fffdf5; }
+.btn.aviso-btn { background: #fff7ed; color: #9a3412; border-color: #fb923c; font-weight: 700; }
+.btn.aviso-btn:hover:not(:disabled) { background: #ffedd5; border-color: #ea580c; }
+.painel-ressalva { margin-top: 1rem; padding: 1rem 1.15rem; background: #fffbeb; border: 1px solid #f59e0b; border-left: 4px solid #d97706; border-radius: 8px; }
+.painel-ressalva[hidden] { display: none !important; }
+
 /* ================================================================
    INTERFACE WEB MOBILE & TABLET (Responsividade Desktop + Mobile)
    ================================================================ */

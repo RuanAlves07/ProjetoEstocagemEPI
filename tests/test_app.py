@@ -358,6 +358,87 @@ class TestEstoque(Base):
         self.assertEqual(r_lista.status_code, 200)
         self.assertIn("ProtegeSul EPIs", r_lista.get_data(as_text=True))
 
+    def test_relatorio_estocagem_e_tamanhos(self):
+        bota_epi = self.criar_epi("Botina Bidensidade Bico PVC", categoria="Calçados")
+        cam_epi = self.criar_epi("Camiseta Manga Curta", categoria="Vestimenta")
+        self.mov("entrada", bota_epi, 20)
+        self.mov("entrada", cam_epi, 20)
+        # Define tamanho 41 para a botina e G para a camiseta no perfil do colaborador e registra entrega
+        self.post(
+            f"/colaboradores/{self.colab}/tamanhos",
+            {f"tam_epi_{bota_epi}": "41", f"tam_epi_{cam_epi}": "G"},
+        )
+        self.mov("saida", bota_epi, 2, colaborador_id=self.colab)
+        self.mov("saida", cam_epi, 3, colaborador_id=self.colab)
+
+        r_rel = self.c.get("/relatorios")
+        self.assertEqual(r_rel.status_code, 200)
+        html_rel = r_rel.get_data(as_text=True)
+        self.assertIn("Conferência por Produto e Tamanho", html_rel)
+        self.assertIn("Botina Bidensidade Bico PVC", html_rel)
+        self.assertIn("Nº 41", html_rel)
+        self.assertIn("Tam. G", html_rel)
+        self.assertIn("João", html_rel)
+
+        # Exportação CSV do relatório por tamanho
+        r_csv = self.c.get("/relatorios/estocagem-tamanhos.csv")
+        self.assertEqual(r_csv.status_code, 200)
+        txt_csv = r_csv.get_data(as_text=True)
+        self.assertIn("Botina Bidensidade Bico PVC", txt_csv)
+        self.assertIn(";41;", txt_csv)
+        self.assertIn("João (2x)", txt_csv)
+
+    def test_caepi_consulta_automatica_e_sincronizacao(self):
+        import io
+        # 1. Consulta direta via endpoint JSON (/api/caepi/<ca>)
+        r_api = self.c.get("/api/caepi/39840")
+        self.assertEqual(r_api.status_code, 200)
+        j = r_api.get_json()
+        self.assertTrue(j["ok"])
+        self.assertEqual(j["dados"]["ca"], "39840")
+        self.assertEqual(j["dados"]["categoria"], "Mãos")
+        self.assertEqual(j["dados"]["unidade"], "par")
+        self.assertTrue(j["dados"]["validade_ca"].startswith("20"))
+
+        # 2. Cadastra novo EPI informando SOMENTE o Nº do CA (sem preencher nome, categoria ou validade)
+        r_novo = self.post(
+            "/epis/novo",
+            {
+                "ca": "43105",
+                "nome": "",
+                "categoria": "",
+                "validade_ca": "",
+                "unidade": "un",
+                "estoque_minimo": "5",
+                "prazo_reposicao_dias": "10",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(r_novo.status_code, 200)
+        html_det = r_novo.get_data(as_text=True)
+        self.assertIn("BOTINA BIDENSIDADE", html_det)
+        self.assertIn("Calçados", html_det)
+        self.assertIn("43105", html_det)
+
+        # 3. Importa arquivo no layout oficial tgg_export_caepi.txt (pipe-delimited) atualizando a validade do CA 43105
+        conteudo_tgg = (
+            "#NRRegistroCA|DataDeValidade|Situacao|NRProcesso|CNPJ|RazaoSocial|Natureza|NomeEquipamento|DescricaoEquipamento|MarcaCA|Referencia\n"
+            "43105|31/12/2030|VÁLIDO|12345|19.758.846/0001-11|MARLUVAS EQUIPAMENTOS|Nacional|CALÇADO TIPO BOTINA|Botina de segurança em couro|MARLUVAS|10B19\n"
+        ).encode("utf-8")
+        r_sync = self.post(
+            "/epis/sincronizar-caepi",
+            {"arquivo_caepi": (io.BytesIO(conteudo_tgg), "tgg_export_caepi.txt")},
+            follow_redirects=True,
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(r_sync.status_code, 200)
+        self.assertIn("Base CAEPI importada", r_sync.get_data(as_text=True))
+
+        with self.app.app_context():
+            from app.db import get_db
+            row = get_db().execute("SELECT validade_ca FROM epis WHERE ca = '43105'").fetchone()
+            self.assertEqual(row["validade_ca"], "2030-12-31")
+
 
 if __name__ == "__main__":
     unittest.main()

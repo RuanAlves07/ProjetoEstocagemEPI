@@ -1,19 +1,246 @@
 {% extends 'base.html' %}
-{% block titulo %}Relatórios{% endblock %}
+{% from '_macros.html' import status, ca with context %}
+{% block titulo %}Relatórios e Conferência de Estocagem{% endblock %}
 {% macro barra(valor, maximo, cor='') %}<div class="barra {{ cor }}"><span style="width: {{ (valor / maximo * 100)|round(0) if maximo else 0 }}%"></span></div>{% endmacro %}
 {% block conteudo %}
 <div class="cabecalho">
-  <h1>Relatórios</h1>
-  <div class="acoes"><a class="btn" href="{{ url_for('movimentos.exportar_csv', de=de.isoformat(), ate=ate.isoformat()) }}">Exportar movimentações do período (CSV)</a></div>
+  <div>
+    <h1>Relatórios e Conferência de Estocagem</h1>
+    <p class="nota" style="margin:-.4rem 0 0">Conferência de quantidades em estoque, detalhamento de uso por tamanho/numeração (Botas, Botinas, Sapatões, Camisetas e Calças) e saídas por obra.</p>
+  </div>
+  <div class="acoes">
+    <a class="btn primario" href="{{ url_for('painel.exportar_estocagem_tamanhos_csv', de=de.isoformat(), ate=ate.isoformat(), subtipo=filtro_subtipo, epi_id=filtro_epi_id or '', tamanho=filtro_tam) }}">
+      📥 Exportar Relatório por Tamanho (CSV)
+    </a>
+    <a class="btn" href="{{ url_for('cadastros.epis_csv') }}">📥 Conferência de Saldo (CSV)</a>
+    <a class="btn" href="{{ url_for('movimentos.exportar_csv', de=de.isoformat(), ate=ate.isoformat()) }}">📥 Movimentações (CSV)</a>
+    <button type="button" class="btn" onclick="window.print()">🖨️ Imprimir</button>
+  </div>
 </div>
-<form class="filtros" method="get">
-  <label>de <input type="date" name="de" value="{{ de.isoformat() }}"></label>
-  <label>até <input type="date" name="ate" value="{{ ate.isoformat() }}"></label>
-  <button class="btn">Aplicar</button>
-  {% for nome, (d, a) in atalhos.items() %}<a class="btn link" href="{{ url_for('painel.relatorios', de=d.isoformat(), ate=a.isoformat()) }}">{{ nome }}</a>{% endfor %}
-</form>
-<p class="nota">Período: {{ de|data_br }} a {{ ate|data_br }}. Considera apenas movimentações não canceladas.</p>
 
+<form class="cartao filtros" method="get" style="align-items:flex-end;margin-bottom:1.2rem">
+  <label>De
+    <input type="date" name="de" value="{{ de.isoformat() }}">
+  </label>
+  <label>Até
+    <input type="date" name="ate" value="{{ ate.isoformat() }}">
+  </label>
+  <label>Tipo (Calçado / Uniforme)
+    <select name="subtipo">
+      <option value="">Todos os tipos</option>
+      {% for ch_sub, rot_sub in ROTULOS_SUBTIPO.items() %}
+        <option value="{{ ch_sub }}" {{ 'selected' if filtro_subtipo == ch_sub }}>{{ rot_sub }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Produto específico
+    <select name="epi_id" style="max-width:280px">
+      <option value="">Todos os produtos</option>
+      {% for ep in epis_com_tamanho %}
+        <option value="{{ ep.id }}" {{ 'selected' if filtro_epi_id == ep.id }}>{{ ep.nome }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Tamanho / Nº
+    <select name="tamanho">
+      <option value="">Todos</option>
+      {% for tm in tamanhos_disponiveis %}
+        <option value="{{ tm }}" {{ 'selected' if filtro_tam.upper() == tm.upper() }}>{{ tm }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="btn primario">Filtrar</button>
+  {% if filtro_subtipo or filtro_epi_id or filtro_tam or filtro_categoria %}
+    <a class="btn link" href="{{ url_for('painel.relatorios', de=de.isoformat(), ate=ate.isoformat()) }}">Limpar filtros</a>
+  {% endif %}
+  <div style="margin-left:auto;display:flex;gap:.35rem;flex-wrap:wrap">
+    {% for nome, (d, a) in atalhos.items() %}
+      <a class="btn pequeno" href="{{ url_for('painel.relatorios', de=d.isoformat(), ate=a.isoformat(), subtipo=filtro_subtipo, epi_id=filtro_epi_id or '', tamanho=filtro_tam) }}">{{ nome }}</a>
+    {% endfor %}
+  </div>
+</form>
+
+{# ==================== 1. GRADE CONSOLIDADA DE TAMANHOS POR TIPO ==================== #}
+{% if grades_subtipo %}
+<section class="cartao">
+  <div class="cabecalho" style="margin-bottom:.6rem">
+    <div>
+      <h2 style="margin:0">Resumo Rápido de Numeração e Tamanho (Bota, Botina, Sapatão, Camiseta e Calça)</h2>
+      <p class="nota" style="margin:.2rem 0 0">Clique em qualquer numeração/tamanho para filtrar os produtos e ver quais funcionários utilizam aquele tamanho.</p>
+    </div>
+  </div>
+  <div class="grade-cards" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-bottom:0">
+    {% for g_sub in grades_subtipo %}
+    <div style="border:1px solid var(--borda);border-radius:9px;padding:.85rem 1rem;background:#fafbfd">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.55rem">
+        <strong style="font-size:1rem;color:#14213d">{{ g_sub.rotulo }}</strong>
+        <a class="suave" style="font-size:.8rem" href="{{ url_for('painel.relatorios', de=de.isoformat(), ate=ate.isoformat(), subtipo=g_sub.chave) }}">Filtrar {{ g_sub.rotulo }} →</a>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:.45rem">
+        {% for it_t in g_sub.tamanhos %}
+        <a href="{{ url_for('painel.relatorios', de=de.isoformat(), ate=ate.isoformat(), subtipo=g_sub.chave, tamanho=it_t.tamanho) }}"
+           style="text-decoration:none;border:1px solid {{ '#1d5fd1' if filtro_tam.upper() == it_t.tamanho.upper() and (not filtro_subtipo or filtro_subtipo == g_sub.chave) else 'var(--borda)' }};background:#fff;border-radius:7px;padding:.35rem .6rem;display:flex;flex-direction:column;min-width:78px">
+          <span style="font-weight:700;font-size:.92rem;color:#14213d">Tam. {{ it_t.tamanho }}</span>
+          <small class="suave" style="font-size:.76rem">
+            {{ it_t.qtd_usaram }} usaram ({{ it_t.unid_usadas }} un.)
+          </small>
+          {% if it_t.qtd_perfil %}
+          <small style="font-size:.74rem;color:var(--verde);font-weight:600">{{ it_t.qtd_perfil }} no efetivo</small>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# ==================== 2. RELATÓRIO DETALHADO POR PRODUTO + TAMANHO ==================== #}
+<section class="cartao">
+  <div class="cabecalho" style="margin-bottom:.6rem">
+    <div>
+      <h2 style="margin:0">Conferência por Produto e Tamanho (Quantos funcionários usaram cada tamanho)</h2>
+      <p class="nota" style="margin:.2rem 0 0">
+        Cada variação de <strong>Produto + Tamanho</strong> aparece separada abaixo (pois representa um item distinto na estocagem física). Período: <strong>{{ de|data_br }} a {{ ate|data_br }}</strong>.
+      </p>
+    </div>
+  </div>
+
+  <div class="tabela-rolavel">
+    <table>
+      <thead>
+        <tr>
+          <th>Produto (EPI / Uniforme)</th>
+          <th>Tipo</th>
+          <th>Tamanho / Nº</th>
+          <th class="num">Funcionários que usaram</th>
+          <th class="num">Qtd. usada (Período)</th>
+          <th>Proporção</th>
+          <th class="num">Cadastrados no Perfil</th>
+          <th>Quais funcionários usaram</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in linhas_tamanhos %}
+        <tr>
+          <td>
+            <a href="{{ url_for('cadastros.epi_detalhe', epi_id=r.epi_id) }}"><strong>{{ r.epi_nome }}</strong></a>
+          </td>
+          <td><span class="badge">{{ r.subtipo_rotulo }}</span></td>
+          <td>
+            <span class="badge {{ 'verde' if r.tamanho != 'Não informado' else 'amarelo' }}" style="font-size:.88rem;padding:.2rem .65rem">
+              {{ 'Nº ' ~ r.tamanho if r.tamanho.isdigit() else ('Tam. ' ~ r.tamanho if r.tamanho != 'Não informado' else r.tamanho) }}
+            </span>
+          </td>
+          <td class="num">
+            <strong>{{ r.qtd_funcionarios_usaram }}</strong> <small class="suave">func.</small>
+          </td>
+          <td class="num">
+            <strong>{{ r.total_unidades }}</strong> <small class="suave">{{ r.unidade }}</small>
+            {% if r.qtd_em_pedidos %}
+              <br><small class="suave">({{ r.qtd_entregue }} entregues + {{ r.qtd_em_pedidos }} em pedido)</small>
+            {% endif %}
+          </td>
+          <td class="barra-celula" style="width:14%">
+            {{ barra(r.total_unidades, maximos.tamanhos, 'azul') }}
+          </td>
+          <td class="num">
+            {% if r.qtd_funcionarios_perfil %}
+              <span class="badge verde">{{ r.qtd_funcionarios_perfil }} no cargo/perfil</span>
+            {% else %}
+              <span class="suave">—</span>
+            {% endif %}
+          </td>
+          <td style="min-width:240px">
+            {% if r.lista_funcionarios %}
+              <details class="editar-item">
+                <summary>Ver {{ r.lista_funcionarios|length }} funcionário(s)</summary>
+                <div style="margin-top:.35rem;display:flex;flex-wrap:wrap;gap:.3rem">
+                  {% for f in r.lista_funcionarios %}
+                    {% if f.id %}
+                      <a class="badge" href="{{ url_for('cadastros.colaborador_ficha', colab_id=f.id) }}" style="text-decoration:none">
+                        {{ f.nome }} ({{ f.qtd }}x)
+                      </a>
+                    {% else %}
+                      <span class="badge">{{ f.nome }} ({{ f.qtd }}x)</span>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </details>
+            {% else %}
+              <span class="suave">Sem retiradas no período</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="vazio">Nenhum registro encontrado para o filtro selecionado.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ==================== 3. CONFERÊNCIA GERAL DE ESTOCAGEM DOS EPIS ==================== #}
+<section class="cartao">
+  <div class="cabecalho" style="margin-bottom:.6rem">
+    <div>
+      <h2 style="margin:0">Conferência Geral de Estocagem (Saldo Atual × Movimentação do Período)</h2>
+      <p class="nota" style="margin:.2rem 0 0">Visão completa de todos os EPIs e uniformes cadastrados para conferência física de prateleira e necessidade de reposição.</p>
+    </div>
+    <div class="acoes">
+      {% for cat_nome in categorias_estoque %}
+        <a class="btn pequeno {{ 'primario' if filtro_categoria.lower() == cat_nome.lower() }}"
+           href="{{ url_for('painel.relatorios', de=de.isoformat(), ate=ate.isoformat(), categoria='' if filtro_categoria.lower() == cat_nome.lower() else cat_nome) }}">
+          {{ cat_nome }}
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="tabela-rolavel">
+    <table>
+      <thead>
+        <tr>
+          <th>EPI / Produto</th>
+          <th>Categoria</th>
+          <th>CA</th>
+          <th class="num">Saldo Atual</th>
+          <th class="num">Estoque Mín.</th>
+          <th class="num">Entradas (Período)</th>
+          <th class="num">Entregas (Período)</th>
+          <th class="num">Baixas</th>
+          <th class="num">Func. Atendidos</th>
+          <th>Situação</th>
+          <th class="num">Sugestão Compra</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for e in conferencia_estoque %}
+        <tr>
+          <td><a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}"><strong>{{ e.nome }}</strong></a></td>
+          <td>{{ e.categoria or '—' }}</td>
+          <td>{{ ca(e) }}</td>
+          <td class="num"><strong>{{ e.saldo }}</strong> <small class="suave">{{ e.unidade }}</small></td>
+          <td class="num">{{ e.estoque_minimo }}</td>
+          <td class="num">{{ e.entradas_periodo }}</td>
+          <td class="num"><strong>{{ e.entregas_periodo }}</strong></td>
+          <td class="num">{{ e.baixas_periodo }}</td>
+          <td class="num">{{ e.funcionarios_periodo }}</td>
+          <td>{{ status(e) }}</td>
+          <td class="num">
+            {% if e.sugerido > 0 %}<strong>{{ e.sugerido }} {{ e.unidade }}</strong>{% else %}<span class="suave">—</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="11" class="vazio">Nenhum equipamento encontrado.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ==================== 4. RANKING DE SAÍDAS, LOCAIS, SETORES E EVOLUÇÃO MENSAL ==================== #}
 <section class="cartao">
   <h2>Itens com mais saída</h2>
   <div class="tabela-rolavel"><table>
@@ -40,7 +267,6 @@
     <tr><td>{{ r.nome }}</td><td class="barra-celula">{{ barra(r.total, maximos.local, 'azul') }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.entregas }}</td></tr>
   {% else %}<tr><td colspan="4" class="vazio">Sem entregas no período.</td></tr>{% endfor %}
   </tbody></table>
-  <p class="nota">O local vem do campo “Local” dos pedidos do Forms. Entregas lançadas direto em Movimentar não têm local.</p>
 </section>
 
 <div class="grade-2">

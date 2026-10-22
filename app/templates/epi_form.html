@@ -4,22 +4,64 @@
 {% block conteudo %}
 <div class="cartao estreito-card">
   <h1>{{ 'Novo EPI' if novo else 'Editar EPI' }}</h1>
-  <form method="post" class="formulario">
+  <form method="post" enctype="multipart/form-data" class="formulario" id="form-cadastro-epi">
     {{ csrf() }}
-    <label>Nome (inclua tamanho/modelo se houver) <input name="nome" required autofocus value="{{ epi.nome or '' }}" placeholder="Ex.: Luva nitrílica G"></label>
+    <input type="hidden" name="presenca_forms" value="1">
+
+    <!-- Bloco de busca automática pelo Nº do CA (API_BaseCAEPI) -->
+    <div style="padding:.9rem 1rem;background:#f0f6ff;border:1px solid #bfd6f6;border-left:4px solid var(--cor-primaria);border-radius:8px;display:flex;flex-direction:column;gap:.55rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
+        <strong style="color:var(--cor-primaria-esc);font-size:.95rem">🔎 Preenchimento Automático pelo Nº do CA (Base CAEPI)</strong>
+        <span class="badge">Atualização diária às 20:00</span>
+      </div>
+      <p class="nota" style="margin:0">
+        Digite apenas o <strong>Nº do CA</strong> para puxar automaticamente a <strong>Validade do CA</strong>, o <strong>Nome do Equipamento</strong>, a <strong>Categoria</strong> e a <strong>Unidade</strong>. (Para vestimentas isentas de CA, deixe o CA em branco e preencha o nome abaixo).
+      </p>
+      <div class="linha" style="align-items:flex-end">
+        <label style="flex:1">
+          <span>Nº do CA</span>
+          <div style="display:flex;gap:.45rem">
+            <input name="ca" id="campo-ca-epi" value="{{ epi.ca or '' }}" placeholder="Ex.: 39840, 43105, 11269, 31469..." autofocus>
+            <button type="button" class="btn primario" id="btn-buscar-ca" onclick="buscarDadosCaEpi(true)" style="white-space:nowrap">🔍 Puxar pelo CA</button>
+          </div>
+        </label>
+        <label style="max-width:210px">
+          <span>Validade do CA (automática)</span>
+          <input name="validade_ca" id="campo-validade-ca" type="date" value="{{ epi.validade_ca or '' }}">
+        </label>
+      </div>
+      <div id="aviso-caepi" class="aviso" style="margin:0;padding:.55rem .8rem;font-size:.86rem" hidden></div>
+    </div>
+
+    <label>
+      <span class="rotulo-campo">Nome do EPI / Vestimenta (inclua tamanho/modelo se houver)</span>
+      <input name="nome" id="campo-nome-epi" value="{{ epi.nome or '' }}" placeholder="Preenchido automaticamente pelo CA ou digite manualmente">
+    </label>
     <div class="linha">
-      <label>Categoria <input name="categoria" value="{{ epi.categoria or '' }}" placeholder="Ex.: Mãos, Cabeça, Pés"></label>
-      <label>Unidade <input name="unidade" value="{{ epi.unidade or 'un' }}" placeholder="un, par, cx"></label>
+      <label>Categoria <input name="categoria" id="campo-categoria-epi" value="{{ epi.categoria or '' }}" placeholder="Ex.: Mãos, Calçados, Olhos e Face, Vestimenta"></label>
+      <label>Unidade <input name="unidade" id="campo-unidade-epi" value="{{ epi.unidade or 'un' }}" placeholder="un, par, cx"></label>
     </div>
     <div class="linha">
-      <label>Nº do CA <input name="ca" value="{{ epi.ca or '' }}"></label>
-      <label>Validade do CA <input name="validade_ca" type="date" value="{{ epi.validade_ca or '' }}"></label>
+      <label><span class="rotulo-campo">Estoque mínimo <span class="obrigatorio">*</span></span><input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
+      <label><span class="rotulo-campo">Prazo de reposição (dias) <span class="obrigatorio">*</span></span><input name="prazo_reposicao_dias" type="number" min="0" required value="{{ epi.prazo_reposicao_dias }}"></label>
     </div>
-    <div class="linha">
-      <label>Estoque mínimo <input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
-      <label>Prazo de reposição (dias) <input name="prazo_reposicao_dias" type="number" min="0" required value="{{ epi.prazo_reposicao_dias }}"></label>
+    <div class="bloco-upload-epi" style="padding:.85rem;background:var(--fundo);border:1px solid var(--borda);border-radius:8px;display:flex;flex-direction:column;gap:.55rem">
+      <strong style="font-size:.92rem">🖼️ Imagem de identificação para o Formulário (opcional)</strong>
+      {% if epi.imagem_url %}
+      <div style="display:flex;align-items:center;gap:.85rem;flex-wrap:wrap">
+        <img src="{{ epi.imagem_url }}" alt="{{ epi.nome }}" class="miniatura-epi-form">
+        <label class="check" style="margin:0"><input type="checkbox" name="remover_imagem" value="1"> Remover imagem atual</label>
+      </div>
+      {% endif %}
+      <label style="font-weight:500;font-size:.88rem">Enviar arquivo de foto (PNG, JPG, WEBP ou SVG — máx. 2 MB)
+        <input type="file" name="imagem" accept="image/*">
+      </label>
+      <label style="font-weight:500;font-size:.88rem">Ou informe uma URL de imagem
+        <input type="text" name="imagem_url" value="{{ epi.imagem_url if epi.imagem_url and not epi.imagem_url.startswith('data:') else '' }}" placeholder="https://...">
+      </label>
     </div>
     <p class="nota">O <strong>estoque mínimo</strong> dispara o alerta de pedido. O <strong>prazo de reposição</strong> é quanto o fornecedor leva para entregar: o item também é sinalizado quando o estoque duraria menos que isso.</p>
+    <label class="check"><input type="checkbox" name="exibir_no_forms" value="1" {{ 'checked' if epi.exibir_no_forms is not defined or epi.exibir_no_forms }}> Exibir este item como opção no Formulário de Solicitação (/solicitar)</label>
     {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if epi.ativo }}> EPI ativo (inativos não aparecem para movimentar)</label>{% endif %}
     <div class="acoes">
       <button class="btn primario">Salvar</button>
@@ -27,4 +69,83 @@
     </div>
   </form>
 </div>
+
+<script>
+async function buscarDadosCaEpi(forcarSobrescritaNome) {
+  const inpCa = document.getElementById("campo-ca-epi");
+  const inpVal = document.getElementById("campo-validade-ca");
+  const inpNome = document.getElementById("campo-nome-epi");
+  const inpCat = document.getElementById("campo-categoria-epi");
+  const inpUn = document.getElementById("campo-unidade-epi");
+  const aviso = document.getElementById("aviso-caepi");
+  const btn = document.getElementById("btn-buscar-ca");
+  if (!inpCa) return;
+
+  const ca = inpCa.value.replace(/\D+/g, "");
+  if (!ca) {
+    if (forcarSobrescritaNome && aviso) {
+      aviso.className = "aviso erro";
+      aviso.textContent = "Digite o número do CA para realizar a consulta.";
+      aviso.hidden = false;
+    }
+    return;
+  }
+
+  const txtOriginal = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Consultando..."; }
+  try {
+    const resp = await fetch("/api/caepi/" + encodeURIComponent(ca), {
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" }
+    });
+    const json = await resp.json();
+    if (!resp.ok || !json.ok || !json.dados) {
+      if (aviso) {
+        aviso.className = "aviso erro";
+        aviso.textContent = (json && json.erro) ? json.erro : "CA não localizado na Base CAEPI.";
+        aviso.hidden = false;
+      }
+      return;
+    }
+
+    const d = json.dados;
+    if (inpVal && d.validade_ca) inpVal.value = d.validade_ca;
+    if (inpCat && d.categoria && (!inpCat.value.trim() || forcarSobrescritaNome)) inpCat.value = d.categoria;
+    if (inpUn && d.unidade && (!inpUn.value.trim() || inpUn.value.trim() === "un" || forcarSobrescritaNome)) inpUn.value = d.unidade;
+    const nomeSug = d.nome_sugerido || d.nome_equipamento || "";
+    if (inpNome && nomeSug && (!inpNome.value.trim() || forcarSobrescritaNome)) {
+      inpNome.value = nomeSug;
+    }
+
+    if (aviso) {
+      const sit = d.situacao || "VÁLIDO";
+      const fab = d.fabricante ? ` · Fabricante: <strong>${d.fabricante}</strong>` : "";
+      const desc = d.descricao ? `<br><small>${d.descricao}</small>` : "";
+      aviso.className = sit.includes("VENCID") || sit.includes("SUSPENS") || sit.includes("CANCEL") ? "aviso erro" : "aviso ok";
+      aviso.innerHTML = `✅ <strong>CA ${d.ca} localizado (${sit})</strong> — Validade: <strong>${d.validade_ca || '—'}</strong> · Categoria: <strong>${d.categoria || 'EPI'}</strong>${fab}${desc}`;
+      aviso.hidden = false;
+    }
+  } catch (e) {
+    if (aviso && forcarSobrescritaNome) {
+      aviso.className = "aviso erro";
+      aviso.textContent = "Não foi possível consultar a Base CAEPI no momento.";
+      aviso.hidden = false;
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
+  }
+}
+
+(() => {
+  const inpCa = document.getElementById("campo-ca-epi");
+  if (!inpCa) return;
+  inpCa.addEventListener("change", () => buscarDadosCaEpi(false));
+  inpCa.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      buscarDadosCaEpi(true);
+    }
+  });
+})();
+</script>
 {% endblock %}

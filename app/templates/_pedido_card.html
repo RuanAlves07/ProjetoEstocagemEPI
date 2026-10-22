@@ -3,19 +3,26 @@
     <a class="pedido-titulo" href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }} · {{ p.solicitante }}</a>
     <span class="suave">{{ p.recebido_em|tempo_atras }}</span>
   </header>
-  <div class="pedido-meta">📍 <strong>{{ p.local_destino or 'Local não informado' }}</strong>{% if p.motivo %} · {{ p.motivo }}{% endif %}</div>
+  <div class="pedido-meta">
+    📍 <strong>{{ p.local_destino or 'Local não informado' }}</strong>{% if p.motivo %} · {{ p.motivo }}{% endif %}
+    {% if p.colaborador_funcao %} · 👷 {{ p.colaborador_funcao }}{% endif %}
+  </div>
   <ul class="pedido-itens">
     {% for i in p.itens if not i.ignorado %}
       <li>
-        {% if p.status in ('pronto', 'retirado') or i.separado %}<span class="ok-mini">✓</span>{% endif %}
+        {% if i.separado or (p.status in ('pronto', 'retirado') and not p.ressalva_observacao) %}<span class="ok-mini">✓</span>{% endif %}
         {{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}
         {% if i.epi_nome and i.tamanho %}<span class="badge">Tam. {{ i.tamanho }}</span>{% endif %}
         {% if not i.epi_id %}<span class="badge amarelo">identificar</span>{% endif %}
+        {% if i.fora_do_cargo and p.status in ('novo', 'pendente', 'em_separacao') %}<span class="badge badge-analisar" title="Equipamento fora do kit padrão do cargo">🔍 analisar (fora do cargo)</span>{% endif %}
+        {% if i.tamanho_divergente and p.status in ('novo', 'pendente', 'em_separacao') %}<span class="badge badge-analisar" title="Tamanho pedido difere da ficha do colaborador">🔍 analisar (tam. ficha: {{ i.tamanho_ficha }})</span>{% endif %}
         {% if i.falta and p.status in ('novo', 'pendente', 'em_separacao') %}<span class="badge vermelho">sem saldo</span>{% endif %}
+        {% if p.status in ('pronto', 'retirado') and not i.separado and p.ressalva_observacao %}<span class="badge amarelo">⚠️ ressalva</span>{% endif %}
       </li>
     {% else %}<li class="suave">Nenhum item identificado no formulário</li>{% endfor %}
   </ul>
   {% if p.observacao %}<p class="pedido-obs">💬 {{ p.observacao }}</p>{% endif %}
+  {% if p.ressalva_observacao %}<p class="pedido-obs" style="border-left-color:#d97706;background:#fffbeb;color:#92400e">⚠️ <strong>Ressalva:</strong> {{ p.ressalva_observacao }}</p>{% endif %}
   {% if p.status == 'em_separacao' %}<div class="progresso-mini">{{ p.separados }}/{{ p.total_itens }} separados</div>{% endif %}
   {% if p.status == 'retirado' %}<p class="nota">Retirado por <strong>{{ p.retirado_por_nome }}</strong> em {{ p.retirado_em|hora_br }}</p>{% endif %}
   <footer class="acoes">

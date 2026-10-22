@@ -135,13 +135,15 @@ def _permissao_exigida_rota(endpoint, metodo):
         return "ver_relatorios"
     if endpoint == "pedidos.integracao":
         return "__admin__"
+    if endpoint == "pedidos.personalizar_formulario" or endpoint.startswith("pedidos.form_"):
+        return ("gerenciar_pedidos", "editar_epis")
     if endpoint in ("pedidos.lista", "pedidos.detalhe", "pedidos.exportar_csv", "pedidos.novos"):
         return "ver_pedidos"
     if endpoint.startswith("pedidos."):
         return "gerenciar_pedidos"
-    if endpoint in ("cadastros.epis_lista", "cadastros.epi_detalhe", "cadastros.epis_csv"):
+    if endpoint in ("cadastros.epis_lista", "cadastros.epi_detalhe", "cadastros.epis_csv", "cadastros.api_caepi"):
         return "ver_epis"
-    if endpoint in ("cadastros.epi_novo", "cadastros.epi_editar"):
+    if endpoint in ("cadastros.epi_novo", "cadastros.epi_editar", "cadastros.epis_sincronizar_caepi"):
         return "editar_epis"
     if endpoint in ("cadastros.fornecedores_lista", "cadastros.fornecedor_detalhe"):
         return "ver_fornecedores"
@@ -389,6 +391,7 @@ def contexto():
         "permissoes_usuario": perms,
         "tem_perm": lambda chave: chave in perms,
         "pode_editar": pode_editar_ctx,
+        "pode_personalizar_forms": ("gerenciar_pedidos" in perms) or ("editar_epis" in perms) or (perfil == "admin"),
         "pode_movimentar": "registrar_movimentos" in perms,
         "pode_cancelar": "cancelar_estornar" in perms,
         "eh_admin": perfil == "admin",

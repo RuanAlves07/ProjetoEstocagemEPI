@@ -46,17 +46,31 @@ document.addEventListener('submit', function (ev) {
   if (campo) campo.value = location.pathname + location.search;
 });
 
-// Checklist de separação: cada checkbox grava na hora; "Finalizar" só habilita com tudo marcado
+// Checklist de separação: cada checkbox grava na hora; "Finalizar" só habilita com tudo marcado;
+// "Finalizar com ressalva" fica disponível quando nem todos os itens puderam ser marcados.
 (function () {
   const botao = document.getElementById('btn-finalizar');
+  const btnRessalva = document.getElementById('btn-abrir-ressalva');
+  const painelRessalva = document.getElementById('painel-ressalva');
+  const resumoRessalva = document.getElementById('resumo-ressalva');
   const progresso = document.getElementById('progresso');
   const caixas = function () { return Array.prototype.slice.call(document.querySelectorAll('.chk-sep')); };
 
   function atualizar() {
     const todas = caixas();
     const marcadas = todas.filter(function (c) { return c.checked; }).length;
+    const faltam = todas.length - marcadas;
     if (progresso) progresso.textContent = marcadas + '/' + todas.length + ' separados';
     if (botao) botao.disabled = !(todas.length > 0 && marcadas === todas.length && !botao.dataset.bloqueio);
+    if (btnRessalva) {
+      const bloqueadoColab = marcadas > 0 && btnRessalva.dataset.bloqueio;
+      const podeRessalva = todas.length > 0 && faltam > 0 && !bloqueadoColab;
+      btnRessalva.disabled = !podeRessalva;
+      if (!podeRessalva && painelRessalva) painelRessalva.hidden = true;
+    }
+    if (resumoRessalva) {
+      resumoRessalva.textContent = marcadas + ' separado(s) · ' + faltam + ' não atendido(s)';
+    }
   }
 
   document.addEventListener('change', function (ev) {

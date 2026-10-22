@@ -7,7 +7,7 @@ from flask import (Blueprint, Response, abort, flash, g, jsonify, redirect, rend
                    request, url_for)
 from werkzeug.security import generate_password_hash
 
-from . import estoque, pedidos
+from . import caepi, estoque, pedidos
 from .auth import (
     CATALOGO_PERMISSOES,
     SENHA_MIN,
@@ -30,13 +30,53 @@ bp = Blueprint("cadastros", __name__)
 
 @bp.get("/epis")
 def epis_lista():
+    db = get_db()
+    caepi.verificar_sincronizacao_diaria_20h(db)
     mostrar_inativos = request.args.get("inativos") == "1"
     busca = (request.args.get("q") or "").strip().lower()
-    epis = estoque.epis_com_saldo(get_db(), somente_ativos=not mostrar_inativos)
+    epis = estoque.epis_com_saldo(db, somente_ativos=not mostrar_inativos)
     if busca:
         epis = [e for e in epis if busca in e["nome"].lower() or busca in (e["categoria"] or "").lower()
                 or busca in (e["ca"] or "").lower()]
-    return render_template("epis_lista.html", epis=epis, busca=busca, mostrar_inativos=mostrar_inativos)
+    return render_template(
+        "epis_lista.html",
+        epis=epis,
+        busca=busca,
+        mostrar_inativos=mostrar_inativos,
+        cfg_caepi=caepi.obter_config_caepi(db),
+    )
+
+
+@bp.get("/api/caepi/<ca_num>")
+def api_caepi(ca_num):
+    """Consulta automática de um Certificado de Aprovação (CA) na API_BaseCAEPI / Base CAEPI."""
+    info = caepi.consultar_ca(get_db(), ca_num)
+    if not info:
+        num = caepi.normalizar_ca(ca_num) or limpar(ca_num) or ""
+        return jsonify(ok=False, erro=f"CA {num} não encontrado na Base CAEPI."), 404
+    return jsonify(ok=True, dados=info)
+
+
+@bp.post("/epis/sincronizar-caepi")
+@escrita_required
+def epis_sincronizar_caepi():
+    """Sincroniza as validades e informações dos CAs com a API_BaseCAEPI / arquivo oficial do MTE."""
+    db = get_db()
+    if "api_url" in request.form:
+        caepi.salvar_config_caepi(db, api_url=limpar(request.form.get("api_url")) or "")
+
+    arq = request.files.get("arquivo_caepi")
+    try:
+        if arq and arq.filename:
+            n_cas, n_epis = caepi.importar_arquivo_caepi(db, arq.read(), arq.filename)
+            flash(f"Base CAEPI importada ({n_cas} CAs processados) e {n_epis} EPI(s) atualizado(s) automaticamente!", "ok")
+        else:
+            tentar_ftp = request.form.get("baixar_mte") == "1"
+            total_base, n_epis = caepi.sincronizar_cas_estoque(db, tentar_ftp_mte=tentar_ftp)
+            flash(f"Sincronização CAEPI concluída ({total_base} CAs na base · {n_epis} EPI(s) tiveram validade/categoria atualizada).", "ok")
+    except estoque.ErroValidacao as e:
+        flash(str(e), "erro")
+    return redirect(url_for("cadastros.epis_lista"))
 
 
 @bp.get("/epis/exportar.csv")
@@ -61,40 +101,73 @@ def _csv_response(buffer, nome):
                     headers={"Content-Disposition": f"attachment; filename={nome}"})
 
 
-def _ler_epi(form):
+def _ler_epi(form, files=None, imagem_atual=None):
     erros = []
+    ca_digitado = limpar(form.get("ca"))
+    ca_norm = caepi.normalizar_ca(ca_digitado) or ca_digitado
+    info_ca = caepi.consultar_ca(get_db(), ca_norm) if ca_norm else None
+
+    nome_form = limpar(form.get("nome"))
+    categoria_form = limpar(form.get("categoria"))
+    unidade_form = limpar(form.get("unidade"))
+    validade_form = limpar(form.get("validade_ca"))
+
+    # Se o usuário informou apenas o Nº do CA, puxa automaticamente Nome, Categoria, Unidade e Validade da Base CAEPI
+    if info_ca:
+        if not nome_form:
+            nome_form = limpar(info_ca.get("nome_sugerido")) or limpar(info_ca.get("nome_equipamento"))
+        if not categoria_form:
+            categoria_form = limpar(info_ca.get("categoria"))
+        if not validade_form:
+            validade_form = limpar(info_ca.get("validade_ca"))
+        if (not unidade_form or unidade_form == "un") and info_ca.get("unidade"):
+            unidade_form = info_ca["unidade"]
+
     dados = {
-        "nome": limpar(form.get("nome")),
-        "categoria": limpar(form.get("categoria")),
-        "ca": limpar(form.get("ca")),
-        "unidade": limpar(form.get("unidade")) or "un",
+        "nome": nome_form,
+        "categoria": categoria_form,
+        "ca": ca_norm,
+        "unidade": unidade_form or "un",
         "estoque_minimo": to_int(form.get("estoque_minimo"), 0),
         "prazo_reposicao_dias": to_int(form.get("prazo_reposicao_dias"), 15),
+        "exibir_no_forms": 0 if form.get("exibir_no_forms") == "0" else (1 if form.get("exibir_no_forms") or "presenca_forms" not in form else 0),
     }
-    validade = limpar(form.get("validade_ca"))
-    if validade and not parse_data(validade):
+    if validade_form and not parse_data(validade_form):
         erros.append("Validade do CA inválida.")
-    dados["validade_ca"] = validade
+    dados["validade_ca"] = validade_form
     if not dados["nome"]:
-        erros.append("Informe o nome do EPI.")
+        erros.append("Informe o nome do EPI (ou digite um Nº de CA válido para preencher automaticamente).")
     if dados["estoque_minimo"] < 0 or dados["prazo_reposicao_dias"] < 0:
         erros.append("Estoque mínimo e prazo de reposição não podem ser negativos.")
+
+    arq_img = files.get("imagem") if files else None
+    url_img = form.get("imagem_url")
+    if form.get("remover_imagem") == "1":
+        dados["imagem_url"] = None
+    elif (arq_img and getattr(arq_img, "filename", "")) or (url_img is not None and url_img.strip()):
+        try:
+            dados["imagem_url"] = pedidos.processar_imagem_epi(arq_img, url_img)
+        except estoque.ErroValidacao as e:
+            erros.append(str(e))
+            dados["imagem_url"] = imagem_atual
+    else:
+        dados["imagem_url"] = imagem_atual
     return dados, erros
 
 
 @bp.route("/epis/novo", methods=["GET", "POST"])
 @escrita_required
 def epi_novo():
-    dados = {"unidade": "un", "estoque_minimo": 0, "prazo_reposicao_dias": 15}
+    dados = {"unidade": "un", "estoque_minimo": 0, "prazo_reposicao_dias": 15, "exibir_no_forms": 1, "imagem_url": None}
     if request.method == "POST":
-        dados, erros = _ler_epi(request.form)
+        dados, erros = _ler_epi(request.form, request.files)
         if not erros:
             try:
                 cur = get_db().execute(
                     """INSERT INTO epis (nome, categoria, ca, validade_ca, unidade, estoque_minimo,
-                                         prazo_reposicao_dias)
+                                         prazo_reposicao_dias, imagem_url, exibir_no_forms)
                        VALUES (:nome, :categoria, :ca, :validade_ca, :unidade, :estoque_minimo,
-                               :prazo_reposicao_dias)""", dados)
+                               :prazo_reposicao_dias, :imagem_url, :exibir_no_forms)""", dados)
                 flash("EPI cadastrado. Para lançar o saldo atual, use Movimentar → Ajuste (+).", "ok")
                 return redirect(url_for("cadastros.epi_detalhe", epi_id=cur.lastrowid))
             except sqlite3.IntegrityError:
@@ -110,7 +183,7 @@ def epi_editar(epi_id):
     db = get_db()
     epi = db.execute("SELECT * FROM epis WHERE id = ?", (epi_id,)).fetchone() or abort(404)
     if request.method == "POST":
-        dados, erros = _ler_epi(request.form)
+        dados, erros = _ler_epi(request.form, request.files, imagem_atual=epi["imagem_url"])
         dados["ativo"] = 1 if request.form.get("ativo") else 0
         dados["id"] = epi_id
         if not erros:
@@ -118,7 +191,8 @@ def epi_editar(epi_id):
                 db.execute(
                     """UPDATE epis SET nome=:nome, categoria=:categoria, ca=:ca, validade_ca=:validade_ca,
                        unidade=:unidade, estoque_minimo=:estoque_minimo,
-                       prazo_reposicao_dias=:prazo_reposicao_dias, ativo=:ativo WHERE id=:id""", dados)
+                       prazo_reposicao_dias=:prazo_reposicao_dias, imagem_url=:imagem_url,
+                       exibir_no_forms=:exibir_no_forms, ativo=:ativo WHERE id=:id""", dados)
                 flash("EPI atualizado.", "ok")
                 return redirect(url_for("cadastros.epi_detalhe", epi_id=epi_id))
             except sqlite3.IntegrityError:

@@ -213,6 +213,58 @@ class TestFluxo(BasePedidos):
         self.assertEqual(ver.get("/pedidos/novos").get_json()["novos"], 0)
         self.assertEqual(ver.get("/integracao").status_code, 403)
 
+    def test_sinalizacao_analisar_e_finalizar_com_ressalva(self):
+        # Define o cargo "Pedreiro" para João da Silva, com kit padrão contendo apenas "Luva G" e tamanho de Bota = 40
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE colaboradores SET funcao = 'Pedreiro' WHERE id = ?", (self.joao,))
+            db.execute("INSERT INTO cargo_epis_padrao (cargo, epi_id) VALUES ('Pedreiro', ?)", (self.luva,))
+            db.execute(
+                "INSERT INTO colaborador_tamanhos (colaborador_id, chave, tamanho) VALUES (?, 'bota', '40')",
+                (self.joao,),
+            )
+
+        # Cria pedido onde Bota 40 é pedida com tamanho 42 (diverge da ficha e está fora do padrão do cargo Pedreiro)
+        pid = self.novo_pedido(epi=["Luva G", "Bota 40"], tam_bota="42", sapatao="", camiseta="M")
+        self.post(f"/pedidos/{pid}/iniciar")
+
+        html_detalhe = self.c.get(f"/pedidos/{pid}").get_data(as_text=True)
+        self.assertIn("Fora do padrão do cargo (Pedreiro)", html_detalhe)
+        self.assertIn("Tamanho diverge da ficha (ficha: 40)", html_detalhe)
+        self.assertIn("Finalizar com ressalva", html_detalhe)
+        self.assertNotIn("Remover do pedido", html_detalhe)
+        self.assertNotIn("+ Adicionar item que não veio no formulário", html_detalhe)
+
+        # Marca apenas a Luva G como separada (deixa Bota 40 e Camiseta M desmarcadas)
+        itens = self.itens(pid)
+        item_luva = next(i for i in itens if i["epi_id"] == self.luva)
+        self.post(f"/pedidos/{pid}/itens/{item_luva['id']}/separar", {"separado": "1"})
+
+        # Tentativa de finalizar sem observação na ressalva é bloqueada
+        r_sem_obs = self.post(f"/pedidos/{pid}/finalizar", {
+            "com_ressalva": "1",
+            "ressalva_observacao": "   ",
+        }, follow_redirects=True)
+        self.assertIn("Informe a observação/motivo da ressalva", r_sem_obs.get_data(as_text=True))
+        self.assertEqual(self.pedido(pid)["status"], "em_separacao")
+
+        # Finaliza com ressalva informando a justificativa
+        r_ok = self.post(f"/pedidos/{pid}/finalizar", {
+            "com_ressalva": "1",
+            "ressalva_observacao": "Bota Tam. 42 e Camiseta fora do padrão do cargo de Pedreiro não autorizadas.",
+        }, follow_redirects=True)
+        self.assertEqual(r_ok.status_code, 200)
+        html_pronto = r_ok.get_data(as_text=True)
+        self.assertIn("finalizado com ressalva", html_pronto.lower())
+        self.assertIn("Bota Tam. 42 e Camiseta fora do padrão do cargo", html_pronto)
+        self.assertIn("não atendido (ressalva)", html_pronto)
+
+        # Verifica que apenas a Luva G teve baixa no estoque (10 -> 9); Bota e Camiseta continuam com 10
+        self.assertEqual((self.saldo(self.luva), self.saldo(self.bota), self.saldo(self.camiseta)), (9, 10, 10))
+        p_atual = self.pedido(pid)
+        self.assertEqual(p_atual["status"], "pronto")
+        self.assertIn("fora do padrão do cargo", p_atual["ressalva_observacao"])
+
 
 class TestTelas(BasePedidos):
     def test_novos_devolve_card_e_contagem(self):
@@ -366,3 +418,82 @@ class TestParser(BasePedidos):
             self.assertEqual(por_epi["Botina Bico PVC"], "40")
             self.assertEqual(por_epi["Bota 40"], "42")
             self.assertEqual(por_epi["Camiseta M"], "G")
+
+    def test_personalizar_formulario_cidades_equipamentos_e_imagens(self):
+        import io
+        # 1x1 PNG transparente válido para testar upload de foto do EPI
+        png_1x1 = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+            b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+
+        # Tela de personalização abre para administrador
+        r_ed = self.c.get("/solicitar/personalizar")
+        self.assertEqual(r_ed.status_code, 200)
+        self.assertIn("Construtor e Personalizador", r_ed.get_data(as_text=True))
+
+        # Salva nova cidade ("Joinville - Obra Norte"), novo motivo, pergunta extra e foto no EPI Luva G
+        r_save = self.post("/solicitar/personalizar", {
+            "atualizar_opcoes_epi": "1",
+            "titulo": "FORMULÁRIO PERSONALIZADO DE EPI",
+            "descricao": "Solicite seus equipamentos com identificação por imagem.",
+            "pergunta_1_titulo": "1. Selecione o seu nome completo.",
+            "pergunta_2_titulo": "2. Informe a cidade da obra.",
+            "pergunta_3_titulo": "3. Informe o motivo.",
+            "pergunta_4_titulo": "4. Selecione o equipamento de proteção individual necessário.",
+            "pergunta_4_subtitulo": "Veja a imagem de cada equipamento antes de marcar.",
+            "pergunta_5_titulo": "5. Selecione a vestimenta necessária abaixo",
+            "pergunta_6_titulo": "6. Observações",
+            "locais": ["Mafra", "Araquari"],
+            "novo_local": "Joinville - Obra Norte",
+            "motivos": ["Desgaste", "Perda"],
+            "novo_motivo": "Admissão Inicial",
+            "tamanhos_uniforme": ["P", "M", "G", "GG"],
+            "novo_extra_titulo": "Qual o turno de trabalho?",
+            "novo_extra_tipo": "unica",
+            "novo_extra_opcoes": "Diurno; Noturno",
+            "epi_visivel": [str(self.luva), str(self.bota), str(self.camiseta)],
+            f"nome_epi_{self.luva}": "Luva G",
+            f"imagem_epi_{self.luva}": (io.BytesIO(png_1x1), "luva.png"),
+        }, follow_redirects=True, content_type="multipart/form-data")
+        self.assertEqual(r_save.status_code, 200)
+        self.assertIn("Personalizações do formulário salvas", r_save.get_data(as_text=True))
+
+        # Adiciona um novo equipamento direto pelo editor do formulário com ilustração automática
+        r_novo_epi = self.post("/solicitar/personalizar/epi/novo", {
+            "nome": "Protetor Facial Incolor",
+            "tipo_secao": "epi",
+            "unidade": "un",
+            "gerar_ilustracao": "1",
+        }, follow_redirects=True)
+        self.assertEqual(r_novo_epi.status_code, 200)
+        self.assertIn("Protetor Facial Incolor", r_novo_epi.get_data(as_text=True))
+
+        # Verifica que o formulário público reflete todas as personalizações e exibe as imagens nas opções
+        anon = self.app.test_client()
+        html_pub = anon.get("/solicitar").get_data(as_text=True)
+        self.assertIn("FORMULÁRIO PERSONALIZADO DE EPI", html_pub)
+        self.assertIn("Joinville - Obra Norte", html_pub)
+        self.assertIn("Admissão Inicial", html_pub)
+        self.assertIn("Protetor Facial Incolor", html_pub)
+        self.assertIn("Qual o turno de trabalho?", html_pub)
+        self.assertIn("data:image/png;base64,", html_pub)
+        self.assertIn("data:image/svg+xml;base64,", html_pub)
+        self.assertIn("img-opcao-epi", html_pub)
+
+        # Submete um pedido pelo formulário público usando a nova cidade, o novo EPI e a pergunta extra
+        r_envio = anon.post("/solicitar", data={
+            "nome": "João da Silva",
+            "local": "Joinville - Obra Norte",
+            "motivo": "Admissão Inicial",
+            "epi": ["Protetor Facial Incolor", "Luva G"],
+            "extra_qextra_1": "Diurno",
+            "observacao": "Preciso para segunda-feira",
+        }, follow_redirects=True)
+        self.assertEqual(r_envio.status_code, 200)
+        html_envio = r_envio.get_data(as_text=True)
+        self.assertIn("enviada com sucesso", html_envio)
+        self.assertIn("Joinville - Obra Norte", html_envio)
+        self.assertIn("Protetor Facial Incolor", html_envio)
+        self.assertIn("Qual o turno de trabalho?: Diurno", html_envio)

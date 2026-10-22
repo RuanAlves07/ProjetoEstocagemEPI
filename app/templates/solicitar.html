@@ -15,8 +15,19 @@
       <code id="url-publica">{{ url_for('pedidos.solicitar', _external=True) }}</code>
       <span class="nota">(Qualquer colaborador pode acessar sem login)</span>
     </div>
-    <button type="button" class="btn pequeno" onclick="navigator.clipboard.writeText(document.getElementById('url-publica').textContent);this.textContent='✓ Link copiado!';">Copiar link</button>
+    <div class="acoes">
+      <button type="button" class="btn pequeno" onclick="navigator.clipboard.writeText(document.getElementById('url-publica').textContent);this.textContent='✓ Link copiado!';">Copiar link</button>
+      {% if pode_personalizar_forms %}
+      <a class="btn pequeno primario" href="{{ url_for('pedidos.personalizar_formulario') }}">✏️ Personalizar Formulário</a>
+      {% endif %}
+    </div>
   </div>
+  {% if pode_personalizar_forms %}
+  <nav class="abas" style="margin-bottom:1rem">
+    <a href="{{ url_for('pedidos.solicitar') }}" class="ativo">👁️ Visualizar Formulário (Visão do Colaborador)</a>
+    <a href="{{ url_for('pedidos.personalizar_formulario') }}">✏️ Personalizar Formulário (Cidades, EPIs, Imagens e Perguntas)</a>
+  </nav>
+  {% endif %}
   {% endif %}
 
   {% if pedido_enviado %}
@@ -53,15 +64,15 @@
   <form method="post" action="{{ url_for('pedidos.solicitar') }}" class="form-publico" id="form-solicitar">
     {{ csrf() }}
     <header class="cartao cabecalho-forms">
-      <h1>UNIFORME E EPI</h1>
-      <p>Este formulário é destinado à solicitação de novos uniformes e Equipamentos de Proteção Individual (EPIs) para os colaboradores das obras.</p>
+      <h1>{{ cfg_form.titulo }}</h1>
+      {% if cfg_form.descricao %}<p>{{ cfg_form.descricao }}</p>{% endif %}
       <p class="nota"><span class="obrigatorio">*</span> Obrigatória</p>
     </header>
 
     <!-- 1. Nome completo -->
     <section class="cartao bloco-pergunta">
       <label class="titulo-pergunta" for="select-colaborador">
-        1. Selecione o seu nome completo. <span class="obrigatorio">*</span>
+        {{ cfg_form.pergunta_1_titulo }} <span class="obrigatorio">*</span>
       </label>
       <select name="nome" id="select-colaborador" required>
         <option value="" data-cargo="">Selecione sua resposta</option>
@@ -76,23 +87,28 @@
     <!-- 2. Local de entrega -->
     <section class="cartao bloco-pergunta">
       <div class="titulo-pergunta">
-        2. Informe o local qual os EPIs solicitados devem ser entregues. <span class="obrigatorio">*</span>
+        {{ cfg_form.pergunta_2_titulo }} <span class="obrigatorio">*</span>
       </div>
       {% set local_sel = form_dados.get('local', '') %}
       <div class="grade-opcoes-radio">
         {% for loc in locais %}
         <label class="opcao-item">
-          <input type="radio" name="local" value="{{ loc }}" {{ 'checked' if loc == local_sel }} required>
+          <input type="radio" name="local" value="{{ loc }}" {{ 'checked' if loc == local_sel }} {{ 'required' if not cfg_form.permitir_outro_local }}>
           <span>{{ loc }}</span>
         </label>
         {% endfor %}
       </div>
+      {% if cfg_form.permitir_outro_local %}
+      <div style="margin-top:.45rem">
+        <input type="text" name="local_outro" placeholder="Outra cidade ou obra (preencha caso não esteja na lista acima)" value="{{ local_sel if local_sel and local_sel not in locais else '' }}">
+      </div>
+      {% endif %}
     </section>
 
     <!-- 3. Motivo da solicitação -->
     <section class="cartao bloco-pergunta">
       <div class="titulo-pergunta">
-        3. Informe o motivo da solicitação. <span class="obrigatorio">*</span>
+        {{ cfg_form.pergunta_3_titulo }} <span class="obrigatorio">*</span>
       </div>
       {% set motivo_sel = form_dados.get('motivo', '') %}
       <div class="lista-opcoes">
@@ -108,19 +124,32 @@
     <!-- 4. Equipamento de proteção individual (EPI) -->
     <section class="cartao bloco-pergunta">
       <div class="titulo-pergunta">
-        4. Selecione o equipamento de proteção individual necessário.
+        {{ cfg_form.pergunta_4_titulo }}
       </div>
-      <p class="subtitulo-pergunta">Marque todos os EPIs que você precisa solicitar.</p>
+      {% if cfg_form.pergunta_4_subtitulo %}
+      <p class="subtitulo-pergunta">{{ cfg_form.pergunta_4_subtitulo }}</p>
+      {% endif %}
       {% set epis_marcados = form_dados.get('epi', ()) %}
-      <div class="lista-opcoes">
+      {% set tem_img_epi = epis_protecao|selectattr('imagem_url')|list|length > 0 %}
+      <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_epi else 'lista-opcoes' }}">
         {% for e in epis_protecao %}
         {% set eh_rec = e.id in padrao_ids_sel %}
-        <label class="opcao-item {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ e.id }}">
+        <label class="opcao-item {{ 'opcao-com-imagem' if e.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ e.id }}">
           <input type="checkbox" name="epi" value="{{ e.nome }}"
                  data-calcado="{{ tipo_calcado(e.nome) or '' }}"
                  data-uniforme="{{ tipo_uniforme(e.nome) or '' }}"
                  {{ 'checked' if e.nome in epis_marcados }}>
-          <span>{{ e.nome }} <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span></span>
+          {% if e.imagem_url %}
+          <span class="moldura-img-epi">
+            <img src="{{ e.imagem_url }}" alt="{{ e.nome }}" class="img-opcao-epi" loading="lazy">
+            <button type="button" class="btn-zoom-img" title="Ampliar imagem de {{ e.nome }}"
+                    onclick="event.preventDefault();event.stopPropagation();ampliarImagemEpi(this.previousElementSibling.src, {{ e.nome|tojson }});">🔍</button>
+          </span>
+          {% endif %}
+          <span class="texto-opcao-epi">
+            <strong>{{ e.nome }}</strong>
+            <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span>
+          </span>
         </label>
         {% else %}
         <p class="nota">Nenhum EPI cadastrado no estoque no momento.</p>
@@ -130,9 +159,11 @@
       <!-- Abas dinâmicas de numeração por tipo de calçado (aparecem somente ao selecionar Sapatão, Botina ou Bota) -->
       <div id="secao-tamanho-calcado" class="subbloco-condicional" hidden>
         <div class="titulo-pergunta">
-          Informe a numeração do calçado selecionado <span class="obrigatorio">*</span>
+          {{ cfg_form.pergunta_calcado_titulo }} <span class="obrigatorio">*</span>
         </div>
-        <p class="subtitulo-pergunta">Digite somente números. Será fornecida uma unidade de cada item solicitado (caso necessite de mais unidades, informe no campo de observações).</p>
+        {% if cfg_form.pergunta_calcado_subtitulo %}
+        <p class="subtitulo-pergunta">{{ cfg_form.pergunta_calcado_subtitulo }}</p>
+        {% endif %}
         <div class="abas-calcados">
           <div id="bloco-tam-sapatao" class="aba-calcado-card" hidden>
             <span class="aba-calcado-titulo">🥾 Sapatão</span>
@@ -170,18 +201,32 @@
     <!-- 5. Vestimenta -->
     <section class="cartao bloco-pergunta">
       <div class="titulo-pergunta">
-        5. Selecione a vestimenta necessária abaixo
+        {{ cfg_form.pergunta_5_titulo }}
       </div>
+      {% if cfg_form.pergunta_5_subtitulo %}
+      <p class="subtitulo-pergunta">{{ cfg_form.pergunta_5_subtitulo }}</p>
+      {% endif %}
       {% set vest_marcadas = form_dados.get('vestimento', ()) %}
-      <div class="lista-opcoes">
+      {% set tem_img_vest = vestimentas|selectattr('imagem_url')|list|length > 0 %}
+      <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_vest else 'lista-opcoes' }}">
         {% for v in vestimentas %}
         {% set eh_rec = v.id in padrao_ids_sel %}
-        <label class="opcao-item {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ v.id }}">
+        <label class="opcao-item {{ 'opcao-com-imagem' if v.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ v.id }}">
           <input type="checkbox" name="vestimento" value="{{ v.nome }}"
                  data-calcado="{{ tipo_calcado(v.nome) or '' }}"
                  data-uniforme="{{ tipo_uniforme(v.nome) or '' }}"
                  {{ 'checked' if v.nome in vest_marcadas }}>
-          <span>{{ v.nome }} <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span></span>
+          {% if v.imagem_url %}
+          <span class="moldura-img-epi">
+            <img src="{{ v.imagem_url }}" alt="{{ v.nome }}" class="img-opcao-epi" loading="lazy">
+            <button type="button" class="btn-zoom-img" title="Ampliar imagem de {{ v.nome }}"
+                    onclick="event.preventDefault();event.stopPropagation();ampliarImagemEpi(this.previousElementSibling.src, {{ v.nome|tojson }});">🔍</button>
+          </span>
+          {% endif %}
+          <span class="texto-opcao-epi">
+            <strong>{{ v.nome }}</strong>
+            <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span>
+          </span>
         </label>
         {% else %}
         <p class="nota">Nenhuma vestimenta cadastrada no estoque no momento.</p>
@@ -191,9 +236,11 @@
       <!-- Bloco dinâmico de tamanho de uniforme (aparece somente ao selecionar Camiseta ou Calça) -->
       <div id="secao-tamanho-uniforme" class="subbloco-condicional" hidden>
         <div class="titulo-pergunta">
-          Informe o tamanho de uniforme necessário <span class="obrigatorio">*</span>
+          {{ cfg_form.pergunta_uniforme_titulo }} <span class="obrigatorio">*</span>
         </div>
-        <p class="subtitulo-pergunta">Será fornecida uma unidade de cada item solicitado. Caso necessite de mais unidades ou apenas um item específico, informe no campo de observações.</p>
+        {% if cfg_form.pergunta_uniforme_subtitulo %}
+        <p class="subtitulo-pergunta">{{ cfg_form.pergunta_uniforme_subtitulo }}</p>
+        {% endif %}
         {% set cam_sel = form_dados.get('camiseta', '') %}
         {% set cal_sel = form_dados.get('calca', '') %}
         <div class="tabela-rolavel">
@@ -227,10 +274,42 @@
       </div>
     </section>
 
+    <!-- Perguntas extras criadas pelo administrador no editor do formulário -->
+    {% set extras_salvas = form_dados.get('extras', {}) %}
+    {% for p_ex in perguntas_extras %}
+    {% set ch_ex = 'extra_' ~ p_ex.id %}
+    <section class="cartao bloco-pergunta">
+      <div class="titulo-pergunta">
+        {{ p_ex.titulo }} {% if p_ex.obrigatoria %}<span class="obrigatorio">*</span>{% endif %}
+      </div>
+      {% if p_ex.tipo == 'unica' %}
+      <div class="lista-opcoes">
+        {% for op in p_ex.opcoes %}
+        <label class="opcao-item">
+          <input type="radio" name="{{ ch_ex }}" value="{{ op }}" {{ 'checked' if extras_salvas.get(ch_ex) == op }} {{ 'required' if p_ex.obrigatoria and loop.first }}>
+          <span>{{ op }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% elif p_ex.tipo == 'multipla' %}
+      <div class="lista-opcoes">
+        {% for op in p_ex.opcoes %}
+        <label class="opcao-item">
+          <input type="checkbox" name="{{ ch_ex }}" value="{{ op }}" {{ 'checked' if op in (extras_salvas.get(ch_ex) or ()) }}>
+          <span>{{ op }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <input type="text" name="{{ ch_ex }}" value="{{ extras_salvas.get(ch_ex, '') }}" placeholder="Insira sua resposta" {{ 'required' if p_ex.obrigatoria }}>
+      {% endif %}
+    </section>
+    {% endfor %}
+
     <!-- 6. Observações -->
     <section class="cartao bloco-pergunta">
       <label class="titulo-pergunta" for="campo-obs">
-        6. Observações
+        {{ cfg_form.pergunta_6_titulo }}
       </label>
       <textarea id="campo-obs" name="observacao" rows="3" placeholder="Insira sua resposta">{{ form_dados.get('observacao', '') }}</textarea>
     </section>
@@ -242,7 +321,29 @@
   {% endif %}
 </div>
 
+<!-- Modal leve para ampliar imagem do EPI ao clicar na lupa -->
+<div id="modal-zoom-epi" class="modal-zoom-epi" hidden onclick="if(event.target===this)this.hidden=true">
+  <div class="modal-zoom-conteudo">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.6rem">
+      <strong id="modal-zoom-titulo" style="font-size:1.05rem">Equipamento</strong>
+      <button type="button" class="btn pequeno" onclick="document.getElementById('modal-zoom-epi').hidden=true">✕ Fechar</button>
+    </div>
+    <img id="modal-zoom-img" src="" alt="" style="max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:8px;background:#fff;padding:.5rem">
+  </div>
+</div>
+
 <script>
+function ampliarImagemEpi(src, nome) {
+  const modal = document.getElementById("modal-zoom-epi");
+  const img = document.getElementById("modal-zoom-img");
+  const tit = document.getElementById("modal-zoom-titulo");
+  if (!modal || !img) return;
+  img.src = src;
+  img.alt = nome || "";
+  if (tit) tit.textContent = nome || "Equipamento";
+  modal.hidden = false;
+}
+
 (() => {
   const form = document.getElementById("form-solicitar");
   if (!form) return;

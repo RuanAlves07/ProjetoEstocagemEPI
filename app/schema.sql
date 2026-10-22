@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS epis (
     unidade               TEXT NOT NULL DEFAULT 'un',
     estoque_minimo        INTEGER NOT NULL DEFAULT 0 CHECK (estoque_minimo >= 0),
     prazo_reposicao_dias  INTEGER NOT NULL DEFAULT 15 CHECK (prazo_reposicao_dias >= 0),
+    imagem_url            TEXT,
+    exibir_no_forms       INTEGER NOT NULL DEFAULT 1,
     ativo                 INTEGER NOT NULL DEFAULT 1,
     criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -115,6 +117,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
     iniciado_em         TEXT,
     finalizado_por      INTEGER REFERENCES usuarios (id),
     finalizado_em       TEXT,
+    ressalva_observacao TEXT,            -- justificativa quando finalizado com ressalva (itens não atendidos)
     grupo               TEXT,            -- grupo das movimentações geradas na finalização
     retirado_por_nome   TEXT,
     retirado_descricao  TEXT,
@@ -183,4 +186,19 @@ CREATE TABLE IF NOT EXISTS colaborador_tamanhos (
     tamanho         TEXT NOT NULL,
     atualizado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     PRIMARY KEY (colaborador_id, chave)
+);
+
+-- Base local de Certificados de Aprovação (CA) sincronizada com a API_BaseCAEPI / MTE (tgg_export_caepi)
+CREATE TABLE IF NOT EXISTS base_caepi (
+    ca                  TEXT PRIMARY KEY,
+    validade_ca         TEXT,
+    situacao            TEXT,
+    nome_equipamento    TEXT,
+    descricao           TEXT,
+    categoria           TEXT,
+    unidade             TEXT NOT NULL DEFAULT 'un',
+    fabricante          TEXT,
+    cnpj_fabricante     TEXT,
+    referencia          TEXT,
+    atualizado_em       TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );

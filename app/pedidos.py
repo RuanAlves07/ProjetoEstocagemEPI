@@ -1,4 +1,5 @@
 """Pedidos de EPI (Microsoft Forms): recebimento, identificação dos itens, separação e retirada."""
+import base64
 import csv
 import io
 import json
@@ -155,6 +156,285 @@ def obter_api_key(db, regenerar=False):
     db.execute("INSERT INTO configuracoes (chave, valor) VALUES ('api_key', ?) "
                "ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor", (chave,))
     return chave
+
+
+# ------------------------------------------------------------ personalização do formulário (/solicitar)
+
+CONFIG_FORMULARIO_PADRAO = {
+    "titulo": "UNIFORME E EPI",
+    "descricao": (
+        "Este formulário é destinado à solicitação de novos uniformes e Equipamentos de "
+        "Proteção Individual (EPIs) para os colaboradores das obras."
+    ),
+    "pergunta_1_titulo": "1. Selecione o seu nome completo.",
+    "pergunta_2_titulo": "2. Informe o local qual os EPIs solicitados devem ser entregues.",
+    "permitir_outro_local": False,
+    "pergunta_3_titulo": "3. Informe o motivo da solicitação.",
+    "pergunta_4_titulo": "4. Selecione o equipamento de proteção individual necessário.",
+    "pergunta_4_subtitulo": "Marque todos os EPIs que você precisa solicitar.",
+    "pergunta_calcado_titulo": "Informe a numeração do calçado selecionado",
+    "pergunta_calcado_subtitulo": (
+        "Digite somente números. Será fornecida uma unidade de cada item solicitado "
+        "(caso necessite de mais unidades, informe no campo de observações)."
+    ),
+    "pergunta_5_titulo": "5. Selecione a vestimenta necessária abaixo",
+    "pergunta_5_subtitulo": "",
+    "pergunta_uniforme_titulo": "Informe o tamanho de uniforme necessário",
+    "pergunta_uniforme_subtitulo": (
+        "Será fornecida uma unidade de cada item solicitado. Caso necessite de mais unidades "
+        "ou apenas um item específico, informe no campo de observações."
+    ),
+    "pergunta_6_titulo": "6. Observações",
+    "locais": list(LOCAIS_FORMULARIO),
+    "motivos": list(MOTIVOS_FORMULARIO),
+    "tamanhos_uniforme": list(TAMANHOS_UNIFORME),
+    "perguntas_extras": [],
+}
+
+_MAX_IMAGEM_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
+def obter_config_formulario(db):
+    """Retorna o dicionário de configuração do formulário público mesclado com os padrões."""
+    cfg = {
+        k: (list(v) if isinstance(v, list) else v)
+        for k, v in CONFIG_FORMULARIO_PADRAO.items()
+    }
+    linha = db.execute("SELECT valor FROM configuracoes WHERE chave = 'forms_config'").fetchone()
+    if linha and linha["valor"]:
+        try:
+            salvo = json.loads(linha["valor"])
+            if isinstance(salvo, dict):
+                for ch, padrao in CONFIG_FORMULARIO_PADRAO.items():
+                    if ch not in salvo:
+                        continue
+                    val = salvo[ch]
+                    if ch in ("locais", "motivos", "tamanhos_uniforme"):
+                        if isinstance(val, list):
+                            limpos = [limpar(x) for x in val if limpar(x)]
+                            if limpos:
+                                cfg[ch] = limpos
+                    elif ch == "perguntas_extras":
+                        if isinstance(val, list):
+                            cfg[ch] = [p for p in val if isinstance(p, dict) and limpar(p.get("titulo"))]
+                    elif isinstance(padrao, bool):
+                        cfg[ch] = bool(val)
+                    elif isinstance(padrao, str) and val is not None:
+                        texto = limpar(str(val))
+                        if texto or ch.endswith("_subtitulo"):
+                            cfg[ch] = texto
+        except ValueError:
+            pass
+    return cfg
+
+
+def salvar_config_formulario(db, nova_cfg):
+    """Salva o dicionário de configuração do formulário na tabela configuracoes."""
+    atual = obter_config_formulario(db)
+    for ch, padrao in CONFIG_FORMULARIO_PADRAO.items():
+        if ch not in nova_cfg:
+            continue
+        val = nova_cfg[ch]
+        if ch in ("locais", "motivos", "tamanhos_uniforme"):
+            if isinstance(val, list):
+                limpos = []
+                vistos = set()
+                for item in val:
+                    txt = limpar(item)
+                    if txt and normalizar(txt) not in vistos:
+                        vistos.add(normalizar(txt))
+                        limpos.append(txt[:120])
+                if not limpos:
+                    raise ErroValidacao(f"A lista de '{ch}' precisa ter ao menos uma opção.")
+                atual[ch] = limpos
+        elif ch == "perguntas_extras":
+            if isinstance(val, list):
+                extras_limpas = []
+                for idx, p in enumerate(val[:20], start=1):
+                    if not isinstance(p, dict):
+                        continue
+                    titulo_p = limpar(p.get("titulo"))
+                    if not titulo_p:
+                        continue
+                    tipo_p = p.get("tipo") if p.get("tipo") in ("texto", "unica", "multipla") else "texto"
+                    opcoes_p = [limpar(o)[:120] for o in (p.get("opcoes") or []) if limpar(o)]
+                    if tipo_p in ("unica", "multipla") and not opcoes_p:
+                        tipo_p = "texto"
+                    extras_limpas.append({
+                        "id": limpar(p.get("id")) or f"extra_{idx}",
+                        "titulo": titulo_p[:240],
+                        "tipo": tipo_p,
+                        "obrigatoria": bool(p.get("obrigatoria")),
+                        "opcoes": opcoes_p,
+                    })
+                atual[ch] = extras_limpas
+        elif isinstance(padrao, bool):
+            atual[ch] = bool(val)
+        elif isinstance(padrao, str):
+            texto = limpar(str(val or ""))
+            if not texto and not ch.endswith("_subtitulo"):
+                texto = padrao
+            atual[ch] = (texto or "")[:500]
+
+    payload = json.dumps(atual, ensure_ascii=False)
+    db.execute(
+        "INSERT INTO configuracoes (chave, valor) VALUES ('forms_config', ?) "
+        "ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor",
+        (payload,),
+    )
+    return atual
+
+
+def restaurar_config_formulario(db):
+    """Remove customizações de texto/listas, voltando o formulário ao padrão original."""
+    db.execute("DELETE FROM configuracoes WHERE chave = 'forms_config'")
+
+
+def processar_imagem_epi(arquivo=None, texto_imagem=None):
+    """Converte um upload de imagem (FileStorage) ou Data URI/URL em string segura para epis.imagem_url."""
+    if arquivo and getattr(arquivo, "filename", ""):
+        bruto = arquivo.read()
+        if bruto:
+            if len(bruto) > _MAX_IMAGEM_BYTES:
+                raise ErroValidacao("A imagem enviada excede o limite de 2 MB.")
+            nome_arq = (arquivo.filename or "").lower()
+            if bruto.startswith(b"\x89PNG\r\n\x1a\n"):
+                mime = "image/png"
+            elif bruto.startswith(b"\xff\xd8\xff"):
+                mime = "image/jpeg"
+            elif bruto.startswith(b"RIFF") and bruto[8:12] == b"WEBP":
+                mime = "image/webp"
+            elif bruto.startswith((b"GIF87a", b"GIF89a")):
+                mime = "image/gif"
+            elif b"<svg" in bruto[:400].lower() or nome_arq.endswith(".svg"):
+                mime = "image/svg+xml"
+            else:
+                raise ErroValidacao("Formato de imagem inválido. Envie PNG, JPG, WEBP, GIF ou SVG.")
+            b64 = base64.b64encode(bruto).decode("ascii")
+            return f"data:{mime};base64,{b64}"
+
+    if texto_imagem is not None:
+        txt = str(texto_imagem).strip()
+        if not txt:
+            return None
+        if len(txt) > _MAX_IMAGEM_BYTES * 2:
+            raise ErroValidacao("A imagem informada é muito grande.")
+        if txt.startswith(("data:image/", "http://", "https://", "/static/")):
+            return txt
+        raise ErroValidacao("Informe uma URL de imagem válida (https://...) ou envie um arquivo de imagem.")
+
+    return None
+
+
+def gerar_svg_ilustrativo_epi(nome):
+    """Gera uma ilustração vetorial (Data URI SVG) clara e amigável para identificação visual do EPI."""
+    t = normalizar(nome)
+    if "luva" in t:
+        cor_fundo, cor_borda = "#eff6ff", "#2563eb"
+        titulo_curto = "LUVA"
+        icone = (
+            '<path d="M36 68V34a5 5 0 0 1 10 0v14M46 44V26a5 5 0 0 1 10 0v20M56 44V29a5 5 0 0 1 10 0v21'
+            'M66 48V37a5 5 0 0 1 10 0v24c0 14-10 23-24 23H44c-11 0-19-8-19-19V51a5 5 0 0 1 10 0v9" '
+            'fill="#93c5fd" stroke="#1d4ed8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>'
+            '<rect x="31" y="76" width="38" height="10" rx="3" fill="#1d4ed8"/>'
+        )
+    elif "oculos" in t or "lente" in t or "visao" in t:
+        cor_fundo, cor_borda = "#f0f9ff", "#0284c7"
+        titulo_curto = "ÓCULOS"
+        icone = (
+            '<path d="M16 48h18a10 10 0 0 1 10 10v3a12 12 0 0 1-24 0v-5a8 8 0 0 1 8-8z'
+            'M56 58v3a12 12 0 0 0 24 0v-5a8 8 0 0 0-8-8H56a10 10 0 0 0-10 10z" '
+            'fill="#bae6fd" stroke="#0369a1" stroke-width="4"/>'
+            '<path d="M44 53h12M16 50l-6-6M80 50l8-6" stroke="#0369a1" stroke-width="4" stroke-linecap="round"/>'
+        )
+    elif "auricular" in t or "ouvido" in t or "plug" in t or "abafador" in t:
+        cor_fundo, cor_borda = "#fefce8", "#ca8a04"
+        titulo_curto = "PROTETOR"
+        icone = (
+            '<path d="M28 56V44a22 22 0 0 1 44 0v12" fill="none" stroke="#a16207" stroke-width="5" stroke-linecap="round"/>'
+            '<rect x="18" y="48" width="14" height="26" rx="7" fill="#facc15" stroke="#a16207" stroke-width="4"/>'
+            '<rect x="68" y="48" width="14" height="26" rx="7" fill="#facc15" stroke="#a16207" stroke-width="4"/>'
+        )
+    elif "botina" in t or "bota" in t or "sapat" in t or "calcad" in t:
+        cor_fundo, cor_borda = "#fef3c7", "#b45309"
+        titulo_curto = "CALÇADO"
+        icone = (
+            '<path d="M26 26h22v28c0 6 5 10 14 12l16 3a8 8 0 0 1 6 8v5H18V66c0-6 4-12 8-16V26z" '
+            'fill="#d97706" stroke="#78350f" stroke-width="4" stroke-linejoin="round"/>'
+            '<rect x="16" y="78" width="70" height="8" rx="3" fill="#451a03"/>'
+        )
+    elif "mascara" in t or "respirador" in t or "pff" in t:
+        cor_fundo, cor_borda = "#ecfdf5", "#059669"
+        titulo_curto = "MÁSCARA"
+        icone = (
+            '<path d="M24 48c0-12 12-20 26-20s26 8 26 20c0 16-11 28-26 28S24 64 24 48z" '
+            'fill="#a7f3d0" stroke="#047857" stroke-width="4"/>'
+            '<circle cx="58" cy="56" r="7" fill="#047857"/>'
+            '<path d="M24 44l-10-6M24 58l-10 6M76 44l10-6M76 58l10 6" stroke="#047857" stroke-width="3.5" stroke-linecap="round"/>'
+        )
+    elif "capacete" in t or "touca" in t or "bone" in t:
+        cor_fundo, cor_borda = "#fff7ed", "#ea580c"
+        titulo_curto = "CABEÇA"
+        icone = (
+            '<path d="M20 60a30 30 0 0 1 60 0H20z" fill="#fb923c" stroke="#c2410c" stroke-width="4"/>'
+            '<path d="M14 60h72a4 4 0 0 1 0 8H14a4 4 0 0 1 0-8z" fill="#ea580c" stroke="#9a3412" stroke-width="3.5"/>'
+            '<path d="M45 30v16M55 30v16" stroke="#9a3412" stroke-width="3.5" stroke-linecap="round"/>'
+        )
+    elif "creme" in t or "solar" in t or "protetor" in t:
+        cor_fundo, cor_borda = "#fdf4ff", "#9333ea"
+        titulo_curto = "CREME"
+        icone = (
+            '<path d="M34 26h32l-4 44H38L34 26z" fill="#e9d5ff" stroke="#7e22ce" stroke-width="4" stroke-linejoin="round"/>'
+            '<rect x="40" y="70" width="20" height="12" rx="3" fill="#7e22ce"/>'
+            '<path d="M50 40v16M42 48h16" stroke="#7e22ce" stroke-width="4" stroke-linecap="round"/>'
+        )
+    elif "perneira" in t:
+        cor_fundo, cor_borda = "#f1f5f9", "#475569"
+        titulo_curto = "PERNEIRA"
+        icone = (
+            '<path d="M34 22h30l-4 54H38L34 22z" fill="#cbd5e1" stroke="#334155" stroke-width="4" stroke-linejoin="round"/>'
+            '<path d="M36 36h26M37 50h24M38 64h22" stroke="#1e293b" stroke-width="3.5"/>'
+        )
+    elif "capa" in t or "chuva" in t or "impermeavel" in t:
+        cor_fundo, cor_borda = "#fef9c3", "#ca8a04"
+        titulo_curto = "CAPA"
+        icone = (
+            '<path d="M36 26l14-8 14 8 14 14-8 10-8-6v34H38V44l-8 6-8-10 14-14z" '
+            'fill="#fde047" stroke="#a16207" stroke-width="4" stroke-linejoin="round"/>'
+        )
+    elif "camis" in t or "blusa" in t or "uniforme" in t or "colete" in t:
+        cor_fundo, cor_borda = "#e0f2fe", "#0369a1"
+        titulo_curto = "CAMISETA"
+        icone = (
+            '<path d="M35 24l15 8 15-8 15 12-8 12-9-6v36H37V42l-9 6-8-12 15-12z" '
+            'fill="#7dd3fc" stroke="#0369a1" stroke-width="4" stroke-linejoin="round"/>'
+        )
+    elif "calca" in t or "jardineira" in t:
+        cor_fundo, cor_borda = "#e0e7ff", "#3730a3"
+        titulo_curto = "CALÇA"
+        icone = (
+            '<path d="M32 22h36l6 58H56l-6-36-6 36H26l6-58z" '
+            'fill="#a5b4fc" stroke="#312e81" stroke-width="4" stroke-linejoin="round"/>'
+        )
+    else:
+        cor_fundo, cor_borda = "#f0fdf4", "#15803d"
+        titulo_curto = "EPI"
+        icone = (
+            '<path d="M50 18l28 10v20c0 18-12 31-28 36-16-5-28-18-28-36V28l28-10z" '
+            'fill="#bbf7d0" stroke="#166534" stroke-width="4" stroke-linejoin="round"/>'
+            '<path d="M38 50l8 8 16-16" fill="none" stroke="#166534" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 108" width="100" height="108">'
+        f'<rect x="3" y="3" width="94" height="102" rx="14" fill="{cor_fundo}" stroke="{cor_borda}" stroke-width="3"/>'
+        f'{icone}'
+        f'<text x="50" y="99" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10.5" '
+        f'font-weight="800" fill="{cor_borda}">{titulo_curto}</text>'
+        f'</svg>'
+    )
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{b64}"
 
 
 def _obter_campo(campos, *chaves):
@@ -344,8 +624,11 @@ def _identificar(db, epis, rotulo, texto):
 
 def carregar(db, status=None, pedido_id=None, limite=None):
     """Pedidos com seus itens (e saldo atual de cada EPI) já prontos para exibir."""
-    sql, params = "SELECT p.*, c.nome AS colaborador_nome FROM pedidos p " \
-                  "LEFT JOIN colaboradores c ON c.id = p.colaborador_id WHERE 1 = 1", []
+    sql, params = (
+        "SELECT p.*, c.nome AS colaborador_nome, c.funcao AS colaborador_funcao, c.setor AS colaborador_setor "
+        "FROM pedidos p LEFT JOIN colaboradores c ON c.id = p.colaborador_id WHERE 1 = 1",
+        [],
+    )
     if pedido_id is not None:
         sql += " AND p.id = ?"
         params.append(pedido_id)
@@ -364,6 +647,22 @@ def carregar(db, status=None, pedido_id=None, limite=None):
     saldos = {e["id"]: e for e in estoque.epis_com_saldo(db, somente_ativos=False)}
     itens = db.execute(
         f"SELECT * FROM pedido_itens WHERE pedido_id IN ({','.join('?' * len(ids))}) ORDER BY id", ids).fetchall()
+
+    # Kits padrão por cargo e tamanhos registrados na ficha do colaborador para sinalizar "Analisar"
+    padrao_por_cargo = {}
+    for r in db.execute("SELECT cargo, epi_id FROM cargo_epis_padrao"):
+        ch_cargo = (r["cargo"] or "").strip().casefold()
+        if ch_cargo:
+            padrao_por_cargo.setdefault(ch_cargo, set()).add(r["epi_id"])
+
+    padrao_por_colab = {}
+    for r in db.execute("SELECT colaborador_id, epi_id FROM colaborador_epis_padrao"):
+        padrao_por_colab.setdefault(r["colaborador_id"], set()).add(r["epi_id"])
+
+    tamanhos_por_colab = {}
+    for r in db.execute("SELECT colaborador_id, chave, tamanho FROM colaborador_tamanhos"):
+        tamanhos_por_colab[(r["colaborador_id"], (r["chave"] or "").strip().casefold())] = r["tamanho"]
+
     por_pedido = {i: [] for i in ids}
     for it in itens:
         it = dict(it)
@@ -375,20 +674,70 @@ def carregar(db, status=None, pedido_id=None, limite=None):
         it["saldo"] = epi["saldo"] if epi else None
         it["epi_ativo"] = bool(epi["ativo"]) if epi else None
         por_pedido[it["pedido_id"]].append(it)
+
     for p in pedidos:
         p["itens"] = por_pedido[p["id"]]
         validos = [i for i in p["itens"] if not i["ignorado"]]
         p["total_itens"] = len(validos)
         p["separados"] = sum(1 for i in validos if i["separado"])
+        p["nao_separados"] = len(validos) - p["separados"]
         p["nao_identificados"] = sum(1 for i in validos if i["epi_id"] is None)
         p["pronto_para_finalizar"] = bool(validos) and p["separados"] == len(validos) and p["nao_identificados"] == 0
-        # quantidade total pedida por EPI vs saldo (aviso de falta)
+        p["pode_finalizar_com_ressalva"] = bool(validos) and p["separados"] < len(validos)
+        p["tem_ressalva"] = bool(p.get("ressalva_observacao"))
+
+        # Quantidade total pedida por EPI vs saldo (aviso de falta)
         pedido_por_epi = {}
         for i in validos:
             if i["epi_id"]:
                 pedido_por_epi[i["epi_id"]] = pedido_por_epi.get(i["epi_id"], 0) + i["quantidade"]
+
+        colab_id = p.get("colaborador_id")
+        cargo_colab = (p.get("colaborador_funcao") or "").strip()
+        kit_cargo = padrao_por_cargo.get(cargo_colab.casefold()) if cargo_colab else None
+        kit_ind = padrao_por_colab.get(colab_id) if colab_id else None
+
         for i in validos:
             i["falta"] = bool(i["epi_id"]) and i["saldo"] is not None and pedido_por_epi[i["epi_id"]] > i["saldo"]
+            alertas = []
+            i["fora_do_cargo"] = False
+            i["tamanho_divergente"] = False
+            i["tamanho_ficha"] = None
+
+            if i["epi_id"]:
+                if kit_cargo is not None:
+                    if i["epi_id"] not in kit_cargo:
+                        i["fora_do_cargo"] = True
+                        alertas.append(f"Fora do padrão do cargo ({cargo_colab})")
+                elif kit_ind is not None:
+                    if i["epi_id"] not in kit_ind:
+                        i["fora_do_cargo"] = True
+                        alertas.append("Fora do kit padrão do colaborador")
+                elif colab_id and not cargo_colab:
+                    alertas.append("Colaborador sem cargo definido para validar kit")
+
+                if colab_id and i.get("tamanho"):
+                    nome_ref = i.get("epi_nome") or i.get("texto_original") or ""
+                    ch_tipo = tipo_calcado(nome_ref) or tipo_uniforme(nome_ref)
+                    tam_ficha = (
+                        tamanhos_por_colab.get((colab_id, f"epi:{i['epi_id']}"))
+                        or (tamanhos_por_colab.get((colab_id, ch_tipo)) if ch_tipo else None)
+                    )
+                    i["tamanho_ficha"] = tam_ficha
+                    if tam_ficha and normalizar(tam_ficha) != normalizar(i["tamanho"]):
+                        i["tamanho_divergente"] = True
+                        alertas.append(f"Tamanho diverge da ficha (ficha: {tam_ficha})")
+
+            if i["quantidade"] > 1:
+                alertas.append(f"Quantidade acima de 1 un. ({i['quantidade']}×)")
+            if i["falta"]:
+                alertas.append(f"Estoque insuficiente (saldo: {i['saldo']} {i['unidade']})")
+
+            i["alertas_analise"] = alertas
+            i["requer_analise"] = len(alertas) > 0
+
+        p["itens_para_analisar"] = [i for i in validos if i.get("requer_analise")]
+        p["total_analise"] = len(p["itens_para_analisar"])
     return pedidos
 
 
@@ -483,25 +832,54 @@ def vincular_colaborador(db, pedido_id, colaborador_id=None, criar_novo=False):
     db.execute("UPDATE pedidos SET colaborador_id = ? WHERE id = ?", (colaborador_id, pedido_id))
 
 
-def finalizar(db, pedido_id, usuario_id):
-    """Dá baixa no estoque (uma entrega) e deixa o pedido 'pronto para retirada'. Tudo ou nada."""
+def finalizar(db, pedido_id, usuario_id, com_ressalva=False, ressalva_obs=None):
+    """Dá baixa no estoque (uma entrega) e deixa o pedido 'pronto para retirada'.
+
+    Se `com_ressalva=True`, permite finalizar mesmo com itens não marcados como separados,
+    exigindo `ressalva_obs` e dando baixa no estoque apenas dos itens efetivamente separados.
+    """
+    obs_ressalva = limpar(ressalva_obs) if com_ressalva else None
+    if com_ressalva and not obs_ressalva:
+        raise ErroValidacao("Informe a observação/motivo da ressalva para explicar os itens não atendidos.")
+
     def executar():
         p = _pedido(db, pedido_id, "em_separacao")
-        if not p["colaborador_id"]:
-            raise ErroValidacao("Vincule o pedido a um colaborador cadastrado antes de finalizar.")
         itens = db.execute("SELECT * FROM pedido_itens WHERE pedido_id = ? AND ignorado = 0", (pedido_id,)).fetchall()
         if not itens:
             raise ErroValidacao("O pedido não tem itens.")
-        if any(i["epi_id"] is None for i in itens):
-            raise ErroValidacao("Há itens sem EPI identificado.")
-        if not all(i["separado"] for i in itens):
-            raise ErroValidacao("Marque todos os itens como separados.")
-        grupo = estoque.registrar_na_transacao(
-            db, "saida", [{"epi_id": i["epi_id"], "quantidade": i["quantidade"]} for i in itens], hoje(),
-            usuario_id, colaborador_id=p["colaborador_id"], motivo=p["motivo"],
-            observacao=f"Pedido #{pedido_id}", pedido_id=pedido_id, local_destino=p["local_destino"])
-        db.execute("UPDATE pedidos SET status = 'pronto', grupo = ?, finalizado_por = ?, "
-                   "finalizado_em = datetime('now', 'localtime') WHERE id = ?", (grupo, usuario_id, pedido_id))
+
+        if com_ressalva:
+            itens_baixa = [i for i in itens if i["separado"]]
+            if len(itens_baixa) == len(itens):
+                raise ErroValidacao("Todos os itens já estão marcados como separados. Use o botão normal “Finalizar pedido”.")
+            if any(i["epi_id"] is None for i in itens_baixa):
+                raise ErroValidacao("Há itens marcados como separados sem EPI identificado.")
+            if itens_baixa and not p["colaborador_id"]:
+                raise ErroValidacao("Vincule o pedido a um colaborador cadastrado antes de finalizar.")
+        else:
+            if not p["colaborador_id"]:
+                raise ErroValidacao("Vincule o pedido a um colaborador cadastrado antes de finalizar.")
+            if any(i["epi_id"] is None for i in itens):
+                raise ErroValidacao("Há itens sem EPI identificado.")
+            if not all(i["separado"] for i in itens):
+                raise ErroValidacao("Marque todos os itens como separados (ou utilize “Finalizar com ressalva”).")
+            itens_baixa = list(itens)
+
+        grupo = None
+        if itens_baixa:
+            obs_mov = f"Pedido #{pedido_id}"
+            if obs_ressalva:
+                obs_mov = f"Pedido #{pedido_id} (Ressalva: {obs_ressalva})"
+            grupo = estoque.registrar_na_transacao(
+                db, "saida", [{"epi_id": i["epi_id"], "quantidade": i["quantidade"]} for i in itens_baixa], hoje(),
+                usuario_id, colaborador_id=p["colaborador_id"], motivo=p["motivo"],
+                observacao=obs_mov[:500], pedido_id=pedido_id, local_destino=p["local_destino"])
+
+        db.execute(
+            "UPDATE pedidos SET status = 'pronto', grupo = ?, finalizado_por = ?, "
+            "finalizado_em = datetime('now', 'localtime'), ressalva_observacao = ? WHERE id = ?",
+            (grupo, usuario_id, obs_ressalva[:1000] if obs_ressalva else None, pedido_id),
+        )
         return grupo
 
     return _transacao(db, executar)
