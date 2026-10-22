@@ -49,7 +49,7 @@ def create_app(config=None):
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         POR_PAGINA=50,
-        MAX_CONTENT_LENGTH=512 * 1024,
+        MAX_CONTENT_LENGTH=32 * 1024 * 1024,
         # em produção atrás de HTTPS (ou Vercel): cookie seguro
         SESSION_COOKIE_SECURE=os.environ.get("EPI_COOKIE_SECURE") == "1" or em_serverless,
     )

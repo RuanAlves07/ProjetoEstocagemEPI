@@ -126,6 +126,17 @@ class _PostgresConn:
         except self._psycopg2.IntegrityError as e:
             raise sqlite3.IntegrityError(str(e)) from e
 
+    def executemany(self, sql, seq_params):
+        """Execução em lote (usada na importação da Base CAEPI, ~100 mil linhas)."""
+        sql_pg, _ = _traduzir_sql_postgres(sql)
+        cur = self._conn.cursor()
+        try:
+            self._extras.execute_batch(cur, sql_pg, seq_params, page_size=1000)
+        except self._psycopg2.IntegrityError as e:
+            raise sqlite3.IntegrityError(str(e)) from e
+        finally:
+            cur.close()
+
     def executescript(self, script_sql):
         cur = self._conn.cursor()
         cur.execute(script_sql)
@@ -161,12 +172,20 @@ def init_db():
         with open(caminho_pg, encoding="utf-8") as f:
             conn.executescript(f.read())
         _garantir_perfis_padrao(conn)
+        _garantir_base_caepi_inicial(conn)
         return
     conn.execute("PRAGMA journal_mode = WAL")
     with open(os.path.join(os.path.dirname(__file__), "schema.sql"), encoding="utf-8") as f:
         conn.executescript(f.read())
     _migrar(conn)
     _garantir_perfis_padrao(conn)
+    _garantir_base_caepi_inicial(conn)
+
+
+def _garantir_base_caepi_inicial(conn):
+    """Garante que a base_caepi contenha ao menos o catálogo semente de CAs reais."""
+    from . import caepi
+    caepi.garantir_base_inicial(conn)
 
 
 def _garantir_perfis_padrao(conn):

@@ -390,7 +390,23 @@ class TestEstoque(Base):
 
     def test_caepi_consulta_automatica_e_sincronizacao(self):
         import io
-        # 1. Consulta direta via endpoint JSON (/api/caepi/<ca>)
+        # 1. Consulta direta via endpoint JSON (/api/caepi/<ca>) para CAs solicitados pelo usuário
+        r_33135 = self.c.get("/api/caepi/33135")
+        self.assertEqual(r_33135.status_code, 200)
+        j_33135 = r_33135.get_json()
+        self.assertTrue(j_33135["ok"])
+        self.assertEqual(j_33135["dados"]["ca"], "33135")
+        self.assertEqual(j_33135["dados"]["categoria"], "Auditivo")
+        self.assertEqual(j_33135["dados"]["validade_ca"], "2028-07-12")
+
+        r_40362 = self.c.get("/api/caepi/40362")
+        self.assertEqual(r_40362.status_code, 200)
+        j_40362 = r_40362.get_json()
+        self.assertTrue(j_40362["ok"])
+        self.assertEqual(j_40362["dados"]["ca"], "40362")
+        self.assertEqual(j_40362["dados"]["categoria"], "Calçados")
+        self.assertEqual(j_40362["dados"]["validade_ca"], "2027-03-30")
+
         r_api = self.c.get("/api/caepi/39840")
         self.assertEqual(r_api.status_code, 200)
         j = r_api.get_json()
@@ -404,7 +420,7 @@ class TestEstoque(Base):
         r_novo = self.post(
             "/epis/novo",
             {
-                "ca": "43105",
+                "ca": "40362",
                 "nome": "",
                 "categoria": "",
                 "validade_ca": "",
@@ -416,14 +432,14 @@ class TestEstoque(Base):
         )
         self.assertEqual(r_novo.status_code, 200)
         html_det = r_novo.get_data(as_text=True)
-        self.assertIn("BOTINA BIDENSIDADE", html_det)
+        self.assertIn("BOTINA", html_det)
         self.assertIn("Calçados", html_det)
-        self.assertIn("43105", html_det)
+        self.assertIn("40362", html_det)
 
-        # 3. Importa arquivo no layout oficial tgg_export_caepi.txt (pipe-delimited) atualizando a validade do CA 43105
+        # 3. Importa arquivo no layout oficial tgg_export_caepi.txt (pipe-delimited) atualizando a validade do CA 40362
         conteudo_tgg = (
             "#NRRegistroCA|DataDeValidade|Situacao|NRProcesso|CNPJ|RazaoSocial|Natureza|NomeEquipamento|DescricaoEquipamento|MarcaCA|Referencia\n"
-            "43105|31/12/2030|VÁLIDO|12345|19.758.846/0001-11|MARLUVAS EQUIPAMENTOS|Nacional|CALÇADO TIPO BOTINA|Botina de segurança em couro|MARLUVAS|10B19\n"
+            "40362|31/12/2030|VÁLIDO|12345|12.503.608/0001-18|FHIORUK INDUSTRIA|Nacional|BOTINA - TIPO B|Calçado ocupacional tipo botina|FHIORUK|TAA.\n"
         ).encode("utf-8")
         r_sync = self.post(
             "/epis/sincronizar-caepi",
@@ -436,7 +452,7 @@ class TestEstoque(Base):
 
         with self.app.app_context():
             from app.db import get_db
-            row = get_db().execute("SELECT validade_ca FROM epis WHERE ca = '43105'").fetchone()
+            row = get_db().execute("SELECT validade_ca FROM epis WHERE ca = '40362'").fetchone()
             self.assertEqual(row["validade_ca"], "2030-12-31")
 
 
