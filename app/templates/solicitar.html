@@ -1,12 +1,15 @@
 {% extends 'base.html' %}
 {% from '_macros.html' import csrf with context %}
-{% block titulo %}Solicitação de Uniforme e EPI{% endblock %}
+{% block titulo %}{{ 'Formulário do Gestor' if modo_gestor else 'Solicitação de Uniforme e EPI' }}{% endblock %}
 {% block conteudo %}
 <div class="form-publico-container">
   {% if not usuario %}
   <div class="topo-publico">
     <span style="display:inline-flex;align-items:center;gap:.5rem"><img src="{{ url_for('static', filename='icone.png') }}" alt="Logo EPI" style="width:24px;height:24px;object-fit:contain"> <strong>Sistema de Controle de EPIs</strong> · Formulário Público</span>
-    <a class="btn pequeno" href="{{ url_for('auth.login') }}">🔒 Área Restrita</a>
+    <span class="acoes">
+      <a class="btn pequeno" href="{{ url_for('auth.login', next=url_for('pedidos.solicitar_gestor')) }}">👔 Formulário do Gestor</a>
+      <a class="btn pequeno" href="{{ url_for('auth.login') }}">🔒 Área Restrita</a>
+    </span>
   </div>
   {% else %}
   <div class="cartao barra-compartilhar">
@@ -19,10 +22,15 @@
       {% endif %}
     </div>
   </div>
-  {% if pode_personalizar_forms %}
+  {% if pode_personalizar_forms or pode_solicitar_gestor %}
   <nav class="abas" style="margin-bottom:1rem">
-    <a href="{{ url_for('pedidos.solicitar') }}" class="ativo">👷‍♂️ Visualizar Formulário (Visão do Colaborador)</a>
+    <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if not modo_gestor }}">👷‍♂️ Formulário Público (Visão do Colaborador)</a>
+    {% if pode_solicitar_gestor %}
+    <a href="{{ url_for('pedidos.solicitar_gestor') }}" class="{{ 'ativo' if modo_gestor }}">👔 Formulário do Gestor (fora da função)</a>
+    {% endif %}
+    {% if pode_personalizar_forms %}
     <a href="{{ url_for('pedidos.personalizar_formulario') }}">✏️ Personalizar Formulário (Cidades, EPIs, Imagens e Perguntas)</a>
+    {% endif %}
   </nav>
   {% endif %}
   {% endif %}
@@ -50,7 +58,7 @@
     <p class="pedido-obs" style="margin-bottom:1.2rem">💬 <strong>Observações:</strong> {{ pedido_enviado.observacao }}</p>
     {% endif %}
     <div class="acoes">
-      <a class="btn primario" href="{{ url_for('pedidos.solicitar') }}">Enviar outra solicitação</a>
+      <a class="btn primario" href="{{ url_for(endpoint_form) }}">Enviar outra solicitação</a>
       {% if usuario %}
       <a class="btn" href="{{ url_for('pedidos.detalhe', pedido_id=pedido_enviado.id) }}">Abrir pedido #{{ pedido_enviado.id }} no Almoxarifado →</a>
       {% endif %}
@@ -58,24 +66,32 @@
   </section>
   {% else %}
 
-  <form method="post" action="{{ url_for('pedidos.solicitar') }}" class="form-publico" id="form-solicitar">
+  <form method="post" action="{{ url_for(endpoint_form) }}" class="form-publico" id="form-solicitar"
+        data-modo="{{ 'gestor' if modo_gestor else 'publico' }}">
     {{ csrf() }}
     <header class="cartao cabecalho-forms">
+      {% if modo_gestor %}
+      <h1>👔 Formulário do Gestor</h1>
+      <p>Use este formulário para pedir EPIs ou vestimentas a um colaborador, inclusive itens <strong>fora do padrão do cargo</strong> dele (ex.: teste em outra função, promoção ou atividade específica na obra). Itens fora da função exigem justificativa.</p>
+      <p class="nota">Solicitante: <strong>{{ usuario['nome'] }}</strong> · <span class="obrigatorio">*</span> Obrigatória</p>
+      {% else %}
       <h1>{{ cfg_form.titulo }}</h1>
       {% if cfg_form.descricao %}<p>{{ cfg_form.descricao }}</p>{% endif %}
+      <p class="nota">Aparecem somente os equipamentos do padrão do seu cargo. Precisa de algo fora da sua função? Peça ao seu gestor.</p>
       <p class="nota"><span class="obrigatorio">*</span> Obrigatória</p>
+      {% endif %}
     </header>
 
     <!-- 1. Nome completo -->
     <section class="cartao bloco-pergunta">
       <label class="titulo-pergunta" for="select-colaborador">
-        {{ cfg_form.pergunta_1_titulo }} <span class="obrigatorio">*</span>
+        {{ '1. Selecione o colaborador.' if modo_gestor else cfg_form.pergunta_1_titulo }} <span class="obrigatorio">*</span>
       </label>
       <select name="nome" id="select-colaborador" required>
-        <option value="" data-cargo="">Selecione sua resposta</option>
+        <option value="" data-cargo="" data-colab-id="">Selecione sua resposta</option>
         {% set nome_sel = form_dados.get('nome', '') %}
         {% for c in colaboradores %}
-        <option value="{{ c.nome }}" data-cargo="{{ c.funcao or '' }}" {{ 'selected' if c.nome == nome_sel }}>{{ c.nome }}</option>
+        <option value="{{ c.nome }}" data-cargo="{{ c.funcao or '' }}" data-colab-id="{{ c.id }}" {{ 'selected' if c.nome == nome_sel }}>{{ c.nome }}</option>
         {% endfor %}
       </select>
       <div id="aviso-cargo-colab" class="aviso ok" style="margin:.3rem 0 0;padding:.45rem .8rem;font-size:.88rem" hidden></div>
@@ -131,7 +147,8 @@
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_epi else 'lista-opcoes' }}">
         {% for e in epis_protecao %}
         {% set eh_rec = e.id in padrao_ids_sel %}
-        <label class="opcao-item {{ 'opcao-com-imagem' if e.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ e.id }}">
+        <label class="opcao-item {{ 'opcao-com-imagem' if e.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ e.id }}"
+               {{ 'hidden' if not modo_gestor and not eh_rec }}>
           <input type="checkbox" name="epi" value="{{ e.nome }}"
                  data-calcado="{{ tipo_calcado(e.nome) or '' }}"
                  data-uniforme="{{ tipo_uniforme(e.nome) or '' }}"
@@ -146,12 +163,16 @@
           <span class="texto-opcao-epi">
             <strong>{{ e.nome }}</strong>
             <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span>
+            {% if modo_gestor %}<span class="tag-fora-funcao" {{ '' if colab_sel_id and not eh_rec else 'hidden' }}>(fora da função)</span>{% endif %}
           </span>
         </label>
         {% else %}
         <p class="nota">Nenhum EPI cadastrado no estoque no momento.</p>
         {% endfor %}
       </div>
+      {% if not modo_gestor %}
+      <p class="nota aviso-sem-itens" data-secao="epi" hidden></p>
+      {% endif %}
 
       <!-- Abas dinâmicas de numeração por tipo de calçado (aparecem somente ao selecionar Sapatão, Botina ou Bota) -->
       <div id="secao-tamanho-calcado" class="subbloco-condicional" hidden>
@@ -208,7 +229,8 @@
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_vest else 'lista-opcoes' }}">
         {% for v in vestimentas %}
         {% set eh_rec = v.id in padrao_ids_sel %}
-        <label class="opcao-item {{ 'opcao-com-imagem' if v.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ v.id }}">
+        <label class="opcao-item {{ 'opcao-com-imagem' if v.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ v.id }}"
+               {{ 'hidden' if not modo_gestor and not eh_rec }}>
           <input type="checkbox" name="vestimento" value="{{ v.nome }}"
                  data-calcado="{{ tipo_calcado(v.nome) or '' }}"
                  data-uniforme="{{ tipo_uniforme(v.nome) or '' }}"
@@ -223,12 +245,16 @@
           <span class="texto-opcao-epi">
             <strong>{{ v.nome }}</strong>
             <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span>
+            {% if modo_gestor %}<span class="tag-fora-funcao" {{ '' if colab_sel_id and not eh_rec else 'hidden' }}>(fora da função)</span>{% endif %}
           </span>
         </label>
         {% else %}
         <p class="nota">Nenhuma vestimenta cadastrada no estoque no momento.</p>
         {% endfor %}
       </div>
+      {% if not modo_gestor %}
+      <p class="nota aviso-sem-itens" data-secao="vestimento" hidden></p>
+      {% endif %}
 
       <!-- Bloco dinâmico de tamanho de uniforme (aparece somente ao selecionar Camiseta ou Calça) -->
       <div id="secao-tamanho-uniforme" class="subbloco-condicional" hidden>
@@ -303,6 +329,18 @@
     </section>
     {% endfor %}
 
+    {% if modo_gestor %}
+    <!-- Justificativa (somente gestor): obrigatória quando há itens fora da função -->
+    <section class="cartao bloco-pergunta" id="secao-justificativa" {{ '' if form_dados.get('justificativa') else 'hidden' }}>
+      <label class="titulo-pergunta" for="campo-justificativa">
+        Justificativa dos itens fora da função <span class="obrigatorio">*</span>
+      </label>
+      <p class="subtitulo-pergunta">Itens fora da função: <strong id="lista-fora-funcao">—</strong></p>
+      <textarea id="campo-justificativa" name="justificativa" rows="3"
+                placeholder="Ex.: período de teste como Encarregado para possível promoção">{{ form_dados.get('justificativa', '') }}</textarea>
+    </section>
+    {% endif %}
+
     <!-- 6. Observações -->
     <section class="cartao bloco-pergunta">
       <label class="titulo-pergunta" for="campo-obs">
@@ -345,41 +383,91 @@ function ampliarImagemEpi(src, nome) {
   const form = document.getElementById("form-solicitar");
   if (!form) return;
 
-  const PADRAO_POR_CARGO = {{ padrao_por_cargo|tojson }};
+  // Público: mostra só os itens do padrão do cargo. Gestor: mostra tudo e marca o que está fora da função.
+  const MODO_GESTOR = form.dataset.modo === "gestor";
+  const PADRAO_POR_COLAB = {{ padrao_por_colab|tojson }};
   const selectColab = document.getElementById("select-colaborador");
   const avisoCargo = document.getElementById("aviso-cargo-colab");
   const itensOpcao = Array.from(form.querySelectorAll(".opcao-item[data-epi-id]"));
+  const secaoJust = document.getElementById("secao-justificativa");
+  const campoJust = document.getElementById("campo-justificativa");
+  const listaFora = document.getElementById("lista-fora-funcao");
 
-  function atualizarRecomendadosPeloCargo() {
+  function escaparHtml(txt) {
+    const d = document.createElement("div");
+    d.textContent = txt;
+    return d.innerHTML;
+  }
+
+  function atualizarItensPeloCargo() {
     if (!selectColab) return;
     const opt = selectColab.options[selectColab.selectedIndex];
     const cargo = (opt && opt.dataset.cargo ? opt.dataset.cargo : "").trim();
-    const idsRecomendados = new Set(PADRAO_POR_CARGO[cargo.toLowerCase()] || []);
+    const colabId = opt && opt.dataset.colabId ? opt.dataset.colabId : "";
+    const idsPadrao = new Set(PADRAO_POR_COLAB[colabId] || []);
 
     for (const item of itensOpcao) {
-      const id = Number(item.dataset.epiId);
-      const rec = idsRecomendados.has(id);
+      const rec = idsPadrao.has(Number(item.dataset.epiId));
       item.classList.toggle("recomendado-cargo", rec);
       const tag = item.querySelector(".tag-recomendado");
       if (tag) tag.hidden = !rec;
+      const tagFora = item.querySelector(".tag-fora-funcao");
+      if (tagFora) tagFora.hidden = rec || !colabId;
+      item.dataset.foraFuncao = rec ? "" : "1";
+      if (!MODO_GESTOR) {
+        item.hidden = !rec;
+        const chk = item.querySelector('input[type="checkbox"]');
+        if (!rec && chk && chk.checked) {
+          chk.checked = false;
+          chk.dispatchEvent(new Event("change"));
+        }
+      }
+    }
+
+    // Avisos de seção vazia no formulário público
+    for (const aviso of form.querySelectorAll(".aviso-sem-itens")) {
+      const visiveis = itensOpcao.filter(i => !i.hidden && i.querySelector(`input[name="${aviso.dataset.secao}"]`));
+      if (!colabId) {
+        aviso.textContent = "Selecione o seu nome na pergunta 1 para ver os equipamentos do seu cargo.";
+      } else if (idsPadrao.size === 0) {
+        aviso.textContent = "Seu cargo ainda não tem equipamentos padrão cadastrados. Procure o seu gestor para fazer o pedido.";
+      } else {
+        aviso.textContent = "Nenhum item desta seção faz parte do padrão do seu cargo.";
+      }
+      aviso.hidden = visiveis.length > 0;
     }
 
     if (avisoCargo) {
-      if (cargo && idsRecomendados.size > 0) {
-        avisoCargo.innerHTML = `👷 Cargo vinculado: <strong>${cargo}</strong> — Os equipamentos padrão do seu cargo estão destacados em verde abaixo.`;
+      const cargoHtml = cargo ? `👷 Cargo vinculado: <strong>${escaparHtml(cargo)}</strong>` : "👷 Sem cargo definido";
+      if (!colabId) {
+        avisoCargo.hidden = true;
+      } else if (MODO_GESTOR) {
+        avisoCargo.innerHTML = `${cargoHtml} — os itens do padrão estão em verde; os demais ficam marcados como <strong>fora da função</strong>.`;
         avisoCargo.hidden = false;
-      } else if (cargo) {
-        avisoCargo.innerHTML = `👷 Cargo vinculado: <strong>${cargo}</strong>`;
+      } else if (idsPadrao.size > 0) {
+        avisoCargo.innerHTML = `${cargoHtml} — abaixo aparecem somente os equipamentos do seu cargo.`;
         avisoCargo.hidden = false;
       } else {
-        avisoCargo.hidden = true;
+        avisoCargo.innerHTML = cargoHtml;
+        avisoCargo.hidden = false;
       }
     }
+    atualizarJustificativa();
+  }
+
+  function atualizarJustificativa() {
+    if (!MODO_GESTOR || !secaoJust) return;
+    const fora = itensOpcao
+      .filter(i => i.dataset.foraFuncao === "1" && i.querySelector('input[type="checkbox"]:checked'))
+      .map(i => i.querySelector('input[type="checkbox"]').value);
+    secaoJust.hidden = fora.length === 0;
+    if (campoJust) campoJust.required = fora.length > 0;
+    if (listaFora) listaFora.textContent = fora.join(", ") || "—";
   }
 
   if (selectColab) {
-    selectColab.addEventListener("change", atualizarRecomendadosPeloCargo);
-    atualizarRecomendadosPeloCargo();
+    selectColab.addEventListener("change", atualizarItensPeloCargo);
+    atualizarItensPeloCargo();
   }
 
   const checkboxes = Array.from(form.querySelectorAll('input[type="checkbox"][name="epi"], input[type="checkbox"][name="vestimento"]'));
@@ -433,7 +521,10 @@ function ampliarImagemEpi(src, nome) {
     }
   }
 
-  checkboxes.forEach(chk => chk.addEventListener("change", atualizarCamposCondicionais));
+  checkboxes.forEach(chk => chk.addEventListener("change", () => {
+    atualizarCamposCondicionais();
+    atualizarJustificativa();
+  }));
   atualizarCamposCondicionais();
 })();
 </script>

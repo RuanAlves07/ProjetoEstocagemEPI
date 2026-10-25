@@ -15,7 +15,7 @@ from .util import limpar
 
 bp = Blueprint("auth", __name__)
 
-PERFIS = {"admin": "Administrador", "almoxarifado": "Almoxarifado", "consulta": "Consulta"}
+PERFIS = {"admin": "Administrador", "almoxarifado": "Almoxarifado", "consulta": "Consulta", "gestor": "Gestor"}
 PERFIS_ESCRITA = ("admin", "almoxarifado")
 
 CATALOGO_PERMISSOES = [
@@ -32,6 +32,7 @@ CATALOGO_PERMISSOES = [
     ("registrar_movimentos", "Movimentações (Lançar Estoque)", "Registrar novas entradas, entregas avulsas, baixas e ajustes de saldo"),
     ("ver_relatorios", "Relatórios", "Visualizar relatórios gerenciais por período, setor, obra e colaborador"),
     ("cancelar_estornar", "Cancelar / Estornar Lançamentos", "Cancelar movimentações do livro-razão e cancelar pedidos prontos com estorno"),
+    ("solicitar_fora_funcao", "Formulário do Gestor (fora da função)", "Usar o formulário do gestor para pedir EPIs a um colaborador fora do padrão do cargo dele"),
 ]
 
 TODAS_PERMISSOES = tuple(chave for chave, _, _ in CATALOGO_PERMISSOES)
@@ -96,6 +97,8 @@ def permissoes_do_perfil(perfil, db=None):
             perms = {p for p in TODAS_PERMISSOES if p != "cancelar_estornar"}
         elif perfil == "consulta":
             perms = {"ver_painel", "ver_pedidos", "ver_epis", "ver_fornecedores", "ver_colaboradores", "ver_movimentos", "ver_relatorios"}
+        elif perfil == "gestor":
+            perms = {"ver_pedidos", "ver_colaboradores", "solicitar_fora_funcao"}
         else:
             perms = set()
     else:
@@ -137,6 +140,8 @@ def _permissao_exigida_rota(endpoint, metodo):
         return "__admin__"
     if endpoint == "pedidos.personalizar_formulario" or endpoint.startswith("pedidos.form_"):
         return ("gerenciar_pedidos", "editar_epis")
+    if endpoint == "pedidos.solicitar_gestor":
+        return "solicitar_fora_funcao"
     if endpoint in ("pedidos.lista", "pedidos.detalhe", "pedidos.exportar_csv", "pedidos.novos"):
         return "ver_pedidos"
     if endpoint.startswith("pedidos."):
@@ -174,6 +179,7 @@ def primeira_rota_permitida():
         ("ver_colaboradores", "cadastros.colaboradores_lista"),
         ("ver_movimentos", "movimentos.lista"),
         ("ver_relatorios", "painel.relatorios"),
+        ("solicitar_fora_funcao", "pedidos.solicitar_gestor"),
     ]
     for perm, ep in ordem:
         if usuario_tem_permissao(perm):
@@ -394,5 +400,6 @@ def contexto():
         "pode_personalizar_forms": ("gerenciar_pedidos" in perms) or ("editar_epis" in perms) or (perfil == "admin"),
         "pode_movimentar": "registrar_movimentos" in perms,
         "pode_cancelar": "cancelar_estornar" in perms,
+        "pode_solicitar_gestor": "solicitar_fora_funcao" in perms,
         "eh_admin": perfil == "admin",
     }

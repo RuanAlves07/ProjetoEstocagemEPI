@@ -11,10 +11,17 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 ### 1. Formulário Público de Solicitação (`/solicitar`)
 - **Acesso público (sem necessidade de login)**: pode ser disponibilizado via link direto ou QR Code para os colaboradores nas obras pelo celular ou computador.
 - **Data automática**: a data e hora do pedido são registradas automaticamente no momento em que o colaborador finaliza o envio.
-- **Recomendação inteligente por Cargo**: ao selecionar o nome do colaborador, o sistema identifica o cargo dele e destaca automaticamente na lista (em verde) os equipamentos do seu kit com a tag **`(recomendado pelo cargo)`**.
+- **Somente os EPIs do cargo**: ao selecionar o nome do colaborador, o formulário mostra **apenas** os equipamentos do kit padrão do cargo dele (definido em `/colaboradores/cargos`; se o colaborador não tiver cargo, vale o padrão individual da ficha). O servidor também recusa qualquer item fora desse padrão, nomes que não estão na lista de colaboradores e itens que não existem no formulário. Para pedir algo fora da função, o colaborador procura o gestor.
 - **Seletores dinâmicos e condicionais de numeração e tamanho**:
   - **Calçados (`Sapatão`, `Botina` e `Bota`)**: abrem abas numéricas independentes (restritas a **somente números**) exclusivamente para os tipos de calçado marcados no pedido.
   - **Uniformes (`Camiseta` e `Calça`)**: abrem seletores de tamanho nos padrões **`M, G, GG, G1, G2, G3, G4 e G5`** somente quando camiseta ou calça são selecionadas.
+
+### 1.1. Formulário do Gestor (`/solicitar/gestor`)
+- **Acesso somente com login e senha**: exige um usuário com a permissão **`Formulário do Gestor (fora da função)`** — já vem no perfil **Gestor** (criado automaticamente) e no Administrador, e pode ser liberada em qualquer perfil personalizado.
+- Mostra **todos** os EPIs e vestimentas do formulário: os do cargo do colaborador ficam em verde **`(recomendado pelo cargo)`** e os demais recebem a etiqueta **`(fora da função)`**.
+- Ao marcar algum item fora da função, o campo **Justificativa** passa a ser obrigatório.
+- O pedido entra na mesma fila do almoxarifado, com a observação **`[Solicitado pelo gestor: Nome]`** e **`[Fora da função: itens — Justificativa: ...]`**, que também aparece na aba *Equipamentos solicitados* da ficha do colaborador.
+- Atalho no topo do formulário público (**👔 Formulário do Gestor**) e na aba *Formulário* do sistema.
 
 ### 2. Colaboradores e Padronização por Cargo (`/colaboradores` e `/colaboradores/cargos`)
 - **Padrão de EPIs por Cargo (`/colaboradores/cargos`)**:

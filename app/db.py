@@ -189,7 +189,7 @@ def _garantir_base_caepi_inicial(conn):
 
 
 def _garantir_perfis_padrao(conn):
-    """Garante que os 3 perfis base existam na tabela perfis_acesso sem sobrescrever ajustes já salvos."""
+    """Garante que os perfis base existam na tabela perfis_acesso sem sobrescrever ajustes já salvos."""
     padroes = [
         (
             "admin",
@@ -210,6 +210,13 @@ def _garantir_perfis_padrao(conn):
             "Consulta",
             "Apenas visualização do painel, pedidos, catálogo de EPIs, fornecedores, colaboradores, histórico e relatórios.",
             "ver_painel,ver_pedidos,ver_epis,ver_fornecedores,ver_colaboradores,ver_movimentos,ver_relatorios",
+            1,
+        ),
+        (
+            "gestor",
+            "Gestor",
+            "Usa o formulário do gestor (com login e senha) para pedir EPIs a colaboradores fora do padrão do cargo, e acompanha os pedidos.",
+            "ver_pedidos,ver_colaboradores,solicitar_fora_funcao",
             1,
         ),
     ]
