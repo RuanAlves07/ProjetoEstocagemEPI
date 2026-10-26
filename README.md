@@ -11,6 +11,7 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 ### 1. Formulário Público de Solicitação (`/solicitar`)
 - **Acesso público (sem necessidade de login)**: pode ser disponibilizado via link direto ou QR Code para os colaboradores nas obras pelo celular ou computador.
 - **Data automática**: a data e hora do pedido são registradas automaticamente no momento em que o colaborador finaliza o envio.
+- **Local de entrega por obra**: a pergunta 2 lista as **obras** agrupadas por cidade (ex.: *Araquari → Kasulke, Recanto da Fazenda…*), com endereço e link **🗺️ Ver no mapa**. O pedido grava o local como `Cidade - Obra` (ex.: `Araquari - Kasulke`), e só são aceitas obras da lista. As obras são editadas em **Formulário → Personalizar Formulário → Pergunta 2** (cidade, nome da obra, endereço e link do mapa).
 - **Somente os EPIs do cargo**: ao selecionar o nome do colaborador, o formulário mostra **apenas** os equipamentos do kit padrão do cargo dele (definido em `/colaboradores/cargos`; se o colaborador não tiver cargo, vale o padrão individual da ficha). O servidor também recusa qualquer item fora desse padrão, nomes que não estão na lista de colaboradores e itens que não existem no formulário. Para pedir algo fora da função, o colaborador procura o gestor.
 - **Seletores dinâmicos e condicionais de numeração e tamanho**:
   - **Calçados (`Sapatão`, `Botina` e `Bota`)**: abrem abas numéricas independentes (restritas a **somente números**) exclusivamente para os tipos de calçado marcados no pedido.

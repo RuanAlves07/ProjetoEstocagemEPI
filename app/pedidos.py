@@ -31,6 +31,66 @@ LOCAIS_FORMULARIO = [
     "São Francisco do Sul",
     "Barra Velha",
 ]
+# Obras atendidas (local de entrega do formulário), agrupadas por cidade
+OBRAS_FORMULARIO = [
+    {"cidade": "Araquari", "nome": "Refúgio dos Pássaros / Guimbala",
+     "endereco": "Rod. Senador Luiz Henrique da Silveira - Colégio Agrícola, Araquari - SC, 89245-000",
+     "mapa": "https://maps.app.goo.gl/fFNa3S9bjhw4JFPd9"},
+    {"cidade": "Araquari", "nome": "Kasulke",
+     "endereco": "Rua Adolar Kasulke, Araquari - SC",
+     "mapa": "https://maps.app.goo.gl/2WTfj5JJHEq4zNhKA"},
+    {"cidade": "Araquari", "nome": "Raízes / Ziel",
+     "endereco": "Rua Terezinha de Jesus da Silva, Araquari - SC",
+     "mapa": "https://maps.app.goo.gl/6bkK2kV5EpkVgHhB7"},
+    {"cidade": "Araquari", "nome": "Recanto da Fazenda",
+     "endereco": "Rod. Carlos Frederico Adolfo Schneider, Araquari - SC, 89245-000",
+     "mapa": "https://maps.app.goo.gl/Rardh4MPgYD6LZgZ8"},
+    {"cidade": "Barra do Sul", "nome": "Costa do Encanto / Hamilton",
+     "endereco": "",
+     "mapa": "https://maps.app.goo.gl/F5vcrFSbykXLfDCc7"},
+    {"cidade": "Barra Velha", "nome": "Porto do Sol",
+     "endereco": "Rua Maristela Mendes Amorin, Barra Velha - SC",
+     "mapa": "https://maps.app.goo.gl/9fQeKC7DF9tzuCiD8"},
+    {"cidade": "Barra Velha", "nome": "Terra de Açores",
+     "endereco": "Rua 2040, Barra Velha - SC",
+     "mapa": "https://maps.app.goo.gl/QjjXgbAysGQJCda16"},
+    {"cidade": "Canoinhas", "nome": "Canoinhas",
+     "endereco": "",
+     "mapa": ""},
+    {"cidade": "Chapecó", "nome": "Florescer e Matterroir",
+     "endereco": "EMC-364, Chapecó - SC",
+     "mapa": "https://www.google.com/maps?q=-27.153944,-52.591306"},
+    {"cidade": "Chapecó", "nome": "Revoar",
+     "endereco": "Acesso Florenal Ribeiro, Chapecó - SC",
+     "mapa": "https://www.google.com/maps?q=-27.137417,-52.626806"},
+    {"cidade": "Garuva", "nome": "Acordes",
+     "endereco": "",
+     "mapa": "https://www.google.com/maps?q=-26.0345233,-48.740875"},
+    {"cidade": "Garuva", "nome": "Villa Dona Francisca",
+     "endereco": "Estr. Palmeira - Três Barras, Garuva - SC, 89248-000",
+     "mapa": "https://maps.app.goo.gl/fEoQKCztD9A38mn59"},
+    {"cidade": "Garuva", "nome": "Condomínio Mirante da Serra",
+     "endereco": "Estrada Caovi, 574, Garuva - SC, 89248-000",
+     "mapa": "https://maps.app.goo.gl/heWQ1oeNk3JxZggF6"},
+    {"cidade": "Garuva", "nome": "Meneghesso",
+     "endereco": "Avenida Getúlio Dornelles Vargas ou Rua Ladislau Ostrowski, Garuva - SC",
+     "mapa": "https://maps.app.goo.gl/LvXdUV4jQt6ycKGZ7"},
+    {"cidade": "Guaramirim", "nome": "Amizade",
+     "endereco": "",
+     "mapa": "https://www.google.com/maps?q=-26.4689681,-48.9876709"},
+    {"cidade": "Guaramirim", "nome": "Green Village",
+     "endereco": "",
+     "mapa": "https://www.google.com/maps?q=-26.4802222,-48.9574167"},
+    {"cidade": "Itaiópolis", "nome": "Condomínio Lucena",
+     "endereco": "BR-116, KM 24 - Bom Jesus, Itaiópolis - SC, 89340-000",
+     "mapa": "https://maps.app.goo.gl/RoNiKqhgB23xtoVJ9"},
+    {"cidade": "Rio Negrinho", "nome": "Biosul",
+     "endereco": "",
+     "mapa": ""},
+    {"cidade": "São José dos Pinhais", "nome": "Condomínio Cortona",
+     "endereco": "",
+     "mapa": "https://www.google.com/maps?q=-26.2633642,-49.5445806"},
+]
 MOTIVOS_FORMULARIO = [
     "Desgaste",
     "Perda",
@@ -167,7 +227,7 @@ CONFIG_FORMULARIO_PADRAO = {
         "Proteção Individual (EPIs) para os colaboradores das obras."
     ),
     "pergunta_1_titulo": "1. Selecione o seu nome completo.",
-    "pergunta_2_titulo": "2. Informe o local qual os EPIs solicitados devem ser entregues.",
+    "pergunta_2_titulo": "2. Informe a obra onde os EPIs solicitados devem ser entregues.",
     "permitir_outro_local": False,
     "pergunta_3_titulo": "3. Informe o motivo da solicitação.",
     "pergunta_4_titulo": "4. Selecione o equipamento de proteção individual necessário.",
@@ -186,18 +246,59 @@ CONFIG_FORMULARIO_PADRAO = {
     ),
     "pergunta_6_titulo": "6. Observações",
     "locais": list(LOCAIS_FORMULARIO),
+    "obras": [dict(o) for o in OBRAS_FORMULARIO],
     "motivos": list(MOTIVOS_FORMULARIO),
     "tamanhos_uniforme": list(TAMANHOS_UNIFORME),
     "perguntas_extras": [],
 }
 
+# Título antigo da pergunta 2 (quando o local era a cidade): trocado pelo novo padrão
+_TITULO_P2_ANTIGO = "2. Informe o local qual os EPIs solicitados devem ser entregues."
+
 _MAX_IMAGEM_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
+def _limpar_obras(lista):
+    """Valida a lista de obras [{cidade, nome, endereco, mapa}], sem repetir a mesma obra na mesma cidade."""
+    obras, vistas = [], set()
+    for o in lista or []:
+        if not isinstance(o, dict):
+            continue
+        nome = (limpar(o.get("nome")) or "")[:120]
+        cidade = (limpar(o.get("cidade")) or nome)[:80]
+        if not nome:
+            continue
+        chave = (normalizar(cidade), normalizar(nome))
+        if chave in vistas:
+            continue
+        vistas.add(chave)
+        mapa = (limpar(o.get("mapa")) or "")[:2000]
+        if not mapa.lower().startswith(("https://", "http://")):
+            mapa = ""   # só links web (evita javascript: e afins)
+        obras.append({"cidade": cidade, "nome": nome, "endereco": (limpar(o.get("endereco")) or "")[:300],
+                      "mapa": mapa})
+    return obras
+
+
+def rotulo_obra(obra):
+    """Texto gravado no pedido como local de entrega: 'Cidade - Obra'."""
+    if normalizar(obra["nome"]) == normalizar(obra["cidade"]):
+        return obra["nome"]
+    return f"{obra['cidade']} - {obra['nome']}"
+
+
+def obras_por_cidade(obras):
+    """Agrupa as obras por cidade, mantendo a ordem: [(cidade, [obras...]), ...]."""
+    grupos = {}
+    for o in obras:
+        grupos.setdefault(o["cidade"], []).append({**o, "rotulo": rotulo_obra(o)})
+    return list(grupos.items())
 
 
 def obter_config_formulario(db):
     """Retorna o dicionário de configuração do formulário público mesclado com os padrões."""
     cfg = {
-        k: (list(v) if isinstance(v, list) else v)
+        k: ([dict(x) if isinstance(x, dict) else x for x in v] if isinstance(v, list) else v)
         for k, v in CONFIG_FORMULARIO_PADRAO.items()
     }
     linha = db.execute("SELECT valor FROM configuracoes WHERE chave = 'forms_config'").fetchone()
@@ -214,6 +315,10 @@ def obter_config_formulario(db):
                             limpos = [limpar(x) for x in val if limpar(x)]
                             if limpos:
                                 cfg[ch] = limpos
+                    elif ch == "obras":
+                        obras = _limpar_obras(val) if isinstance(val, list) else []
+                        if obras:
+                            cfg[ch] = obras
                     elif ch == "perguntas_extras":
                         if isinstance(val, list):
                             cfg[ch] = [p for p in val if isinstance(p, dict) and limpar(p.get("titulo"))]
@@ -225,6 +330,8 @@ def obter_config_formulario(db):
                             cfg[ch] = texto
         except ValueError:
             pass
+    if cfg["pergunta_2_titulo"] == _TITULO_P2_ANTIGO:
+        cfg["pergunta_2_titulo"] = CONFIG_FORMULARIO_PADRAO["pergunta_2_titulo"]
     return cfg
 
 
@@ -247,6 +354,11 @@ def salvar_config_formulario(db, nova_cfg):
                 if not limpos:
                     raise ErroValidacao(f"A lista de '{ch}' precisa ter ao menos uma opção.")
                 atual[ch] = limpos
+        elif ch == "obras":
+            obras = _limpar_obras(val) if isinstance(val, list) else []
+            if not obras:
+                raise ErroValidacao("Cadastre ao menos uma obra para o local de entrega.")
+            atual[ch] = obras
         elif ch == "perguntas_extras":
             if isinstance(val, list):
                 extras_limpas = []

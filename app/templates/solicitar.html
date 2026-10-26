@@ -43,7 +43,7 @@
     <p>Seu pedido já entrou diretamente na fila de separação do Almoxarifado.</p>
     <div class="dados-pedido" style="margin:1rem 0;padding:1rem;background:var(--fundo);border-radius:8px">
       <div><span class="suave">Colaborador</span><strong>{{ pedido_enviado.solicitante }}</strong></div>
-      <div><span class="suave">Local de entrega</span><strong>{{ pedido_enviado.local_destino or '—' }}</strong></div>
+      <div><span class="suave">Obra de entrega</span><strong>{{ pedido_enviado.local_destino or '—' }}</strong></div>
       <div><span class="suave">Motivo</span><strong>{{ pedido_enviado.motivo or '—' }}</strong></div>
       <div><span class="suave">Data/Hora do pedido</span><strong>{{ pedido_enviado.recebido_em|hora_br }}</strong></div>
     </div>
@@ -105,17 +105,26 @@
         {{ cfg_form.pergunta_2_titulo }} <span class="obrigatorio">*</span>
       </div>
       {% set local_sel = form_dados.get('local', '') %}
-      <div class="grade-opcoes-radio">
-        {% for loc in locais %}
-        <label class="opcao-item">
-          <input type="radio" name="local" value="{{ loc }}" {{ 'checked' if loc == local_sel }} {{ 'required' if not cfg_form.permitir_outro_local }}>
-          <span>{{ loc }}</span>
-        </label>
-        {% endfor %}
+      {% for cidade, obras in obras_agrupadas %}
+      <div class="grupo-obras">
+        <div class="cidade-obras">📍 {{ cidade }}</div>
+        <div class="grade-opcoes-radio">
+          {% for o in obras %}
+          <label class="opcao-item opcao-obra">
+            <input type="radio" name="local" value="{{ o.rotulo }}" {{ 'checked' if o.rotulo == local_sel }} {{ 'required' if not cfg_form.permitir_outro_local }}>
+            <span class="texto-obra">
+              <strong>{{ o.nome }}</strong>
+              {% if o.endereco %}<span class="endereco-obra">{{ o.endereco }}</span>{% endif %}
+              {% if o.mapa %}<a class="link-mapa-obra" href="{{ o.mapa }}" target="_blank" rel="noopener noreferrer">🗺️ Ver no mapa</a>{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
       </div>
+      {% endfor %}
       {% if cfg_form.permitir_outro_local %}
       <div style="margin-top:.45rem">
-        <input type="text" name="local_outro" placeholder="Outra cidade ou obra (preencha caso não esteja na lista acima)" value="{{ local_sel if local_sel and local_sel not in locais else '' }}">
+        <input type="text" name="local_outro" placeholder="Outra obra (preencha caso não esteja na lista acima)" value="{{ local_sel if local_sel and local_sel not in rotulos_obras else '' }}">
       </div>
       {% endif %}
     </section>

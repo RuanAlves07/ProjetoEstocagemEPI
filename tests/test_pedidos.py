@@ -378,13 +378,13 @@ class TestParser(BasePedidos):
 
         # Enviar só tamanho de uniforme sem marcar nenhum item é bloqueado
         r_invalido = anon.post("/solicitar", data={
-            "nome": "João da Silva", "local": "Araquari", "motivo": "Desgaste", "camiseta": "G",
+            "nome": "João da Silva", "local": "Araquari - Kasulke", "motivo": "Desgaste", "camiseta": "G",
         }, follow_redirects=True)
         self.assertIn("Selecione ao menos um equipamento", r_invalido.get_data(as_text=True))
 
         # Restrição somente números no tamanho do calçado
         r_letra = anon.post("/solicitar", data={
-            "nome": "João da Silva", "local": "Araquari", "motivo": "Desgaste",
+            "nome": "João da Silva", "local": "Araquari - Kasulke", "motivo": "Desgaste",
             "epi": ["Sapatão Bidensidade"], "tam_sapatao": "41A",
         }, follow_redirects=True)
         self.assertIn("somente números", r_letra.get_data(as_text=True))
@@ -392,7 +392,7 @@ class TestParser(BasePedidos):
         # Envio completo marcando Sapatão (41) + Botina (40) + Bota (42) + Camiseta (G) com tamanhos distintos
         r_post = anon.post("/solicitar", data={
             "nome": "João da Silva",
-            "local": "Araquari",
+            "local": "Araquari - Kasulke",
             "motivo": "Desgaste",
             "epi": ["Luva G", "Sapatão Bidensidade", "Botina Bico PVC", "Bota 40"],
             "vestimento": ["Camiseta M"],
@@ -418,7 +418,7 @@ class TestParser(BasePedidos):
             self.assertEqual(len(carregados), 1)
             p = carregados[0]
             self.assertEqual(p["solicitante"], "João da Silva")
-            self.assertEqual(p["local_destino"], "Araquari")
+            self.assertEqual(p["local_destino"], "Araquari - Kasulke")
             self.assertEqual(p["motivo"], "Desgaste")
             self.assertEqual(p["colaborador_id"], self.joao)
             self.assertEqual(p["total_itens"], 5)
@@ -443,7 +443,7 @@ class TestParser(BasePedidos):
         self.assertEqual(r_ed.status_code, 200)
         self.assertIn("MODO EDITOR", r_ed.get_data(as_text=True))
 
-        # Salva nova cidade ("Joinville - Obra Norte"), novo motivo, pergunta extra e foto no EPI Luva G
+        # Salva nova obra ("Joinville - Obra Norte"), novo motivo, pergunta extra e foto no EPI Luva G
         r_save = self.post("/solicitar/personalizar", {
             "atualizar_opcoes_epi": "1",
             "titulo": "FORMULÁRIO PERSONALIZADO DE EPI",
@@ -455,8 +455,9 @@ class TestParser(BasePedidos):
             "pergunta_4_subtitulo": "Veja a imagem de cada equipamento antes de marcar.",
             "pergunta_5_titulo": "5. Selecione a vestimenta necessária abaixo",
             "pergunta_6_titulo": "6. Observações",
-            "locais": ["Mafra", "Araquari"],
-            "novo_local": "Joinville - Obra Norte",
+            "obra_cidade": ["Araquari"], "obra_nome": ["Kasulke"],
+            "obra_endereco": ["Rua Adolar Kasulke"], "obra_mapa": ["https://maps.app.goo.gl/2WTfj5JJHEq4zNhKA"],
+            "nova_obra_cidade": "Joinville", "nova_obra_nome": "Obra Norte",
             "motivos": ["Desgaste", "Perda"],
             "novo_motivo": "Admissão Inicial",
             "tamanhos_uniforme": ["P", "M", "G", "GG"],
@@ -517,7 +518,7 @@ class TestFormularioPorCargo(BasePedidos):
         super().setUp()
         # Pedreiro: kit padrão é só Luva G e Bota 40 (Camiseta M fica fora da função)
         self.definir_cargo(self.joao, "Pedreiro", [self.luva, self.bota])
-        self.pedido_base = {"nome": "João da Silva", "local": "Araquari", "motivo": "Desgaste"}
+        self.pedido_base = {"nome": "João da Silva", "local": "Araquari - Kasulke", "motivo": "Desgaste"}
 
     def criar_usuario(self, login, perfil):
         self.post("/usuarios/novo", {"nome": login.title(), "login": login, "perfil": perfil,
@@ -635,3 +636,48 @@ class TestFormularioPorCargo(BasePedidos):
         # Ao sair, volta para o login do gestor
         r = self.post("/sair", client=anon)
         self.assertTrue(r.headers["Location"].endswith("/login/gestor"))
+
+
+class TestObrasFormulario(BasePedidos):
+    def setUp(self):
+        super().setUp()
+        self.definir_cargo(self.joao, "Pedreiro", [self.luva])
+
+    def test_formulario_mostra_obras_agrupadas_por_cidade(self):
+        html = self.app.test_client().get("/solicitar").get_data(as_text=True)
+        self.assertIn("Informe a obra onde", html)
+        self.assertIn("📍 Araquari", html)
+        self.assertIn('value="Araquari - Kasulke"', html)
+        self.assertIn("Rua Adolar Kasulke", html)
+        self.assertIn('href="https://maps.app.goo.gl/2WTfj5JJHEq4zNhKA"', html)
+        self.assertIn('value="Garuva - Villa Dona Francisca"', html)
+        self.assertIn('value="Canoinhas"', html)   # obra sem nome próprio usa só a cidade
+        self.assertNotIn('value="Mafra"', html)
+
+    def test_aceita_somente_obra_da_lista(self):
+        anon = self.app.test_client()
+        base = {"nome": "João da Silva", "motivo": "Desgaste", "epi": ["Luva G"]}
+        r = anon.post("/solicitar", data={**base, "local": "Araquari"}, follow_redirects=True)
+        self.assertIn("Selecione uma das obras da lista", r.get_data(as_text=True))
+        r = anon.post("/solicitar", data={**base, "local": "Chapecó - Revoar"}, follow_redirects=True)
+        self.assertIn("enviada com sucesso", r.get_data(as_text=True))
+        with self.app.app_context():
+            p = pedidos.carregar(get_db(), status=("novo",))[0]
+        self.assertEqual(p["local_destino"], "Chapecó - Revoar")
+
+    def test_editor_salva_obras_e_descarta_link_inseguro(self):
+        r = self.post("/solicitar/personalizar", {
+            "titulo": "UNIFORME E EPI",
+            "pergunta_1_titulo": "1.", "pergunta_2_titulo": "2.", "pergunta_3_titulo": "3.",
+            "pergunta_4_titulo": "4.", "pergunta_5_titulo": "5.", "pergunta_6_titulo": "6.",
+            "obra_cidade": ["Mafra", "Mafra"], "obra_nome": ["Obra Centro", "Obra Centro"],
+            "obra_endereco": ["Rua A", "Rua A"], "obra_mapa": ["javascript:alert(1)", ""],
+            "motivos": ["Desgaste"], "tamanhos_uniforme": ["M"],
+        }, follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+        with self.app.app_context():
+            obras = pedidos.obter_config_formulario(get_db())["obras"]
+        self.assertEqual(obras, [{"cidade": "Mafra", "nome": "Obra Centro", "endereco": "Rua A", "mapa": ""}])
+        html = self.app.test_client().get("/solicitar").get_data(as_text=True)
+        self.assertNotIn("javascript:alert", html)
+        self.assertIn('value="Mafra - Obra Centro"', html)
