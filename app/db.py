@@ -215,11 +215,16 @@ def _garantir_perfis_padrao(conn):
         (
             "gestor",
             "Gestor",
-            "Usa o formulário do gestor (com login e senha) para pedir EPIs a colaboradores fora do padrão do cargo, e acompanha os pedidos.",
-            "ver_pedidos,ver_colaboradores,solicitar_fora_funcao",
+            "Entra pelo login do gestor e usa somente o formulário do gestor para pedir EPIs a colaboradores fora do padrão do cargo.",
+            "solicitar_fora_funcao",
             1,
         ),
     ]
+    # Perfil Gestor criado com o padrão antigo (sem edição do administrador) passa a ver só o formulário do gestor
+    conn.execute(
+        "UPDATE perfis_acesso SET permissoes = 'solicitar_fora_funcao' "
+        "WHERE chave = 'gestor' AND permissoes = 'ver_pedidos,ver_colaboradores,solicitar_fora_funcao'"
+    )
     for chave, nome, desc, perms, sis in padroes:
         conn.execute(
             "INSERT OR IGNORE INTO perfis_acesso (chave, nome, descricao, permissoes, sistema) VALUES (?, ?, ?, ?, ?)",

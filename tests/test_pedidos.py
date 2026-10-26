@@ -562,7 +562,7 @@ class TestFormularioPorCargo(BasePedidos):
         anon = self.app.test_client()
         r = anon.get("/solicitar/gestor")
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/login", r.headers["Location"])
+        self.assertIn("/login/gestor", r.headers["Location"])
         r_post = anon.post("/solicitar/gestor", data={**self.pedido_base, "epi": ["Luva G"]})
         self.assertIn(r_post.status_code, (302, 400))   # sem sessão: barrado pelo CSRF ou mandado ao login
         with self.app.app_context():
@@ -604,3 +604,34 @@ class TestFormularioPorCargo(BasePedidos):
         with self.app.app_context():
             p = pedidos.carregar(get_db(), status=("novo",))[0]
         self.assertNotIn("Fora da função", p["observacao"])
+
+    def test_tela_login_tem_card_do_gestor_e_login_separado(self):
+        anon = self.app.test_client()
+        html = anon.get("/login").get_data(as_text=True)
+        self.assertIn("Solicitação de Uniforme e EPI (Gestor)", html)
+        self.assertIn('href="/login/gestor"', html)
+        self.assertIn("Login do gestor", anon.get("/login/gestor").get_data(as_text=True))
+
+        # Usuário sem a permissão do gestor não entra pelo login do gestor
+        self.criar_usuario("ver", "consulta")
+        r = self.post("/login/gestor", {"login": "ver", "senha": "senha1234"}, client=anon)
+        self.assertIn("não tem acesso ao formulário do gestor", r.get_data(as_text=True))
+
+        # Senha errada
+        self.post("/usuarios/novo", {"nome": "Gestor3", "login": "gestor3", "perfil": "gestor",
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        r = self.post("/login/gestor", {"login": "gestor3", "senha": "errada123"}, client=anon)
+        self.assertIn("Login ou senha incorretos", r.get_data(as_text=True))
+
+        # Gestor entra e cai direto no formulário do gestor, só com o menu dele
+        r = self.post("/login/gestor", {"login": "gestor3", "senha": "senha1234"}, client=anon)
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers["Location"].endswith("/solicitar/gestor"))
+        html = anon.get("/solicitar/gestor").get_data(as_text=True)
+        self.assertIn("Formulário do Gestor", html)
+        self.assertNotIn('href="/pedidos"', html)
+        self.assertNotIn("Copiar link", html)
+
+        # Ao sair, volta para o login do gestor
+        r = self.post("/sair", client=anon)
+        self.assertTrue(r.headers["Location"].endswith("/login/gestor"))

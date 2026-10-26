@@ -17,7 +17,8 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
   - **Uniformes (`Camiseta` e `Calça`)**: abrem seletores de tamanho nos padrões **`M, G, GG, G1, G2, G3, G4 e G5`** somente quando camiseta ou calça são selecionadas.
 
 ### 1.1. Formulário do Gestor (`/solicitar/gestor`)
-- **Acesso somente com login e senha**: exige um usuário com a permissão **`Formulário do Gestor (fora da função)`** — já vem no perfil **Gestor** (criado automaticamente) e no Administrador, e pode ser liberada em qualquer perfil personalizado.
+- **Login separado do gestor (`/login/gestor`)**: na tela de login, abaixo do card *Solicitação de Uniforme e EPI*, fica o card **Solicitação de Uniforme e EPI (Gestor)**, que abre uma tela de login própria do gestor. Só entra quem tem a permissão **`Formulário do Gestor (fora da função)`**: ela vem no perfil **Gestor** (criado automaticamente) e no Administrador, e pode ser liberada em qualquer perfil personalizado.
+- Quem tem o perfil Gestor vê **somente** o formulário do gestor (sem os menus do sistema) e, ao sair, volta para o login do gestor. Para cadastrar um gestor: **Usuários → + Novo usuário → Perfil "Gestor"**.
 - Mostra **todos** os EPIs e vestimentas do formulário: os do cargo do colaborador ficam em verde **`(recomendado pelo cargo)`** e os demais recebem a etiqueta **`(fora da função)`**.
 - Ao marcar algum item fora da função, o campo **Justificativa** passa a ser obrigatório.
 - O pedido entra na mesma fila do almoxarifado, com a observação **`[Solicitado pelo gestor: Nome]`** e **`[Fora da função: itens — Justificativa: ...]`**, que também aparece na aba *Equipamentos solicitados* da ficha do colaborador.

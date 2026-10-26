@@ -47,7 +47,7 @@ _IMPLICITAS = {
     "registrar_movimentos": "ver_movimentos",
 }
 
-ROTAS_PUBLICAS = {"auth.login", "auth.setup", "static", "pedidos.api_criar", "pedidos.solicitar", "favicon"}
+ROTAS_PUBLICAS = {"auth.login", "auth.login_gestor", "auth.setup", "static", "pedidos.api_criar", "pedidos.solicitar", "favicon"}
 # A API usa chave própria (X-API-Key) e o formulário público pode ser enviado sem sessão prévia
 CSRF_ISENTAS = {"pedidos.api_criar", "pedidos.solicitar"}
 SENHA_MIN = 8
@@ -98,7 +98,7 @@ def permissoes_do_perfil(perfil, db=None):
         elif perfil == "consulta":
             perms = {"ver_painel", "ver_pedidos", "ver_epis", "ver_fornecedores", "ver_colaboradores", "ver_movimentos", "ver_relatorios"}
         elif perfil == "gestor":
-            perms = {"ver_pedidos", "ver_colaboradores", "solicitar_fora_funcao"}
+            perms = {"solicitar_fora_funcao"}
         else:
             perms = set()
     else:
@@ -187,6 +187,11 @@ def primeira_rota_permitida():
     return url_for("pedidos.solicitar")
 
 
+def _eh_so_gestor(usuario, perms):
+    """Usuário que só tem acesso ao formulário do gestor (perfil Gestor padrão)."""
+    return bool(usuario) and usuario["perfil"] != "admin" and set(perms or ()) == {"solicitar_fora_funcao"}
+
+
 def csrf_token():
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
@@ -256,6 +261,8 @@ def antes_da_requisicao():
     if g.usuario is None and request.endpoint not in ROTAS_PUBLICAS:
         if db.execute("SELECT 1 FROM usuarios LIMIT 1").fetchone() is None:
             return redirect(url_for("auth.setup"))
+        if request.endpoint == "pedidos.solicitar_gestor":
+            return redirect(url_for("auth.login_gestor"))
         return redirect(url_for("auth.login", next=request.full_path if request.method == "GET" else None))
 
     if g.usuario is not None:
@@ -302,40 +309,75 @@ def setup():
     return render_template("setup.html")
 
 
+def _verificar_credenciais():
+    """Confere login e senha do formulário. Devolve (usuario, chave_bloqueio, bloqueado)."""
+    login_ = (request.form.get("login") or "").strip()
+    chave = (request.remote_addr, login_.lower())
+    tentativas, ate = _falhas.get(chave, (0, 0))
+    if tentativas >= MAX_FALHAS and time.time() < ate:
+        return None, chave, True
+    usuario = get_db().execute(
+        "SELECT * FROM usuarios WHERE login = ? COLLATE NOCASE AND ativo = 1", (login_,)
+    ).fetchone()
+    if usuario and check_password_hash(usuario["senha_hash"], request.form.get("senha", "")):
+        return usuario, chave, False
+    _falhas[chave] = (tentativas + 1, time.time() + BLOQUEIO_SEG)
+    return None, chave, False
+
+
+def _abrir_sessao(usuario, chave):
+    _falhas.pop(chave, None)
+    session.clear()
+    session.permanent = True
+    session["uid"] = usuario["id"]
+    g.usuario = usuario
+    g.permissoes_usuario = permissoes_do_perfil(usuario["perfil"], get_db())
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if g.usuario:
         return redirect(primeira_rota_permitida())
     if request.method == "POST":
-        login_ = (request.form.get("login") or "").strip()
-        chave = (request.remote_addr, login_.lower())
-        tentativas, ate = _falhas.get(chave, (0, 0))
-        if tentativas >= MAX_FALHAS and time.time() < ate:
+        usuario, chave, bloqueado = _verificar_credenciais()
+        if bloqueado:
             flash("Muitas tentativas. Aguarde alguns minutos e tente novamente.", "erro")
             return render_template("login.html"), 429
-        usuario = get_db().execute(
-            "SELECT * FROM usuarios WHERE login = ? COLLATE NOCASE AND ativo = 1", (login_,)
-        ).fetchone()
-        if usuario and check_password_hash(usuario["senha_hash"], request.form.get("senha", "")):
-            _falhas.pop(chave, None)
-            session.clear()
-            session.permanent = True
-            session["uid"] = usuario["id"]
-            g.usuario = usuario
-            g.permissoes_usuario = permissoes_do_perfil(usuario["perfil"], get_db())
+        if usuario:
+            _abrir_sessao(usuario, chave)
             destino = request.args.get("next") or ""
             if not destino.startswith("/") or destino.startswith("//"):
                 destino = primeira_rota_permitida()
             return redirect(destino)
-        _falhas[chave] = (tentativas + 1, time.time() + BLOQUEIO_SEG)
         flash("Login ou senha incorretos.", "erro")
     return render_template("login.html")
 
 
+@bp.route("/login/gestor", methods=["GET", "POST"])
+def login_gestor():
+    """Login separado do gestor: só entra quem tem acesso ao formulário do gestor."""
+    if g.usuario and usuario_tem_permissao("solicitar_fora_funcao"):
+        return redirect(url_for("pedidos.solicitar_gestor"))
+    if request.method == "POST":
+        usuario, chave, bloqueado = _verificar_credenciais()
+        if bloqueado:
+            flash("Muitas tentativas. Aguarde alguns minutos e tente novamente.", "erro")
+            return render_template("login_gestor.html"), 429
+        if usuario and "solicitar_fora_funcao" not in permissoes_do_perfil(usuario["perfil"]):
+            flash("Este usuário não tem acesso ao formulário do gestor.", "erro")
+        elif usuario:
+            _abrir_sessao(usuario, chave)
+            return redirect(url_for("pedidos.solicitar_gestor"))
+        else:
+            flash("Login ou senha incorretos.", "erro")
+    return render_template("login_gestor.html")
+
+
 @bp.post("/sair")
 def sair():
+    so_gestor = _eh_so_gestor(g.get("usuario"), g.get("permissoes_usuario"))
     session.clear()
-    return redirect(url_for("auth.login"))
+    return redirect(url_for("auth.login_gestor" if so_gestor else "auth.login"))
 
 
 @bp.route("/minha-senha", methods=["GET", "POST"])
@@ -401,5 +443,6 @@ def contexto():
         "pode_movimentar": "registrar_movimentos" in perms,
         "pode_cancelar": "cancelar_estornar" in perms,
         "pode_solicitar_gestor": "solicitar_fora_funcao" in perms,
+        "so_gestor": _eh_so_gestor(u, perms),
         "eh_admin": perfil == "admin",
     }

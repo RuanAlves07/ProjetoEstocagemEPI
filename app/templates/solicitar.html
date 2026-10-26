@@ -7,11 +7,12 @@
   <div class="topo-publico">
     <span style="display:inline-flex;align-items:center;gap:.5rem"><img src="{{ url_for('static', filename='icone.png') }}" alt="Logo EPI" style="width:24px;height:24px;object-fit:contain"> <strong>Sistema de Controle de EPIs</strong> · Formulário Público</span>
     <span class="acoes">
-      <a class="btn pequeno" href="{{ url_for('auth.login', next=url_for('pedidos.solicitar_gestor')) }}">👔 Formulário do Gestor</a>
+      <a class="btn pequeno" href="{{ url_for('auth.login_gestor') }}">👔 Formulário do Gestor</a>
       <a class="btn pequeno" href="{{ url_for('auth.login') }}">🔒 Área Restrita</a>
     </span>
   </div>
   {% else %}
+  {% if not modo_gestor %}
   <div class="cartao barra-compartilhar">
     <div>
       <strong>Visualização atual do formulário</strong>
@@ -22,7 +23,8 @@
       {% endif %}
     </div>
   </div>
-  {% if pode_personalizar_forms or pode_solicitar_gestor %}
+  {% endif %}
+  {% if pode_personalizar_forms %}
   <nav class="abas" style="margin-bottom:1rem">
     <a href="{{ url_for('pedidos.solicitar') }}" class="{{ 'ativo' if not modo_gestor }}">👷‍♂️ Formulário Público (Visão do Colaborador)</a>
     {% if pode_solicitar_gestor %}
@@ -59,7 +61,7 @@
     {% endif %}
     <div class="acoes">
       <a class="btn primario" href="{{ url_for(endpoint_form) }}">Enviar outra solicitação</a>
-      {% if usuario %}
+      {% if usuario and tem_perm('ver_pedidos') %}
       <a class="btn" href="{{ url_for('pedidos.detalhe', pedido_id=pedido_enviado.id) }}">Abrir pedido #{{ pedido_enviado.id }} no Almoxarifado →</a>
       {% endif %}
     </div>

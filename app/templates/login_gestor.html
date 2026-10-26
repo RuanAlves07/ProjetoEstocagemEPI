@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Login do Gestor{% endblock %}
+{% block conteudo %}
+<div class="cartao cartao-gestor">
+  <h1 style="display:flex;align-items:center;gap:.65rem;margin-top:0">👔 Solicitação de Uniforme e EPI (Gestor)</h1>
+  <p class="nota" style="margin:.2rem 0 1rem">Entre com o login e a senha de gestor para abrir o formulário do gestor.</p>
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <label>Login do gestor <input name="login" autofocus required autocomplete="username"></label>
+    <label>Senha <input name="senha" type="password" required autocomplete="current-password"></label>
+    <button class="btn primario">Entrar no Formulário do Gestor</button>
+  </form>
+</div>
+
+<p style="text-align:center;margin-top:.5rem">
+  <a href="{{ url_for('auth.login') }}">← Voltar para a tela de login</a>
+</p>
+{% endblock %}
