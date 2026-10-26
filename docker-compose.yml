@@ -1,0 +1,20 @@
+services:
+  estoque-epi:
+    build: .
+    image: ruanalves07/estoque-epis:latest
+    container_name: estoque_epis
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persiste o banco SQLite e arquivos de sessão localmente
+      - epi_dados:/app/instance
+    environment:
+      - TZ=America/Sao_Paulo
+      # Opcional: Se for usar PostgreSQL (Supabase/Neon), descomente abaixo:
+      # - DATABASE_URL=postgresql://postgres:senha@host:5432/postgres
+      # - EPI_SECRET_KEY=sua_chave_secreta_aqui
+
+volumes:
+  epi_dados:
+    driver: local

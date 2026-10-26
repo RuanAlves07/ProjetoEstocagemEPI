@@ -1,0 +1,16 @@
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.git/
+.gitignore
+.gitattributes
+instance/*
+!instance/.gitkeep
+tests/
+.pytest_cache/
+*.log
+.DS_Store
+Thumbs.db
