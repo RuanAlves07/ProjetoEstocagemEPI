@@ -213,6 +213,9 @@ details.cancelar-pedido { margin-bottom: 2rem; } details.cancelar-pedido summary
 .opcao-item.recomendado-cargo:hover { background: #d6f0e0; border-color: #3da363; }
 .tag-recomendado { display: inline-block; margin-left: .35rem; padding: .1rem .55rem; background: var(--verde); color: #fff; border-radius: 999px; font-size: .78rem; font-weight: 700; }
 .tag-recomendado[hidden] { display: none !important; }
+.cartao-gestor { border-left: 4px solid #b26b00; }
+.tag-fora-funcao {display: inline-block; margin-left: .35rem; padding: .1rem .55rem; background: #b26b00; color: #fff; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.tag-fora-funcao[hidden], .opcao-item[hidden], .aviso-sem-itens[hidden], .bloco-pergunta[hidden] { display: none !important; }
 .opcao-item input[type=checkbox], .opcao-item input[type=radio] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; margin: 0; cursor: pointer; }
 .matriz-tamanhos th.centro, .matriz-tamanhos td.centro { text-align: center; vertical-align: middle; }
 .matriz-tamanhos input[type=radio] { width: 1.15rem; height: 1.15rem; cursor: pointer; margin: 0; }

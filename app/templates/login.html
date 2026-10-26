@@ -17,4 +17,10 @@
   <p class="nota" style="margin:.4rem 0 .9rem">Colaborador de obra: solicite novos uniformes e EPIs diretamente pelo formulário público (não precisa de login).</p>
   <a class="btn primario" href="{{ url_for('pedidos.solicitar') }}" style="width:100%">Abrir Formulário de Solicitação →</a>
 </div>
+
+<div class="cartao cartao-gestor" style="text-align:center">
+  <h2 style="margin-top:0">👔 Solicitação de Uniforme e EPI (Gestor)</h2>
+  <p class="nota" style="margin:.4rem 0 .9rem">Gestor: solicite EPIs e uniformes para um colaborador, inclusive itens fora da função dele (precisa de login e senha do gestor).</p>
+  <a class="btn primario" href="{{ url_for('auth.login_gestor') }}" style="width:100%">Abrir Formulário do Gestor →</a>
+</div>
 {% endblock %}

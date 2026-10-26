@@ -13,7 +13,10 @@
   </div>
 
   <nav class="abas" style="margin-bottom:1rem">
-    <a href="{{ url_for('pedidos.solicitar') }}">👷‍♂️ Visualizar Formulário (Visão do Colaborador)</a>
+    <a href="{{ url_for('pedidos.solicitar') }}">👷‍♂️ Formulário Público (Visão do Colaborador)</a>
+    {% if pode_solicitar_gestor %}
+    <a href="{{ url_for('pedidos.solicitar_gestor') }}">👔 Formulário do Gestor (fora da função)</a>
+    {% endif %}
     <a href="{{ url_for('pedidos.personalizar_formulario') }}" class="ativo">✏️ Personalizar Formulário (Cidades, EPIs, Imagens e Perguntas)</a>
   </nav>
 

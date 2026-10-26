@@ -38,6 +38,15 @@ class BasePedidos(Base):
         with self.app.app_context():
             return dict(get_db().execute("SELECT * FROM pedidos WHERE id = ?", (pedido_id,)).fetchone())
 
+    def definir_cargo(self, colab_id, cargo, epi_ids):
+        """Define o cargo do colaborador e o kit padrão (EPIs) desse cargo."""
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE colaboradores SET funcao = ? WHERE id = ?", (cargo, colab_id))
+            db.execute("DELETE FROM cargo_epis_padrao WHERE cargo = ?", (cargo,))
+            for eid in epi_ids:
+                db.execute("INSERT INTO cargo_epis_padrao (cargo, epi_id) VALUES (?, ?)", (cargo, eid))
+
     def separar_todos(self, pedido_id):
         for it in self.itens(pedido_id):
             if not it["ignorado"]:
@@ -355,6 +364,7 @@ class TestParser(BasePedidos):
         botina_epi = self.criar_epi("Botina Bico PVC")
         self.mov("entrada", sapatao_epi, 5)
         self.mov("entrada", botina_epi, 5)
+        self.definir_cargo(self.joao, "Pedreiro", [self.luva, self.bota, self.camiseta, sapatao_epi, botina_epi])
 
         # Cliente anônimo (sem login) acessa /solicitar
         anon = self.app.test_client()
@@ -431,7 +441,7 @@ class TestParser(BasePedidos):
         # Tela de personalização abre para administrador
         r_ed = self.c.get("/solicitar/personalizar")
         self.assertEqual(r_ed.status_code, 200)
-        self.assertIn("Construtor e Personalizador", r_ed.get_data(as_text=True))
+        self.assertIn("MODO EDITOR", r_ed.get_data(as_text=True))
 
         # Salva nova cidade ("Joinville - Obra Norte"), novo motivo, pergunta extra e foto no EPI Luva G
         r_save = self.post("/solicitar/personalizar", {
@@ -483,6 +493,9 @@ class TestParser(BasePedidos):
         self.assertIn("img-opcao-epi", html_pub)
 
         # Submete um pedido pelo formulário público usando a nova cidade, o novo EPI e a pergunta extra
+        with self.app.app_context():
+            protetor = get_db().execute("SELECT id FROM epis WHERE nome = 'Protetor Facial Incolor'").fetchone()["id"]
+        self.definir_cargo(self.joao, "Pedreiro", [self.luva, protetor])
         r_envio = anon.post("/solicitar", data={
             "nome": "João da Silva",
             "local": "Joinville - Obra Norte",
@@ -497,3 +510,128 @@ class TestParser(BasePedidos):
         self.assertIn("Joinville - Obra Norte", html_envio)
         self.assertIn("Protetor Facial Incolor", html_envio)
         self.assertIn("Qual o turno de trabalho?: Diurno", html_envio)
+
+
+class TestFormularioPorCargo(BasePedidos):
+    def setUp(self):
+        super().setUp()
+        # Pedreiro: kit padrão é só Luva G e Bota 40 (Camiseta M fica fora da função)
+        self.definir_cargo(self.joao, "Pedreiro", [self.luva, self.bota])
+        self.pedido_base = {"nome": "João da Silva", "local": "Araquari", "motivo": "Desgaste"}
+
+    def criar_usuario(self, login, perfil):
+        self.post("/usuarios/novo", {"nome": login.title(), "login": login, "perfil": perfil,
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        cliente = self.app.test_client()
+        self.post("/login", {"login": login, "senha": "senha1234"}, client=cliente)
+        return cliente
+
+    def test_publico_aceita_somente_itens_do_cargo(self):
+        anon = self.app.test_client()
+        html = anon.get("/solicitar").get_data(as_text=True)
+        self.assertIn("somente os equipamentos do padrão do seu cargo", html)
+        self.assertNotIn("Justificativa dos itens fora da função", html)
+
+        r_fora = anon.post("/solicitar", data={**self.pedido_base, "epi": ["Luva G"],
+                                               "vestimento": ["Camiseta M"], "camiseta": "G"},
+                           follow_redirects=True)
+        texto = r_fora.get_data(as_text=True)
+        self.assertIn("não fazem parte do padrão do seu cargo", texto)
+        self.assertIn("procure o seu gestor", texto)
+
+        r_ok = anon.post("/solicitar", data={**self.pedido_base, "epi": ["Luva G"]}, follow_redirects=True)
+        self.assertIn("enviada com sucesso", r_ok.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(len(pedidos.carregar(get_db(), status=("novo",))), 1)
+
+    def test_publico_recusa_nome_fora_da_lista_e_item_inexistente(self):
+        anon = self.app.test_client()
+        r = anon.post("/solicitar", data={**self.pedido_base, "nome": "Fulano Inventado", "epi": ["Luva G"]},
+                      follow_redirects=True)
+        self.assertIn("colaboradores cadastrados", r.get_data(as_text=True))
+        r = anon.post("/solicitar", data={**self.pedido_base, "epi": ["Item Que Não Existe"]}, follow_redirects=True)
+        self.assertIn("não disponível no formulário", r.get_data(as_text=True))
+
+    def test_publico_cargo_sem_padrao_nao_pede_nada(self):
+        self.definir_cargo(self.joao, "Servente", [])
+        anon = self.app.test_client()
+        r = anon.post("/solicitar", data={**self.pedido_base, "epi": ["Luva G"]}, follow_redirects=True)
+        self.assertIn("não fazem parte do padrão do seu cargo", r.get_data(as_text=True))
+
+    def test_formulario_gestor_exige_login_e_permissao(self):
+        anon = self.app.test_client()
+        r = anon.get("/solicitar/gestor")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login/gestor", r.headers["Location"])
+        r_post = anon.post("/solicitar/gestor", data={**self.pedido_base, "epi": ["Luva G"]})
+        self.assertIn(r_post.status_code, (302, 400))   # sem sessão: barrado pelo CSRF ou mandado ao login
+        with self.app.app_context():
+            self.assertEqual(pedidos.carregar(get_db(), status=("novo",)), [])
+
+        consulta = self.criar_usuario("ver", "consulta")
+        self.assertEqual(consulta.get("/solicitar/gestor").status_code, 403)
+
+        # Administrador tem acesso
+        self.assertEqual(self.c.get("/solicitar/gestor").status_code, 200)
+
+    def test_gestor_pede_fora_da_funcao_com_justificativa(self):
+        gestor = self.criar_usuario("gestor1", "gestor")
+        html = gestor.get("/solicitar/gestor").get_data(as_text=True)
+        self.assertIn("Formulário do Gestor", html)
+        self.assertIn("Justificativa dos itens fora da função", html)
+        self.assertIn("Camiseta M", html)
+
+        dados = {**self.pedido_base, "epi": ["Luva G"], "vestimento": ["Camiseta M"], "camiseta": "G"}
+        r_sem = self.post("/solicitar/gestor", dados, client=gestor, follow_redirects=True)
+        self.assertIn("Informe a justificativa", r_sem.get_data(as_text=True))
+
+        r_ok = self.post("/solicitar/gestor", {**dados, "justificativa": "Teste como encarregado"},
+                         client=gestor, follow_redirects=True)
+        self.assertEqual(r_ok.status_code, 200)
+        self.assertIn("enviada com sucesso", r_ok.get_data(as_text=True))
+        with self.app.app_context():
+            p = pedidos.carregar(get_db(), status=("novo",))[0]
+        self.assertEqual(p["colaborador_id"], self.joao)
+        self.assertIn("Solicitado pelo gestor: Gestor1", p["observacao"])
+        self.assertIn("Fora da função: Camiseta M", p["observacao"])
+        self.assertIn("Teste como encarregado", p["observacao"])
+
+    def test_gestor_dentro_da_funcao_dispensa_justificativa(self):
+        gestor = self.criar_usuario("gestor2", "gestor")
+        r = self.post("/solicitar/gestor", {**self.pedido_base, "epi": ["Luva G"]}, client=gestor,
+                      follow_redirects=True)
+        self.assertIn("enviada com sucesso", r.get_data(as_text=True))
+        with self.app.app_context():
+            p = pedidos.carregar(get_db(), status=("novo",))[0]
+        self.assertNotIn("Fora da função", p["observacao"])
+
+    def test_tela_login_tem_card_do_gestor_e_login_separado(self):
+        anon = self.app.test_client()
+        html = anon.get("/login").get_data(as_text=True)
+        self.assertIn("Solicitação de Uniforme e EPI (Gestor)", html)
+        self.assertIn('href="/login/gestor"', html)
+        self.assertIn("Login do gestor", anon.get("/login/gestor").get_data(as_text=True))
+
+        # Usuário sem a permissão do gestor não entra pelo login do gestor
+        self.criar_usuario("ver", "consulta")
+        r = self.post("/login/gestor", {"login": "ver", "senha": "senha1234"}, client=anon)
+        self.assertIn("não tem acesso ao formulário do gestor", r.get_data(as_text=True))
+
+        # Senha errada
+        self.post("/usuarios/novo", {"nome": "Gestor3", "login": "gestor3", "perfil": "gestor",
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        r = self.post("/login/gestor", {"login": "gestor3", "senha": "errada123"}, client=anon)
+        self.assertIn("Login ou senha incorretos", r.get_data(as_text=True))
+
+        # Gestor entra e cai direto no formulário do gestor, só com o menu dele
+        r = self.post("/login/gestor", {"login": "gestor3", "senha": "senha1234"}, client=anon)
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers["Location"].endswith("/solicitar/gestor"))
+        html = anon.get("/solicitar/gestor").get_data(as_text=True)
+        self.assertIn("Formulário do Gestor", html)
+        self.assertNotIn('href="/pedidos"', html)
+        self.assertNotIn("Copiar link", html)
+
+        # Ao sair, volta para o login do gestor
+        r = self.post("/sair", client=anon)
+        self.assertTrue(r.headers["Location"].endswith("/login/gestor"))

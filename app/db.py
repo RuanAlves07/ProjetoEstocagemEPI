@@ -189,7 +189,7 @@ def _garantir_base_caepi_inicial(conn):
 
 
 def _garantir_perfis_padrao(conn):
-    """Garante que os 3 perfis base existam na tabela perfis_acesso sem sobrescrever ajustes já salvos."""
+    """Garante que os perfis base existam na tabela perfis_acesso sem sobrescrever ajustes já salvos."""
     padroes = [
         (
             "admin",
@@ -212,7 +212,19 @@ def _garantir_perfis_padrao(conn):
             "ver_painel,ver_pedidos,ver_epis,ver_fornecedores,ver_colaboradores,ver_movimentos,ver_relatorios",
             1,
         ),
+        (
+            "gestor",
+            "Gestor",
+            "Entra pelo login do gestor e usa somente o formulário do gestor para pedir EPIs a colaboradores fora do padrão do cargo.",
+            "solicitar_fora_funcao",
+            1,
+        ),
     ]
+    # Perfil Gestor criado com o padrão antigo (sem edição do administrador) passa a ver só o formulário do gestor
+    conn.execute(
+        "UPDATE perfis_acesso SET permissoes = 'solicitar_fora_funcao' "
+        "WHERE chave = 'gestor' AND permissoes = 'ver_pedidos,ver_colaboradores,solicitar_fora_funcao'"
+    )
     for chave, nome, desc, perms, sis in padroes:
         conn.execute(
             "INSERT OR IGNORE INTO perfis_acesso (chave, nome, descricao, permissoes, sistema) VALUES (?, ?, ?, ?, ?)",

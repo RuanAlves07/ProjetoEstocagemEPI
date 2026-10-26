@@ -112,10 +112,40 @@ def _separar_epis_e_vestimentas(epis):
     return epis_protecao, vestimentas
 
 
+def _padrao_por_colaborador(db, colaboradores):
+    """Mapa {id do colaborador: ids dos EPIs padrão}, pelo cargo (ou pelo padrão individual se não tiver cargo)."""
+    por_cargo = {}
+    for r in db.execute("SELECT cargo, epi_id FROM cargo_epis_padrao"):
+        chave_cargo = (r["cargo"] or "").strip().casefold()
+        if chave_cargo:
+            por_cargo.setdefault(chave_cargo, set()).add(r["epi_id"])
+    individual = {}
+    for r in db.execute("SELECT colaborador_id, epi_id FROM colaborador_epis_padrao"):
+        individual.setdefault(r["colaborador_id"], set()).add(r["epi_id"])
+    resultado = {}
+    for c in colaboradores:
+        cargo = (c["funcao"] or "").strip().casefold()
+        resultado[c["id"]] = set(por_cargo.get(cargo, ())) if cargo else set(individual.get(c["id"], ()))
+    return resultado
+
+
 @bp.route("/solicitar", methods=["GET", "POST"])
 def solicitar():
-    """Formulário público de solicitação de Uniforme e EPI (acessível sem login)."""
+    """Formulário público (sem login): o colaborador só pede os EPIs do padrão do cargo dele."""
+    return _formulario_solicitacao(modo_gestor=False)
+
+
+@bp.route("/solicitar/gestor", methods=["GET", "POST"])
+def solicitar_gestor():
+    """Formulário do gestor (exige login): permite pedir EPIs fora do padrão do cargo, com justificativa."""
+    if not usuario_tem_permissao("solicitar_fora_funcao"):
+        abort(403)
+    return _formulario_solicitacao(modo_gestor=True)
+
+
+def _formulario_solicitacao(modo_gestor):
     db = get_db()
+    endpoint_form = "pedidos.solicitar_gestor" if modo_gestor else "pedidos.solicitar"
     cfg_form = pedidos.obter_config_formulario(db)
     colaboradores = db.execute(
         "SELECT id, nome, matricula, setor, funcao FROM colaboradores WHERE ativo = 1 ORDER BY nome COLLATE NOCASE"
@@ -126,11 +156,12 @@ def solicitar():
     ).fetchall()
     epis_protecao, vestimentas = _separar_epis_e_vestimentas(epis_ativos)
 
-    padrao_por_cargo = {}
-    for r in db.execute("SELECT cargo, epi_id FROM cargo_epis_padrao"):
-        chave_cargo = (r["cargo"] or "").strip().casefold()
-        if chave_cargo:
-            padrao_por_cargo.setdefault(chave_cargo, []).append(r["epi_id"])
+    # O formulário envia o nome do item; o mesmo nome pode existir em mais de um tamanho
+    ids_por_nome = {}
+    for e in epis_ativos:
+        ids_por_nome.setdefault(e["nome"], set()).add(e["id"])
+
+    padrao_colab = _padrao_por_colaborador(db, colaboradores)
 
     locais = list(cfg_form.get("locais") or pedidos.LOCAIS_FORMULARIO)
     motivos = list(cfg_form.get("motivos") or pedidos.MOTIVOS_FORMULARIO)
@@ -148,16 +179,22 @@ def solicitar():
     if request.method == "POST":
         # Data do pedido gerada automaticamente no momento em que o colaborador finaliza o envio
         data_pedido = hoje().isoformat()
-        nome = limpar(request.form.get("nome_outro")) or limpar(request.form.get("nome"))
+        nome = limpar(request.form.get("nome"))
+        colab = next((c for c in colaboradores if c["nome"] == nome), None)
         local = limpar(request.form.get("local_outro")) or limpar(request.form.get("local"))
         motivo = limpar(request.form.get("motivo"))
         lista_epi = [v.strip() for v in request.form.getlist("epi") if v and v.strip()]
         lista_vest = [v.strip() for v in request.form.getlist("vestimento") if v and v.strip()]
         observacao = limpar(request.form.get("observacao"))
+        justificativa = limpar(request.form.get("justificativa")) if modo_gestor else ""
 
         todos_marcados = lista_epi + lista_vest
         calcados_sel = {pedidos.tipo_calcado(x) for x in todos_marcados if pedidos.tipo_calcado(x)}
         uniformes_sel = {pedidos.tipo_uniforme(x) for x in todos_marcados if pedidos.tipo_uniforme(x)}
+
+        permitidos = padrao_colab.get(colab["id"], set()) if colab else set()
+        nao_disponiveis = [x for x in todos_marcados if x not in ids_por_nome]
+        fora_funcao = [x for x in todos_marcados if x in ids_por_nome and not (ids_por_nome[x] & permitidos)]
 
         # Só considera tamanhos dos produtos efetivamente selecionados
         tam_sapatao = (limpar(request.form.get("tam_sapatao")) or limpar(request.form.get("sapatao")) or "") if "sapatao" in calcados_sel else ""
@@ -195,18 +232,28 @@ def solicitar():
             "camiseta": camiseta,
             "calca": calca,
             "observacao": limpar(request.form.get("observacao")) or "",
+            "justificativa": justificativa or "",
             "extras": respostas_extras,
         }
 
         erro = None
         if not nome:
-            erro = "Selecione o seu nome completo."
+            erro = "Selecione o seu nome completo." if not modo_gestor else "Selecione o colaborador."
+        elif not colab:
+            erro = "Selecione um nome da lista de colaboradores cadastrados."
         elif not local:
             erro = "Informe o local onde os EPIs solicitados devem ser entregues."
         elif not motivo:
             erro = "Informe o motivo da solicitação."
         elif not (lista_epi or lista_vest):
             erro = "Selecione ao menos um equipamento de proteção individual (EPI) ou vestimenta."
+        elif nao_disponiveis:
+            erro = f"Item não disponível no formulário: {', '.join(nao_disponiveis)}."
+        elif fora_funcao and not modo_gestor:
+            erro = (f"Estes itens não fazem parte do padrão do seu cargo: {', '.join(fora_funcao)}. "
+                    "Para pedidos fora da sua função, procure o seu gestor.")
+        elif fora_funcao and not justificativa:
+            erro = f"Informe a justificativa para os itens fora da função do colaborador: {', '.join(fora_funcao)}."
         elif "sapatao" in calcados_sel and (not tam_sapatao or not tam_sapatao.isdigit()):
             erro = "Informe a numeração do Sapatão (somente números)."
         elif "botina" in calcados_sel and (not tam_botina or not tam_botina.isdigit()):
@@ -219,6 +266,13 @@ def solicitar():
             erro = "Selecione o tamanho da Calça."
         elif erro_extra:
             erro = erro_extra
+
+        if modo_gestor:
+            # Registra no pedido quem pediu e por quê, para o almoxarifado e para a ficha do colaborador
+            marcas = [f"[Solicitado pelo gestor: {g.usuario['nome']}]"]
+            if fora_funcao:
+                marcas.append(f"[Fora da função: {', '.join(fora_funcao)} — Justificativa: {justificativa}]")
+            observacao = " | ".join(x for x in (" ".join(marcas), observacao) if x)
 
         if erro:
             flash(erro, "erro")
@@ -238,22 +292,18 @@ def solicitar():
                     "calca": calca,
                     "observacao": observacao,
                 })
-                flash(f"Solicitação enviada com sucesso! Seu pedido de número #{pedido_id} já foi encaminhado ao Almoxarifado.", "ok")
-                return redirect(url_for("pedidos.solicitar", enviado=pedido_id))
+                flash(f"Solicitação enviada com sucesso! O pedido de número #{pedido_id} já foi encaminhado ao Almoxarifado.", "ok")
+                return redirect(url_for(endpoint_form, enviado=pedido_id))
             except ErroValidacao as e:
                 flash(str(e), "erro")
 
-    cargo_sel = ""
-    nome_sel = form_dados.get("nome", "")
-    if nome_sel:
-        for c in colaboradores:
-            if c["nome"] == nome_sel:
-                cargo_sel = (c["funcao"] or "").strip()
-                break
-    padrao_ids_sel = set(padrao_por_cargo.get(cargo_sel.casefold(), ())) if cargo_sel else set()
+    colab_sel = next((c for c in colaboradores if c["nome"] == form_dados.get("nome", "")), None)
+    padrao_ids_sel = padrao_colab.get(colab_sel["id"], set()) if colab_sel else set()
 
     return render_template(
         "solicitar.html",
+        modo_gestor=modo_gestor,
+        endpoint_form=endpoint_form,
         cfg_form=cfg_form,
         colaboradores=colaboradores,
         epis_protecao=epis_protecao,
@@ -264,7 +314,8 @@ def solicitar():
         perguntas_extras=perguntas_extras,
         pedido_enviado=pedido_enviado,
         form_dados=form_dados,
-        padrao_por_cargo=padrao_por_cargo,
+        colab_sel_id=colab_sel["id"] if colab_sel else None,
+        padrao_por_colab={str(cid): sorted(ids) for cid, ids in padrao_colab.items()},
         padrao_ids_sel=padrao_ids_sel,
         tipo_calcado=pedidos.tipo_calcado,
         tipo_uniforme=pedidos.tipo_uniforme,
