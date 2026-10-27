@@ -22,7 +22,7 @@
       <strong>{{ p.solicitante }}</strong>
       {% if p.colaborador_funcao %}<br><small class="suave">Cargo: <strong>{{ p.colaborador_funcao }}</strong>{% if p.colaborador_setor %} · {{ p.colaborador_setor }}{% endif %}</small>{% endif %}
     </div>
-    <div><span class="suave">Local</span><strong>{{ p.local_destino or '—' }}</strong></div>
+    <div><span class="suave">Obra</span><strong>{{ p.local_destino or '—' }}{% if p.cidade_obra %} • {{ p.cidade_obra }}{% endif %}</strong></div>
     <div><span class="suave">Motivo</span><strong>{{ p.motivo or '—' }}</strong></div>
     <div><span class="suave">Recebido</span><strong>{{ p.recebido_em|hora_br }}</strong></div>
   </div>

@@ -844,8 +844,16 @@ def carregar(db, status=None, pedido_id=None, limite=None):
         ids,
     ):
         filhos.setdefault(r["pedido_origem_id"], []).append({"id": r["id"], "status": r["status"]})
+    # Cidade da obra (cadastro da aba Obras) para exibir "Obra • Cidade"
+    cidade_por_obra = {
+        (r["nome"] or "").strip().casefold(): r["cidade"]
+        for r in db.execute("SELECT nome, cidade FROM obras WHERE cidade IS NOT NULL AND trim(cidade) != ''")
+    }
     for p in pedidos:
         p["complementos"] = filhos.get(p["id"], [])
+        local = (p["local_destino"] or "").strip()
+        cidade = cidade_por_obra.get(local.casefold())
+        p["cidade_obra"] = cidade if cidade and cidade.casefold() != local.casefold() else None
 
     _calcular_sla(db, pedidos)
     return pedidos

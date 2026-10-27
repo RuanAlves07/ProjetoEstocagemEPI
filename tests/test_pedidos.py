@@ -806,3 +806,10 @@ class TestPendenciasESla(BasePedidos):
         from app.filtros import _obs_pedido
         antiga = "[Solicitado pelo gestor: Ana] [Fora da função: Máscara, Perneira — Justificativa: teste] | obs"
         self.assertEqual(_obs_pedido(antiga), "[Solicitado pelo gestor: Ana] [Justificativa: teste] | obs")
+
+    def test_card_mostra_obra_e_cidade(self):
+        self.novo_pedido(local="Acordes")
+        self.novo_pedido(id="resp-2", local="Canoinhas")      # obra com o mesmo nome da cidade
+        html = self.c.get("/pedidos").get_data(as_text=True)
+        self.assertIn("<strong>Acordes</strong> • Garuva", html)
+        self.assertNotIn("Canoinhas</strong> • Canoinhas", html)

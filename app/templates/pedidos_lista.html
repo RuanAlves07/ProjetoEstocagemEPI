@@ -136,7 +136,7 @@
     {% for p in historico %}
       <tr>
         <td><a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }}</a></td>
-        <td>{{ p.solicitante }}</td><td>{{ p.local_destino or '—' }}</td>
+        <td>{{ p.solicitante }}</td><td>{{ p.local_destino or '—' }}{% if p.cidade_obra %} • {{ p.cidade_obra }}{% endif %}</td>
         <td>{% for i in p.itens if not i.ignorado %}{{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}{{ ', ' if not loop.last }}{% endfor %}</td>
         {% if aba == 'retirados' %}
           <td>{{ p.retirado_por_nome }}{% if p.retirado_descricao %}<br><small class="suave">{{ p.retirado_descricao }}</small>{% endif %}</td>
