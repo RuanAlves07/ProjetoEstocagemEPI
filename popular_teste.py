@@ -1,7 +1,20 @@
-"""Popula o banco (instance/epi.sqlite) com os itens e colaboradores reais do formulário UNIFORME E EPI.
+"""Popula o banco (instance/epi.sqlite) com dados de demonstração que exercitam todas as funções do sistema.
 
-Preserva os usuários já existentes e cadastra os 33 itens reais (25 EPIs + 8 Vestimentas),
-os colaboradores reais das obras, entradas/saídas de estoque e pedidos em todas as etapas.
+Preserva os usuários e as obras já existentes. Apaga e recria: EPIs, fornecedores, colaboradores,
+movimentações, pedidos e kits por cargo. Cadastra:
+  - 33 itens reais do formulário + itens extras (CA vencido, estoque por tamanho, item fora do formulário);
+  - 158 colaboradores reais + Ruan Alves (um inativo e um sem cargo, com padrão individual);
+  - 4 fornecedores (1 inativo) e entradas, entregas, baixas, ajustes e um lançamento estornado;
+  - pedidos em todas as etapas: novo, pendente, em separação, pronto, retirado, cancelado,
+    finalizado com ressalva, com item não identificado e pedido do gestor fora da função;
+  - uma obra concluída (inativa) com histórico.
+
+Usuários de teste criados (só se o login ainda não existir):
+  login              senha          perfil
+  almoxarifado.teste Teste@2026     Almoxarifado
+  consulta.teste     Teste@2026     Consulta
+  gestor.teste       Teste@2026     Gestor (entra por /login/gestor)
+  seguranca.teste    Teste@2026     Técnico de Segurança (perfil personalizado)
 
 Uso:
     .venv/bin/python popular_teste.py
@@ -56,6 +69,22 @@ COLABORADORES_FORMULARIO = [
     "WASHINGTON ALMEIDA FERREIRA", "WEBERSON JUNIOR ELISBAO", "WILLIAN SERGIO MOREIRA", "WILSON DE MELO FAUSTIO",
 ]
 
+SENHA_TESTE = "Teste@2026"
+USUARIOS_TESTE = [
+    ("Almoxarifado (Teste)", "almoxarifado.teste", "almoxarifado"),
+    ("Consulta (Teste)", "consulta.teste", "consulta"),
+    ("Gestor de Obras (Teste)", "gestor.teste", "gestor"),
+    ("Técnico de Segurança (Teste)", "seguranca.teste", "tecnico_seguranca"),
+]
+PERFIL_PERSONALIZADO = (
+    "tecnico_seguranca",
+    "Técnico de Segurança",
+    "Acompanha EPIs, CAs, colaboradores, obras e relatórios, sem lançar estoque.",
+    "ver_painel,ver_pedidos,ver_epis,ver_colaboradores,ver_movimentos,ver_relatorios",
+)
+OBRA_CONCLUIDA = ("Residencial Vale Verde", "Joinville", "Rua das Palmeiras, 300, Joinville - SC", "",
+                  "Obra concluída — mantida só para histórico (demonstração).")
+
 
 def popular():
     app = create_app()
@@ -89,6 +118,25 @@ def popular():
             uid = cur.lastrowid
         else:
             uid = u_admin["id"]
+
+        # Perfil personalizado + um usuário de teste por perfil (não altera usuários existentes)
+        chave_p, nome_p, desc_p, perms_p = PERFIL_PERSONALIZADO
+        db.execute(
+            "INSERT OR IGNORE INTO perfis_acesso (chave, nome, descricao, permissoes, sistema) VALUES (?, ?, ?, ?, 0)",
+            (chave_p, nome_p, desc_p, perms_p),
+        )
+        for nome_u, login_u, perfil_u in USUARIOS_TESTE:
+            if not db.execute("SELECT 1 FROM usuarios WHERE LOWER(login) = LOWER(?)", (login_u,)).fetchone():
+                db.execute(
+                    "INSERT INTO usuarios (nome, login, senha_hash, perfil) VALUES (?, ?, ?, ?)",
+                    (nome_u, login_u, generate_password_hash(SENHA_TESTE), perfil_u),
+                )
+
+        # Obra concluída (inativa): some do formulário, mas fica no cadastro e no histórico
+        db.execute(
+            "INSERT OR IGNORE INTO obras (nome, cidade, endereco, mapa, observacao, ativo) VALUES (?, ?, ?, ?, ?, 0)",
+            OBRA_CONCLUIDA,
+        )
 
         # Limpa dados anteriores de demonstração (mantendo a tabela usuarios intacta)
         if getattr(db, "eh_postgres", False):
@@ -161,7 +209,12 @@ def popular():
             ("PERNEIRA DE RASPA COM VELCRO (Mecânica)", "Vestimenta", "26415", (h + timedelta(days=390)).isoformat(), "par", 6, 12, 32.00, 15),
             ("PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS (Roçada)", "Vestimenta", "33810", (h + timedelta(days=350)).isoformat(), "par", 10, 12, 38.00, 24),
             ("JARDINEIRA DE SANEAMENTO COM BOTAS (Motorista de Caminhão Pipa)", "Vestimenta", "40988", (h + timedelta(days=460)).isoformat(), "un", 4, 20, 185.00, 8),
+
+            # --- Extras para validar alertas: CA vencido (bloqueia entrega) ---
+            ("LUVA ISOLANTE DE BORRACHA CLASSE 0", "Mãos", "30117", (h - timedelta(days=10)).isoformat(), "par", 4, 20, 210.00, 6),
         ]
+        # Itens que ficam só no estoque (não aparecem no formulário de solicitação)
+        fora_do_formulario = {"LUVA ISOLANTE DE BORRACHA CLASSE 0", "CARNEIRA SUSPENSÃO PLÁSTICA"}
 
         epi_id = {}
         lote_entrada_1 = []
@@ -171,8 +224,8 @@ def popular():
             cur = db.execute(
                 """INSERT INTO epis (nome, categoria, ca, validade_ca, unidade, estoque_minimo,
                                      prazo_reposicao_dias, imagem_url, exibir_no_forms)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""",
-                (nome, cat, ca, val, un, est_min, prazo, img_ilustrativa),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (nome, cat, ca, val, un, est_min, prazo, img_ilustrativa, 0 if nome in fora_do_formulario else 1),
             )
             eid = cur.lastrowid
             epi_id[nome] = eid
@@ -181,6 +234,19 @@ def popular():
                 lote_entrada_1.append(item_ent)
             else:
                 lote_entrada_2.append(item_ent)
+
+        # Estoque por tamanho individual: mesmo item em P, M e G (filtro de tamanho na aba EPIs)
+        lote_tamanhos = []
+        for tam, qtd_t in (("P", 10), ("M", 24), ("G", 3)):   # G abaixo do mínimo -> alerta de reposição
+            cur = db.execute(
+                """INSERT INTO epis (nome, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo,
+                                     prazo_reposicao_dias, imagem_url, exibir_no_forms)
+                   VALUES (?, ?, 'Mãos', '37988', ?, 'par', 6, 10, ?, 0)""",
+                ("LUVA NITRÍLICA VERDE", tam, (h + timedelta(days=365)).isoformat(),
+                 pedidos.gerar_svg_ilustrativo_epi("LUVA NITRÍLICA VERDE")),
+            )
+            epi_id[f"LUVA NITRÍLICA VERDE {tam}"] = cur.lastrowid
+            lote_tamanhos.append({"epi_id": cur.lastrowid, "quantidade": qtd_t, "custo_unitario": 6.40})
 
         # 3. Ensina apelidos úteis caso alguém preencha apenas o tamanho na coluna Sapatão/Camiseta/Calça
         apelidos = [
@@ -197,7 +263,7 @@ def popular():
             )
 
         # 4. Cadastra os colaboradores reais do formulário + Ruan Alves
-        locais = pedidos.LOCAIS_FORMULARIO
+        locais = sorted({o["cidade"] for o in pedidos.OBRAS_FORMULARIO})   # setor = cidade das obras
         funcoes_ciclo = [
             "Pedreiro", "Servente de Obras", "Operador de Roçadeira", "Motorista",
             "Operador de Máquinas", "Mecânico", "Topógrafo", "Encarregado de Obras",
@@ -219,6 +285,11 @@ def popular():
                 (nome, str(idx), setor, funcao),
             )
             colab_id[nome] = cur.lastrowid
+
+        # Colaborador desligado (inativo): não aparece no formulário nem em novas entregas
+        db.execute("UPDATE colaboradores SET ativo = 0 WHERE id = ?", (colab_id["WALDEMAR LAMPUGNANI"],))
+        # Colaboradora sem cargo definido: usa o padrão individual da ficha (cadastrado mais abaixo)
+        db.execute("UPDATE colaboradores SET funcao = NULL WHERE id = ?", (colab_id["GEOVANA APARECIDA SILVEIRA"],))
 
         # 5. Cadastra fornecedores e registra entradas de estoque
         fornecedores_demo = [
@@ -270,6 +341,22 @@ def popular():
                 "Camisetas Manga Curta/Longa, Calças Brim c/ Refletivo",
                 "Personalização com silk e faixa refletiva padrão das obras.",
             ),
+            (
+                "Segurança Total Distribuidora",
+                "Segurança Total Distribuidora de EPIs Eireli",
+                "33.118.702/0001-09",
+                None,
+                "Paula Mendes",
+                "(41) 3022-1180",
+                "paula@segurancatotal.com.br",
+                "Rua XV de Novembro, 210, Centro",
+                "Curitiba / PR",
+                "80020-310",
+                20,
+                "Antecipado",
+                "Luvas isolantes, Cintos de segurança",
+                "Fornecedor descontinuado (prazo longo) — mantido inativo para histórico.",
+            ),
         ]
         for fn in fornecedores_demo:
             db.execute(
@@ -280,6 +367,7 @@ def popular():
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 fn,
             )
+        db.execute("UPDATE fornecedores SET ativo = 0 WHERE nome = 'Segurança Total Distribuidora'")
 
         estoque.registrar(
             db, "entrada", lote_entrada_1,
@@ -291,10 +379,32 @@ def popular():
             h - timedelta(days=35), uid,
             fornecedor="Casa do EPI Joinville", nota_fiscal="NF-5190",
         )
+        estoque.registrar(
+            db, "entrada", lote_tamanhos,
+            h - timedelta(days=30), uid,
+            fornecedor="ProtegeSul EPIs Ltda", nota_fiscal="NF-5233",
+        )
+        # Reposição de uniformes pela confecção
+        estoque.registrar(
+            db, "entrada",
+            [{"epi_id": epi_id["CAMISETA MANGA CURTA"], "quantidade": 30, "custo_unitario": 27.50},
+             {"epi_id": epi_id["CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA"], "quantidade": 20, "custo_unitario": 55.00}],
+            h - timedelta(days=20), uid,
+            fornecedor="Confecções Catarinense Uniformes", nota_fiscal="NF-0781",
+        )
+        # Entrada lançada em duplicidade e estornada (fica no histórico como cancelada)
+        estoque.registrar(
+            db, "entrada",
+            [{"epi_id": epi_id["RESPIRADOR PFF2 COM VALVULA"], "quantidade": 50, "custo_unitario": 4.80}],
+            h - timedelta(days=18), uid,
+            fornecedor="ProtegeSul EPIs Ltda", nota_fiscal="NF-4821",
+        )
+        mov_dup = db.execute("SELECT MAX(id) AS id FROM movimentacoes").fetchone()["id"]
+        estoque.cancelar(db, mov_dup, "Lançamento em duplicidade da NF-4821", uid)
 
         # 6. Saídas históricas (entregas para alimentar consumo médio, alertas de reposição e relatórios)
         historico_saidas = [
-            (h - timedelta(days=45), "ABRAHAM JOSUE BARRETO CUELLO", "Araquari", [
+            (h - timedelta(days=45), "ABRAHAM JOSUE BARRETO CUELLO", "Kasulke", [
                 ("LUVA DE ALGODAO MESCLA 6 FIOS", 12),
                 ("OCULOS LEOPARDO INCOLOR", 8),
                 ("PROTETOR AURICULAR PLUG DE SILICONE 15DB", 15),
@@ -302,7 +412,7 @@ def popular():
                 ("CAMISETA MANGA CURTA", 10),
                 ("CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA", 8),
             ]),
-            (h - timedelta(days=28), "ANDERSON SCHROEDER", "Mafra", [
+            (h - timedelta(days=28), "ANDERSON SCHROEDER", "Residencial Vale Verde", [
                 ("LUVAS DE POLIAMIDA COM BANHO DE PU (MECÂNICA)", 10),
                 ("OCULOS LEOPARDO INCOLOR", 9),  # deixa Óculos Leopardo com saldo 5 (abaixo do mínimo 15 -> alerta de Repor!)
                 ("PROTETOR SOLAR FPS 30 120ML", 10),
@@ -310,14 +420,14 @@ def popular():
                 ("CAMISETA MANGA LONGA", 10),
                 ("CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA", 8),
             ]),
-            (h - timedelta(days=14), "BRUNO MULLER DA SILVA", "São Francisco do Sul", [
+            (h - timedelta(days=14), "BRUNO MULLER DA SILVA", "Porto do Sol", [
                 ("LUVA DE ALGODAO MESCLA 6 FIOS", 10),
                 ("RESPIRADOR PFF2 COM VALVULA", 12),
                 ("BOTINA BIDENSIDADE C/ BICO PVC (Pedreiros, Auxiliares, Serventes e Roçada)", 5),
                 ("CAPACETE DE SEGURANÇA C/ SUSPENSÃO", 6),
                 ("CAPA DE CHUVA TREVIRA FORRADA AMARELA", 6),
             ]),
-            (h - timedelta(days=5), "CARLOS ARTUR FRANKE", "Garuva", [
+            (h - timedelta(days=5), "CARLOS ARTUR FRANKE", "Villa Dona Francisca", [
                 ("LUVAS VAQUETA PETROLEIRA", 8),
                 ("BONE BRIM COM PROTETOR TELA (Roçada)", 6),
                 ("PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS (Roçada)", 5),
@@ -334,13 +444,27 @@ def popular():
             )
             db.execute("COMMIT")
 
+        # Baixas (perda/avaria) e ajustes de inventário
+        estoque.registrar(db, "baixa", [{"epi_id": epi_id["CAPACETE DE SEGURANÇA C/ SUSPENSÃO"], "quantidade": 2}],
+                          h - timedelta(days=12), uid, motivo="Avaria",
+                          observacao="Cascos trincados após queda de material na obra Kasulke")
+        estoque.registrar(db, "baixa", [{"epi_id": epi_id["CAPA DE CHUVA TREVIRA FORRADA AMARELA"], "quantidade": 1}],
+                          h - timedelta(days=9), uid, motivo="Perda",
+                          observacao="Extraviada no transporte para Porto do Sol")
+        estoque.registrar(db, "ajuste_mais", [{"epi_id": epi_id["PROTETOR AURICULAR PLUG DE SILICONE 15DB"], "quantidade": 5}],
+                          h - timedelta(days=7), uid, motivo="Inventário",
+                          observacao="Contagem física encontrou 5 unidades a mais na prateleira B")
+        estoque.registrar(db, "ajuste_menos", [{"epi_id": epi_id["LUVA MULTIUSO AMARELA DE LATEX"], "quantidade": 3}],
+                          h - timedelta(days=7), uid, motivo="Inventário",
+                          observacao="Diferença na contagem física mensal")
+
         # 7. PEDIDOS DO FORMULÁRIO EM CADA ETAPA DO FLUXO
 
         # Pedido #1: EM SEPARAÇÃO (Ruan Alves / Araquari)
         pid_ruan, _ = pedidos.criar_pedido(db, {
             "id": "forms-201",
             "nome": "Ruan Alves",
-            "local": "Araquari",
+            "local": "Recanto da Fazenda",
             "motivo": "Desgaste",
             "epi": [
                 "OCULOS SUMMER CINZA",
@@ -354,7 +478,7 @@ def popular():
             "sapatao": "41",
             "camiseta": "M",
             "calca": "G",
-            "observacao": "Visita técnica nas obras de Araquari e Barra Velha",
+            "observacao": "Visita técnica nas obras Recanto da Fazenda e Porto do Sol",
         })
         pedidos.iniciar(db, pid_ruan, uid)
         itens_ruan = db.execute("SELECT id FROM pedido_itens WHERE pedido_id = ? ORDER BY id", (pid_ruan,)).fetchall()
@@ -365,7 +489,7 @@ def popular():
         pid_pronto, _ = pedidos.criar_pedido(db, {
             "id": "forms-202",
             "nome": "ABRAHAM JOSUE BARRETO CUELLO",
-            "local": "Araquari",
+            "local": "Kasulke",
             "motivo": "Desgaste",
             "epi": [
                 "LUVA DE ALGODAO MESCLA 6 FIOS",
@@ -390,7 +514,7 @@ def popular():
         pid_retirado, _ = pedidos.criar_pedido(db, {
             "id": "forms-203",
             "nome": "ANDERSON SCHROEDER",
-            "local": "Mafra",
+            "local": "Residencial Vale Verde",
             "motivo": "Desgaste",
             "epi": [
                 "LUVAS DE POLIAMIDA COM BANHO DE PU (MECÂNICA)",
@@ -402,7 +526,7 @@ def popular():
             ],
             "sapatao": "42",
             "camiseta": "GG",
-            "observacao": "Enviar pelo motorista da rota de Mafra",
+            "observacao": "Enviar pelo motorista da rota de Joinville",
         })
         pedidos.iniciar(db, pid_retirado, uid)
         for r in db.execute("SELECT id FROM pedido_itens WHERE pedido_id = ?", (pid_retirado,)):
@@ -411,7 +535,7 @@ def popular():
         pedidos.retirar(
             db, pid_retirado,
             nome="CARLOS ARTUR FRANKE",
-            descricao="Encarregado de obras — levou para a frente de serviço de Mafra",
+            descricao="Encarregado de obras — levou para a frente de serviço do Residencial Vale Verde",
             usuario_id=uid,
         )
 
@@ -419,7 +543,7 @@ def popular():
         pid_pendente, _ = pedidos.criar_pedido(db, {
             "id": "forms-204",
             "nome": "BRUNO MULLER DA SILVA",
-            "local": "São Francisco do Sul",
+            "local": "Porto do Sol",
             "motivo": "Perda",
             "epi": [
                 "CAPACETE DE SEGURANÇA C/ SUSPENSÃO",
@@ -436,7 +560,7 @@ def popular():
         pedidos.criar_pedido(db, {
             "id": "forms-205",
             "nome": "CAIO FRANCISCO DENK",
-            "local": "Garuva",
+            "local": "Villa Dona Francisca",
             "motivo": "Desgaste",
             "epi": [
                 "LUVAS VAQUETA PETROLEIRA",
@@ -450,12 +574,12 @@ def popular():
             ],
             "sapatao": "40",
             "camiseta": "G",
-            "observacao": "Equipe de roçada da obra de Garuva",
+            "observacao": "Equipe de roçada da Villa Dona Francisca",
         })
         pedidos.criar_pedido(db, {
             "id": "forms-206",
             "nome": "CHARLES KOSTA HEIDRICH",
-            "local": "Guaramirim",
+            "local": "Amizade",
             "motivo": "Mudança de Função",
             "epi": [
                 "LUVAS DE POLIAMIDA COM BANHO DE PU (MECÂNICA)",
@@ -468,8 +592,73 @@ def popular():
             ],
             "sapatao": "42",
             "calca": "GG",
-            "observacao": "Passou a atuar no apoio de manutenção mecânica em Guaramirim",
+            "observacao": "Passou a atuar no apoio de manutenção mecânica na obra Amizade",
         })
+
+        # Pedido #7: CANCELADO (duplicidade)
+        pid_cancelado, _ = pedidos.criar_pedido(db, {
+            "id": "forms-207",
+            "nome": "VILMAR DA SILVA",
+            "local": "Revoar",
+            "motivo": "Desgaste",
+            "epi": ["OCULOS SUMMER CINZA", "PROTETOR SOLAR FPS 30 120ML"],
+            "observacao": "Enviado duas vezes pelo celular",
+        })
+        pedidos.cancelar(db, pid_cancelado, "Pedido em duplicidade — o colaborador enviou o formulário duas vezes",
+                         uid, pode_estornar=True)
+
+        # Pedido #8: FINALIZADO COM RESSALVA (um item sem saldo ficou de fora; pronto para retirada)
+        pid_ressalva, _ = pedidos.criar_pedido(db, {
+            "id": "forms-208",
+            "nome": "JOSE AMARO FERNANDES",
+            "local": "Condomínio Lucena",
+            "motivo": "Desgaste",
+            "epi": ["LUVA DE ALGODAO MESCLA 6 FIOS", "ABAFADOR TIPO CONCHA 26DB (Máquina Aberta)"],
+            "vestimento": ["CAMISETA MANGA LONGA"],
+            "camiseta": "G",
+            "observacao": "Operador da escavadeira",
+        })
+        pedidos.iniciar(db, pid_ressalva, uid)
+        for r in db.execute("SELECT id, texto_original FROM pedido_itens WHERE pedido_id = ?", (pid_ressalva,)).fetchall():
+            if "ABAFADOR" not in r["texto_original"].upper():
+                pedidos.marcar_separado(db, pid_ressalva, r["id"], True)
+        pedidos.finalizar(db, pid_ressalva, uid, com_ressalva=True,
+                          ressalva_obs="Abafador 26DB em falta — aguardando reposição da Casa do EPI (previsão 5 dias)")
+
+        # Pedido #9: NOVO com item não identificado (texto livre que não existe no estoque -> “analisar”)
+        pedidos.criar_pedido(db, {
+            "id": "forms-209",
+            "nome": "MARCOS NATAL GALDINO",
+            "local": "Acordes",
+            "motivo": "Mudança de Função",
+            "epi": ["LUVA DE ALGODAO MESCLA 6 FIOS", "CINTO DE SEGURANÇA PARAQUEDISTA"],
+            "observacao": "Vai trabalhar em altura na montagem do telhado",
+        })
+
+        # Pedido #10: NOVO feito pelo GESTOR, com itens fora da função do colaborador (Pedreiro em teste na roçada)
+        pedreiro = db.execute(
+            "SELECT nome FROM colaboradores WHERE funcao = 'Pedreiro' AND ativo = 1 ORDER BY nome LIMIT 1"
+        ).fetchone()["nome"]
+        fora = ["MASCARA SEMIFACIAL JUPITER (Roçada)", "PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS (Roçada)"]
+        pedidos.criar_pedido(db, {
+            "nome": pedreiro,
+            "local": "Terra de Açores",
+            "motivo": "Mudança de Função",
+            "epi": ["LUVA DE ALGODAO MESCLA 6 FIOS", fora[0]],
+            "vestimento": [fora[1]],
+            "observacao": (
+                "[Solicitado pelo gestor: Gestor de Obras (Teste)] "
+                f"[Fora da função: {', '.join(fora)} — Justificativa: período de teste de 30 dias na equipe de roçada] "
+                "| Começa na segunda-feira"
+            ),
+        })
+
+        # Datas de chegada escalonadas (do mais antigo ao mais recente), como seria no dia a dia
+        for pid_d, dias, hora in ((pid_retirado, 20, "07:42:10"), (pid_cancelado, 9, "16:05:33"),
+                                  (pid_pronto, 3, "08:15:02"), (pid_ressalva, 2, "10:31:47"),
+                                  (pid_pendente, 2, "14:20:09"), (pid_ruan, 1, "09:03:55")):
+            db.execute("UPDATE pedidos SET recebido_em = ? WHERE id = ?",
+                       (f"{(h - timedelta(days=dias)).isoformat()} {hora}", pid_d))
 
         # 8. Padronização de EPIs por Cargo + Equipamentos solicitados fora do padrão do cargo
         padroes_por_cargo = {
@@ -568,6 +757,13 @@ def popular():
                     (cargo_nome, epi_id[nome_e]),
                 )
 
+        # Padrão individual para a colaboradora sem cargo definido
+        for nome_e in ("LUVA DE ALGODAO MESCLA 6 FIOS", "OCULOS LEOPARDO INCOLOR", "CAMISETA MANGA CURTA"):
+            db.execute(
+                "INSERT INTO colaborador_epis_padrao (colaborador_id, epi_id) VALUES (?, ?)",
+                (colab_id["GEOVANA APARECIDA SILVEIRA"], epi_id[nome_e]),
+            )
+
         # Define numeração de calçados e tamanho de uniformes nos perfis dos colaboradores para relatórios de estocagem
         numeros_ciclo = ["39", "40", "41", "42", "43", "44"]
         tams_unif_ciclo = ["M", "G", "GG", "G1", "G2"]
@@ -614,7 +810,10 @@ def popular():
         )
         db.commit()
 
-        print("Base de demonstração com os 33 itens e 158 colaboradores reais criada com sucesso!")
+        resumo = {t: db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                  for t in ("epis", "colaboradores", "fornecedores", "obras", "movimentacoes", "pedidos", "usuarios")}
+        print("Base de demonstração criada com sucesso:", ", ".join(f"{k}={v}" for k, v in resumo.items()))
+        print("Logins de teste: veja o topo do arquivo popular_teste.py")
 
 
 if __name__ == "__main__":
