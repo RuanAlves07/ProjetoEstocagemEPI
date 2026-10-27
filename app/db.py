@@ -13,6 +13,7 @@ _TABELAS_COM_ID = (
     "pedidos",
     "pedido_itens",
     "colaborador_epis_solicitados",
+    "obras",
 )
 
 
@@ -173,6 +174,7 @@ def init_db():
             conn.executescript(f.read())
         _garantir_perfis_padrao(conn)
         _garantir_base_caepi_inicial(conn)
+        _garantir_obras_iniciais(conn)
         return
     conn.execute("PRAGMA journal_mode = WAL")
     with open(os.path.join(os.path.dirname(__file__), "schema.sql"), encoding="utf-8") as f:
@@ -180,6 +182,29 @@ def init_db():
     _migrar(conn)
     _garantir_perfis_padrao(conn)
     _garantir_base_caepi_inicial(conn)
+    _garantir_obras_iniciais(conn)
+
+
+def _garantir_obras_iniciais(conn):
+    """Na primeira vez, cadastra as obras: as salvas no editor do formulário (versão anterior) ou a lista padrão."""
+    if conn.execute("SELECT 1 FROM obras LIMIT 1").fetchone():
+        return
+    import json
+    from . import pedidos
+    obras = []
+    linha = conn.execute("SELECT valor FROM configuracoes WHERE chave = 'forms_config'").fetchone()
+    if linha and linha["valor"]:
+        try:
+            obras = pedidos.limpar_obras(json.loads(linha["valor"]).get("obras") or [])
+        except (ValueError, AttributeError):
+            obras = []
+    for o in obras or pedidos.limpar_obras(pedidos.OBRAS_FORMULARIO):
+        conn.execute(
+            "INSERT OR IGNORE INTO obras (nome, cidade, endereco, mapa) VALUES (?, ?, ?, ?)",
+            (o["nome"], o["cidade"], o["endereco"], o["mapa"]),
+        )
+    if hasattr(conn, "commit"):
+        conn.commit()
 
 
 def _garantir_base_caepi_inicial(conn):

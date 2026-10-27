@@ -30,6 +30,7 @@
     {% if tem_perm('ver_epis') %}<a href="{{ url_for('cadastros.epis_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.epi') }}">EPIs</a>{% endif %}
     {% if tem_perm('ver_fornecedores') %}<a href="{{ url_for('cadastros.fornecedores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.fornecedor') }}">Fornecedores</a>{% endif %}
     {% if tem_perm('ver_colaboradores') %}<a href="{{ url_for('cadastros.colaboradores_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.colab') or ep == 'cadastros.cargos_padrao' }}">Colaboradores</a>{% endif %}
+    {% if tem_perm('ver_colaboradores') %}<a href="{{ url_for('cadastros.obras_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.obra') }}">Obras</a>{% endif %}
     {% if tem_perm('ver_movimentos') %}<a href="{{ url_for('movimentos.lista') }}" class="{{ 'ativo' if ep in ('movimentos.lista',) }}">Movimentações</a>{% endif %}
     {% if tem_perm('ver_relatorios') %}<a href="{{ url_for('painel.relatorios') }}" class="{{ 'ativo' if ep == 'painel.relatorios' }}">Relatórios</a>{% endif %}
     {% if eh_admin %}<a href="{{ url_for('cadastros.usuarios_lista') }}" class="{{ 'ativo' if ep.startswith('cadastros.usuario') or ep.startswith('cadastros.perfil') }}">Usuários</a>{% endif %}

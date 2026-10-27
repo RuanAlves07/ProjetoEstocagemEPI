@@ -213,3 +213,17 @@ CREATE TABLE IF NOT EXISTS base_caepi (
     referencia          TEXT,
     atualizado_em       TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
+
+-- Obras (local de entrega do formulário). Só as ativas aparecem no formulário.
+CREATE TABLE IF NOT EXISTS obras (
+    id          SERIAL PRIMARY KEY,
+    nome        TEXT NOT NULL UNIQUE,
+    cidade      TEXT,
+    endereco    TEXT,
+    mapa        TEXT,
+    observacao  TEXT,
+    ativo       INTEGER NOT NULL DEFAULT 1,
+    criado_em   TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_obras_nome_lower ON obras (LOWER(nome));

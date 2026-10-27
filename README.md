@@ -11,7 +11,8 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 ### 1. Formulário Público de Solicitação (`/solicitar`)
 - **Acesso público (sem necessidade de login)**: pode ser disponibilizado via link direto ou QR Code para os colaboradores nas obras pelo celular ou computador.
 - **Data automática**: a data e hora do pedido são registradas automaticamente no momento em que o colaborador finaliza o envio.
-- **Local de entrega por obra**: a pergunta 2 lista as **obras** agrupadas por cidade (ex.: *Araquari → Kasulke, Recanto da Fazenda…*), com endereço e link **🗺️ Ver no mapa**. O pedido grava o local como `Cidade - Obra` (ex.: `Araquari - Kasulke`), e só são aceitas obras da lista. As obras são editadas em **Formulário → Personalizar Formulário → Pergunta 2** (cidade, nome da obra, endereço e link do mapa).
+- **Filtro de nome**: na pergunta 1, um campo de busca filtra a lista de colaboradores enquanto a pessoa digita (sem diferenciar acentos e maiúsculas). Quando sobra um único nome, ele já é selecionado.
+- **Local de entrega por obra**: a pergunta 2 mostra somente o **nome das obras ativas** (cadastradas na aba **Obras**), em uma lista única. O pedido grava o nome da obra como local de entrega, e só são aceitas obras ativas.
 - **Somente os EPIs do cargo**: ao selecionar o nome do colaborador, o formulário mostra **apenas** os equipamentos do kit padrão do cargo dele (definido em `/colaboradores/cargos`; se o colaborador não tiver cargo, vale o padrão individual da ficha). O servidor também recusa qualquer item fora desse padrão, nomes que não estão na lista de colaboradores e itens que não existem no formulário. Para pedir algo fora da função, o colaborador procura o gestor.
 - **Seletores dinâmicos e condicionais de numeração e tamanho**:
   - **Calçados (`Sapatão`, `Botina` e `Bota`)**: abrem abas numéricas independentes (restritas a **somente números**) exclusivamente para os tipos de calçado marcados no pedido.
@@ -33,6 +34,13 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
   - **Aba `Equipamentos utilizados por padrão`**: exibe somente os equipamentos que pertencem ao padrão do cargo do colaborador e traz a coluna **`Tamanho / Numeração`**, permitindo deixar gravados no perfil os números de **Bota, Sapatão e Botina** (`Nº 33` a `Nº 48`) e as letras de **Camiseta e Calça** (`M` a `G5`).
   - **Aba `Equipamentos solicitados`**: lista tudo o que o colaborador já pediu ou recebeu fora do padrão do cargo dele (ex.: período de teste em outra função para possível promoção ou atividade específica na obra), com campo de **Observação** para registrar o motivo.
   - **Aba `Ficha de EPIs entregues`**: histórico completo de entregas com geração de comprovante para impressão e assinatura.
+
+### 2.1. Obras (`/obras`)
+- Aba ao lado de **Colaboradores** com o cadastro das obras: **Nome**, **Cidade**, **Endereço**, **Link do mapa (Google Maps)** e **Observações**, além da quantidade de pedidos de cada obra.
+- **Ativa / Inativa**: obra ativa aparece automaticamente no formulário de solicitação; obra inativa some do formulário, mas continua no cadastro e no histórico de pedidos. O botão **Ativar/Inativar** fica direto na lista.
+- Endereço e mapa são só para uso interno: no formulário aparece apenas o nome da obra.
+- Na primeira inicialização, as 19 obras atuais são cadastradas automaticamente.
+- Usa as permissões de **Colaboradores, Cargos e Obras** (visualizar / editar).
 
 ### 3. Gestão de Fornecedores (`/fornecedores`)
 - Cadastro completo de fornecedores de EPIs e uniformes: **Nome Fantasia**, **Razão Social**, **CNPJ**, **Inscrição Estadual**, **Vendedor/Contato**, **Telefone/WhatsApp**, **E-mail**, **Endereço completo**, **Cidade/UF**, **CEP**, **Prazo médio de entrega**, **Condição de pagamento**, **Categorias fornecidas** e **Observações**.

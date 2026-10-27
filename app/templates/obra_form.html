@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}{{ 'Nova obra' if novo else 'Editar obra' }}{% endblock %}
+{% block conteudo %}
+<div class="cartao cartao-centralizado">
+  <h1>{{ 'Nova obra' if novo else 'Editar obra' }}</h1>
+  <p class="nota" style="margin-top:-.4rem">No formulário de solicitação aparece somente o <strong>nome da obra</strong>. Cidade, endereço e mapa ficam para uso interno.</p>
+
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <div class="linha">
+      <label>
+        <span class="rotulo-campo">Nome da obra <span class="obrigatorio">*</span></span>
+        <input name="nome" required autofocus value="{{ o.nome or '' }}" placeholder="Ex.: Kasulke, Recanto da Fazenda…">
+      </label>
+      <label>
+        <span class="rotulo-campo">Cidade</span>
+        <input name="cidade" value="{{ o.cidade or '' }}" placeholder="Ex.: Araquari">
+      </label>
+    </div>
+
+    <label>
+      <span class="rotulo-campo">Endereço</span>
+      <input name="endereco" value="{{ o.endereco or '' }}" placeholder="Rua, número, bairro, cidade - UF, CEP">
+    </label>
+
+    <label>
+      <span class="rotulo-campo">Link do mapa (Google Maps)</span>
+      <input name="mapa" type="url" value="{{ o.mapa or '' }}" placeholder="https://maps.app.goo.gl/...">
+    </label>
+
+    <label>
+      <span class="rotulo-campo">Observações</span>
+      <input name="observacao" value="{{ o.observacao or '' }}" placeholder="Ex.: responsável na obra, horário de entrega…">
+    </label>
+
+    <label class="check">
+      <input type="checkbox" name="ativo" value="1" {{ 'checked' if o.ativo }}> Obra ativa (aparece no formulário de solicitação)
+    </label>
+
+    <div class="acoes" style="margin-top:.4rem">
+      <button class="btn primario">Salvar obra</button>
+      <a class="btn" href="{{ url_for('cadastros.obras_lista') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

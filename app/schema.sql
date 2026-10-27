@@ -203,3 +203,15 @@ CREATE TABLE IF NOT EXISTS base_caepi (
     referencia          TEXT,
     atualizado_em       TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+-- Obras (local de entrega do formulário). Só as ativas aparecem no formulário.
+CREATE TABLE IF NOT EXISTS obras (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    cidade      TEXT,
+    endereco    TEXT,
+    mapa        TEXT,
+    observacao  TEXT,
+    ativo       INTEGER NOT NULL DEFAULT 1,
+    criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);

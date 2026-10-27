@@ -89,6 +89,9 @@
       <label class="titulo-pergunta" for="select-colaborador">
         {{ '1. Selecione o colaborador.' if modo_gestor else cfg_form.pergunta_1_titulo }} <span class="obrigatorio">*</span>
       </label>
+      <input type="search" id="filtro-colaborador" class="filtro-colaborador" autocomplete="off"
+             placeholder="🔎 Digite parte do nome para filtrar a lista…" aria-label="Filtrar nomes">
+      <div id="filtro-colaborador-info" class="nota filtro-colaborador-info" hidden></div>
       <select name="nome" id="select-colaborador" required>
         <option value="" data-cargo="" data-colab-id="">Selecione sua resposta</option>
         {% set nome_sel = form_dados.get('nome', '') %}
@@ -105,26 +108,19 @@
         {{ cfg_form.pergunta_2_titulo }} <span class="obrigatorio">*</span>
       </div>
       {% set local_sel = form_dados.get('local', '') %}
-      {% for cidade, obras in obras_agrupadas %}
-      <div class="grupo-obras">
-        <div class="cidade-obras">📍 {{ cidade }}</div>
-        <div class="grade-opcoes-radio">
-          {% for o in obras %}
-          <label class="opcao-item opcao-obra">
-            <input type="radio" name="local" value="{{ o.rotulo }}" {{ 'checked' if o.rotulo == local_sel }} {{ 'required' if not cfg_form.permitir_outro_local }}>
-            <span class="texto-obra">
-              <strong>{{ o.nome }}</strong>
-              {% if o.endereco %}<span class="endereco-obra">{{ o.endereco }}</span>{% endif %}
-              {% if o.mapa %}<a class="link-mapa-obra" href="{{ o.mapa }}" target="_blank" rel="noopener noreferrer">🗺️ Ver no mapa</a>{% endif %}
-            </span>
-          </label>
-          {% endfor %}
-        </div>
+      <div class="grade-opcoes-radio">
+        {% for obra in obras %}
+        <label class="opcao-item">
+          <input type="radio" name="local" value="{{ obra }}" {{ 'checked' if obra == local_sel }} {{ 'required' if not cfg_form.permitir_outro_local }}>
+          <span>{{ obra }}</span>
+        </label>
+        {% else %}
+        <p class="nota">Nenhuma obra ativa no momento. Procure o almoxarifado.</p>
+        {% endfor %}
       </div>
-      {% endfor %}
       {% if cfg_form.permitir_outro_local %}
       <div style="margin-top:.45rem">
-        <input type="text" name="local_outro" placeholder="Outra obra (preencha caso não esteja na lista acima)" value="{{ local_sel if local_sel and local_sel not in rotulos_obras else '' }}">
+        <input type="text" name="local_outro" placeholder="Outra obra (preencha caso não esteja na lista acima)" value="{{ local_sel if local_sel and local_sel not in obras else '' }}">
       </div>
       {% endif %}
     </section>
@@ -479,6 +475,56 @@ function ampliarImagemEpi(src, nome) {
   if (selectColab) {
     selectColab.addEventListener("change", atualizarItensPeloCargo);
     atualizarItensPeloCargo();
+  }
+
+  // Filtro do nome do colaborador: reduz a lista enquanto digita (ignora acentos e maiúsculas)
+  const filtroColab = document.getElementById("filtro-colaborador");
+  const filtroInfo = document.getElementById("filtro-colaborador-info");
+  if (filtroColab && selectColab) {
+    const semAcento = txt => txt.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const placeholder = selectColab.options[0];
+    const todasOpcoes = Array.from(selectColab.options).slice(1);
+    let temporizador = null;
+
+    function aplicarFiltroColab() {
+      const termos = semAcento(filtroColab.value).split(/\s+/).filter(Boolean);
+      const atual = selectColab.value;
+      const achados = todasOpcoes.filter(o => {
+        const nome = semAcento(o.textContent);
+        return termos.every(t => nome.includes(t));
+      });
+      selectColab.replaceChildren(placeholder, ...achados);
+      if (achados.some(o => o.value === atual)) {
+        selectColab.value = atual;
+      } else if (achados.length === 1 && termos.length) {
+        selectColab.value = achados[0].value;   // um único nome encontrado: já seleciona
+      } else {
+        selectColab.value = "";
+      }
+      if (selectColab.value !== atual) selectColab.dispatchEvent(new Event("change"));
+
+      if (!termos.length) {
+        filtroInfo.hidden = true;
+      } else {
+        filtroInfo.hidden = false;
+        filtroInfo.textContent = achados.length === 0
+          ? "Nenhum nome encontrado. Confira a digitação."
+          : achados.length === 1
+            ? "1 nome encontrado e selecionado."
+            : `${achados.length} nomes encontrados — escolha o seu na lista abaixo.`;
+      }
+    }
+
+    filtroColab.addEventListener("keydown", e => {
+      if (e.key === "Enter") {   // Enter só aplica o filtro, não envia o formulário
+        e.preventDefault();
+        aplicarFiltroColab();
+      }
+    });
+    filtroColab.addEventListener("input", () => {
+      clearTimeout(temporizador);
+      temporizador = setTimeout(aplicarFiltroColab, 120);
+    });
   }
 
   const checkboxes = Array.from(form.querySelectorAll('input[type="checkbox"][name="epi"], input[type="checkbox"][name="vestimento"]'));

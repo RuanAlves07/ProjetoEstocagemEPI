@@ -954,6 +954,111 @@ def colaborador_solicitado_remover(colab_id, reg_id):
     return redirect(url_for("cadastros.colaborador_ficha", colab_id=colab_id, aba="solicitados"))
 
 
+# --------------------------------------------------------------- obras
+
+def _ler_obra(form):
+    dados = {
+        "nome": limpar(form.get("nome")),
+        "cidade": limpar(form.get("cidade")),
+        "endereco": limpar(form.get("endereco")),
+        "mapa": pedidos.limpar_mapa(form.get("mapa")),
+        "observacao": limpar(form.get("observacao")),
+    }
+    erros = []
+    if not dados["nome"]:
+        erros.append("Informe o nome da obra.")
+    if limpar(form.get("mapa")) and not dados["mapa"]:
+        erros.append("O link do mapa precisa começar com https:// (copie o link do Google Maps).")
+    return dados, erros
+
+
+@bp.get("/obras")
+def obras_lista():
+    db = get_db()
+    busca = (request.args.get("q") or "").strip()
+    situacao = request.args.get("situacao") or "todas"
+    sql = "SELECT * FROM obras WHERE 1=1"
+    params = []
+    if situacao == "ativas":
+        sql += " AND ativo = 1"
+    elif situacao == "inativas":
+        sql += " AND ativo = 0"
+    if busca:
+        sql += " AND (nome LIKE ? OR cidade LIKE ? OR endereco LIKE ?)"
+        params += [f"%{busca}%"] * 3
+    obras = db.execute(sql + " ORDER BY ativo DESC, nome COLLATE NOCASE", params).fetchall()
+    pedidos_por_obra = {
+        (r["local_destino"] or "").strip().casefold(): r["n"]
+        for r in db.execute(
+            "SELECT local_destino, COUNT(*) AS n FROM pedidos WHERE local_destino IS NOT NULL GROUP BY local_destino"
+        )
+    }
+    totais = db.execute("SELECT COUNT(*) AS total, COALESCE(SUM(ativo), 0) AS ativas FROM obras").fetchone()
+    return render_template("obras_lista.html", obras=obras, busca=busca, situacao=situacao,
+                           pedidos_por_obra=pedidos_por_obra, totais=totais)
+
+
+@bp.route("/obras/nova", methods=["GET", "POST"])
+@escrita_required
+def obra_nova():
+    dados = {"ativo": 1}
+    if request.method == "POST":
+        dados, erros = _ler_obra(request.form)
+        dados["ativo"] = 1 if request.form.get("ativo") else 0
+        if not erros:
+            try:
+                get_db().execute(
+                    """INSERT INTO obras (nome, cidade, endereco, mapa, observacao, ativo)
+                       VALUES (:nome, :cidade, :endereco, :mapa, :observacao, :ativo)""",
+                    dados,
+                )
+                flash(f"Obra “{dados['nome']}” cadastrada.", "ok")
+                return redirect(url_for("cadastros.obras_lista"))
+            except sqlite3.IntegrityError:
+                erros.append("Já existe uma obra com esse nome.")
+        for e in erros:
+            flash(e, "erro")
+    return render_template("obra_form.html", o=dados, novo=True)
+
+
+@bp.route("/obras/<int:obra_id>/editar", methods=["GET", "POST"])
+@escrita_required
+def obra_editar(obra_id):
+    db = get_db()
+    obra = db.execute("SELECT * FROM obras WHERE id = ?", (obra_id,)).fetchone() or abort(404)
+    if request.method == "POST":
+        dados, erros = _ler_obra(request.form)
+        dados["ativo"] = 1 if request.form.get("ativo") else 0
+        dados["id"] = obra_id
+        if not erros:
+            try:
+                db.execute(
+                    """UPDATE obras SET nome=:nome, cidade=:cidade, endereco=:endereco, mapa=:mapa,
+                              observacao=:observacao, ativo=:ativo WHERE id=:id""",
+                    dados,
+                )
+                flash(f"Obra “{dados['nome']}” atualizada.", "ok")
+                return redirect(url_for("cadastros.obras_lista"))
+            except sqlite3.IntegrityError:
+                erros.append("Já existe outra obra com esse nome.")
+        for e in erros:
+            flash(e, "erro")
+        obra = dados
+    return render_template("obra_form.html", o=obra, novo=False, obra_id=obra_id)
+
+
+@bp.post("/obras/<int:obra_id>/situacao")
+@escrita_required
+def obra_situacao(obra_id):
+    """Ativa ou inativa a obra (só as ativas aparecem no formulário)."""
+    db = get_db()
+    obra = db.execute("SELECT id, nome, ativo FROM obras WHERE id = ?", (obra_id,)).fetchone() or abort(404)
+    novo = 0 if obra["ativo"] else 1
+    db.execute("UPDATE obras SET ativo = ? WHERE id = ?", (novo, obra_id))
+    flash(f"Obra “{obra['nome']}” {'ativada: já aparece' if novo else 'inativada: não aparece mais'} no formulário.", "ok")
+    return redirect(request.referrer if (request.referrer or "").startswith(request.host_url) else url_for("cadastros.obras_lista"))
+
+
 # --------------------------------------------------------------- usuários e perfis
 
 def _listar_perfis_detalhados(db):

@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Obras{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div>
+    <h1>Obras</h1>
+    <p class="nota" style="margin:-.4rem 0 0">Obras atendidas pelo almoxarifado. As obras <strong>ativas</strong> aparecem automaticamente no formulário de solicitação; as <strong>inativas</strong> ficam só no cadastro. ({{ totais.ativas }} ativa(s) de {{ totais.total }})</p>
+  </div>
+  <div class="acoes">
+    {% if pode_editar %}
+      <a class="btn primario" href="{{ url_for('cadastros.obra_nova') }}">+ Nova obra</a>
+    {% endif %}
+  </div>
+</div>
+
+<form class="filtros">
+  <input name="q" value="{{ busca }}" placeholder="Buscar por obra, cidade ou endereço…" style="min-width:280px">
+  <select name="situacao">
+    <option value="todas" {{ 'selected' if situacao == 'todas' }}>Todas</option>
+    <option value="ativas" {{ 'selected' if situacao == 'ativas' }}>Somente ativas</option>
+    <option value="inativas" {{ 'selected' if situacao == 'inativas' }}>Somente inativas</option>
+  </select>
+  <button class="btn">Filtrar</button>
+  {% if busca or situacao != 'todas' %}<a class="btn link" href="{{ url_for('cadastros.obras_lista') }}">Limpar</a>{% endif %}
+</form>
+
+<div class="cartao">
+  <div class="tabela-rolavel">
+    <table>
+      <thead>
+        <tr>
+          <th>Obra</th>
+          <th>Cidade</th>
+          <th>Endereço</th>
+          <th>Mapa</th>
+          <th class="num">Pedidos</th>
+          <th>Situação</th>
+          {% if pode_editar %}<th class="num">Ações</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for o in obras %}
+        <tr class="{{ 'inativo' if not o.ativo }}">
+          <td>
+            <strong>{{ o.nome }}</strong>
+            {% if o.observacao %}<br><small class="suave">{{ o.observacao }}</small>{% endif %}
+          </td>
+          <td>{{ o.cidade or '—' }}</td>
+          <td>{% if o.endereco %}<small>{{ o.endereco }}</small>{% else %}<span class="suave">—</span>{% endif %}</td>
+          <td>{% if o.mapa %}<a href="{{ o.mapa }}" target="_blank" rel="noopener noreferrer">🗺️ Abrir</a>{% else %}<span class="suave">—</span>{% endif %}</td>
+          <td class="num">{{ pedidos_por_obra.get(o.nome.strip().casefold(), 0) }}</td>
+          <td>
+            {% if o.ativo %}<span class="badge verde">Ativa · no formulário</span>{% else %}<span class="badge">Inativa</span>{% endif %}
+          </td>
+          {% if pode_editar %}
+          <td class="num">
+            <a class="btn pequeno" href="{{ url_for('cadastros.obra_editar', obra_id=o.id) }}">Editar</a>
+            <form method="post" action="{{ url_for('cadastros.obra_situacao', obra_id=o.id) }}" style="display:inline">
+              {{ csrf() }}
+              <button class="btn pequeno">{{ 'Inativar' if o.ativo else 'Ativar' }}</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="vazio">Nenhuma obra encontrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -246,7 +246,6 @@ CONFIG_FORMULARIO_PADRAO = {
     ),
     "pergunta_6_titulo": "6. Observações",
     "locais": list(LOCAIS_FORMULARIO),
-    "obras": [dict(o) for o in OBRAS_FORMULARIO],
     "motivos": list(MOTIVOS_FORMULARIO),
     "tamanhos_uniforme": list(TAMANHOS_UNIFORME),
     "perguntas_extras": [],
@@ -258,41 +257,30 @@ _TITULO_P2_ANTIGO = "2. Informe o local qual os EPIs solicitados devem ser entre
 _MAX_IMAGEM_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
-def _limpar_obras(lista):
-    """Valida a lista de obras [{cidade, nome, endereco, mapa}], sem repetir a mesma obra na mesma cidade."""
+def limpar_mapa(mapa):
+    """Aceita só links web (evita javascript: e afins)."""
+    mapa = (limpar(mapa) or "")[:2000]
+    return mapa if mapa.lower().startswith(("https://", "http://")) else ""
+
+
+def limpar_obras(lista):
+    """Valida uma lista de obras [{cidade, nome, endereco, mapa}], sem repetir o nome da obra."""
     obras, vistas = [], set()
     for o in lista or []:
         if not isinstance(o, dict):
             continue
         nome = (limpar(o.get("nome")) or "")[:120]
-        cidade = (limpar(o.get("cidade")) or nome)[:80]
-        if not nome:
+        if not nome or normalizar(nome) in vistas:
             continue
-        chave = (normalizar(cidade), normalizar(nome))
-        if chave in vistas:
-            continue
-        vistas.add(chave)
-        mapa = (limpar(o.get("mapa")) or "")[:2000]
-        if not mapa.lower().startswith(("https://", "http://")):
-            mapa = ""   # só links web (evita javascript: e afins)
-        obras.append({"cidade": cidade, "nome": nome, "endereco": (limpar(o.get("endereco")) or "")[:300],
-                      "mapa": mapa})
+        vistas.add(normalizar(nome))
+        obras.append({"cidade": (limpar(o.get("cidade")) or "")[:80], "nome": nome,
+                      "endereco": (limpar(o.get("endereco")) or "")[:300], "mapa": limpar_mapa(o.get("mapa"))})
     return obras
 
 
-def rotulo_obra(obra):
-    """Texto gravado no pedido como local de entrega: 'Cidade - Obra'."""
-    if normalizar(obra["nome"]) == normalizar(obra["cidade"]):
-        return obra["nome"]
-    return f"{obra['cidade']} - {obra['nome']}"
-
-
-def obras_por_cidade(obras):
-    """Agrupa as obras por cidade, mantendo a ordem: [(cidade, [obras...]), ...]."""
-    grupos = {}
-    for o in obras:
-        grupos.setdefault(o["cidade"], []).append({**o, "rotulo": rotulo_obra(o)})
-    return list(grupos.items())
+def obras_ativas(db):
+    """Nomes das obras ativas, em ordem alfabética (opções do formulário)."""
+    return [r["nome"] for r in db.execute("SELECT nome FROM obras WHERE ativo = 1 ORDER BY nome COLLATE NOCASE")]
 
 
 def obter_config_formulario(db):
@@ -315,10 +303,6 @@ def obter_config_formulario(db):
                             limpos = [limpar(x) for x in val if limpar(x)]
                             if limpos:
                                 cfg[ch] = limpos
-                    elif ch == "obras":
-                        obras = _limpar_obras(val) if isinstance(val, list) else []
-                        if obras:
-                            cfg[ch] = obras
                     elif ch == "perguntas_extras":
                         if isinstance(val, list):
                             cfg[ch] = [p for p in val if isinstance(p, dict) and limpar(p.get("titulo"))]
@@ -354,11 +338,6 @@ def salvar_config_formulario(db, nova_cfg):
                 if not limpos:
                     raise ErroValidacao(f"A lista de '{ch}' precisa ter ao menos uma opção.")
                 atual[ch] = limpos
-        elif ch == "obras":
-            obras = _limpar_obras(val) if isinstance(val, list) else []
-            if not obras:
-                raise ErroValidacao("Cadastre ao menos uma obra para o local de entrega.")
-            atual[ch] = obras
         elif ch == "perguntas_extras":
             if isinstance(val, list):
                 extras_limpas = []

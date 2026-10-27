@@ -71,34 +71,12 @@
       </label>
 
       <div class="subsecao-editor">
-        <strong style="font-size:.9rem">Obras disponíveis para escolha (aparecem agrupadas por cidade no formulário):</strong>
-        <div class="tabela-rolavel">
-          <table class="tabela-obras-editor">
-            <thead>
-              <tr><th>Cidade</th><th>Obra</th><th>Endereço</th><th>Link do mapa</th><th></th></tr>
-            </thead>
-            <tbody id="lista-obras-editor">
-              {% for o in cfg_form.obras %}
-              <tr>
-                <td><input type="text" name="obra_cidade" value="{{ o.cidade }}" placeholder="Cidade" required></td>
-                <td><input type="text" name="obra_nome" value="{{ o.nome }}" placeholder="Nome da obra" required></td>
-                <td><input type="text" name="obra_endereco" value="{{ o.endereco }}" placeholder="Endereço (opcional)"></td>
-                <td><input type="url" name="obra_mapa" value="{{ o.mapa }}" placeholder="https://maps.app.goo.gl/..."></td>
-                <td><button type="button" class="btn pequeno perigo-suave" title="Remover obra" onclick="removerObra(this)">✕</button></td>
-              </tr>
-              {% endfor %}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td><input type="text" name="nova_obra_cidade" id="nova-obra-cidade" placeholder="Nova obra: cidade"></td>
-                <td><input type="text" name="nova_obra_nome" id="nova-obra-nome" placeholder="Nome da obra"></td>
-                <td><input type="text" name="nova_obra_endereco" id="nova-obra-endereco" placeholder="Endereço"></td>
-                <td><input type="url" name="nova_obra_mapa" id="nova-obra-mapa" placeholder="Link do mapa"></td>
-                <td><button type="button" class="btn pequeno" onclick="adicionarObra()">+ Adicionar</button></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <strong style="font-size:.9rem">Obras que aparecem no formulário ({{ obras_ativas|length }} ativa(s)):</strong>
+        <p class="nota" style="margin:0">{{ obras_ativas|join(' · ') or 'Nenhuma obra ativa.' }}</p>
+        <p class="nota" style="margin:0">As obras são cadastradas e ativadas/inativadas na aba <strong>Obras</strong>. Só as ativas aparecem no formulário.</p>
+        {% if tem_perm('ver_colaboradores') %}
+        <div><a class="btn pequeno" href="{{ url_for('cadastros.obras_lista') }}">🏗️ Gerenciar obras →</a></div>
+        {% endif %}
         <label class="check" style="margin-top:.4rem">
           <input type="checkbox" name="permitir_outro_local" value="1" {{ 'checked' if cfg_form.permitir_outro_local }}>
           Exibir também um campo aberto “Outra obra” no formulário
@@ -445,47 +423,6 @@
 </form>
 
 <script>
-function removerObra(btn) {
-  const corpo = document.getElementById("lista-obras-editor");
-  if (corpo.rows.length <= 1) {
-    alert("Mantenha ao menos uma obra na lista.");
-    return;
-  }
-  btn.closest("tr").remove();
-}
-
-function adicionarObra() {
-  const ids = ["nova-obra-cidade", "nova-obra-nome", "nova-obra-endereco", "nova-obra-mapa"];
-  const nomes = ["obra_cidade", "obra_nome", "obra_endereco", "obra_mapa"];
-  const campos = ids.map(id => document.getElementById(id));
-  if (!campos[1].value.trim()) {
-    campos[1].focus();
-    return;
-  }
-  const tr = document.createElement("tr");
-  campos.forEach((campo, i) => {
-    const td = document.createElement("td");
-    const inp = document.createElement("input");
-    inp.type = i === 3 ? "url" : "text";
-    inp.name = nomes[i];
-    inp.value = campo.value.trim() || (i === 0 ? campos[1].value.trim() : "");
-    if (i < 2) inp.required = true;
-    td.appendChild(inp);
-    tr.appendChild(td);
-    campo.value = "";
-  });
-  const td = document.createElement("td");
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "btn pequeno perigo-suave";
-  btn.textContent = "✕";
-  btn.onclick = function() { removerObra(btn); };
-  td.appendChild(btn);
-  tr.appendChild(td);
-  document.getElementById("lista-obras-editor").appendChild(tr);
-  campos[0].focus();
-}
-
 function removerItemOpcao(btn) {
   const container = btn.parentElement.parentElement;
   if (container && container.querySelectorAll(".item-opcao-editavel").length <= 1) {

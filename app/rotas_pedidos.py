@@ -163,8 +163,7 @@ def _formulario_solicitacao(modo_gestor):
 
     padrao_colab = _padrao_por_colaborador(db, colaboradores)
 
-    obras_agrupadas = pedidos.obras_por_cidade(cfg_form.get("obras") or [])
-    rotulos_obras = {o["rotulo"] for _, obras in obras_agrupadas for o in obras}
+    obras = pedidos.obras_ativas(db)   # só as obras ativas na aba Obras
     motivos = list(cfg_form.get("motivos") or pedidos.MOTIVOS_FORMULARIO)
     tamanhos = list(cfg_form.get("tamanhos_uniforme") or pedidos.TAMANHOS_UNIFORME)
     perguntas_extras = list(cfg_form.get("perguntas_extras") or [])
@@ -244,7 +243,7 @@ def _formulario_solicitacao(modo_gestor):
             erro = "Selecione um nome da lista de colaboradores cadastrados."
         elif not local:
             erro = "Informe a obra onde os EPIs solicitados devem ser entregues."
-        elif local not in rotulos_obras and not (cfg_form.get("permitir_outro_local") and limpar(request.form.get("local_outro"))):
+        elif local not in obras and not (cfg_form.get("permitir_outro_local") and limpar(request.form.get("local_outro"))):
             erro = "Selecione uma das obras da lista."
         elif not motivo:
             erro = "Informe o motivo da solicitação."
@@ -311,8 +310,7 @@ def _formulario_solicitacao(modo_gestor):
         colaboradores=colaboradores,
         epis_protecao=epis_protecao,
         vestimentas=vestimentas,
-        obras_agrupadas=obras_agrupadas,
-        rotulos_obras=rotulos_obras,
+        obras=obras,
         motivos=motivos,
         tamanhos=tamanhos,
         perguntas_extras=perguntas_extras,
@@ -345,21 +343,9 @@ def _ler_lista_opcoes_form(chave_lista, chave_novo=None):
 
 @bp.route("/solicitar/personalizar", methods=["GET", "POST"])
 def personalizar_formulario():
-    """Editor interno estilo Microsoft Forms para personalizar perguntas, cidades, EPIs e imagens."""
+    """Editor interno estilo Microsoft Forms para personalizar perguntas, EPIs e imagens (obras ficam na aba Obras)."""
     db = get_db()
     if request.method == "POST":
-        # Obras (local de entrega): linhas da tabela do editor + linha "nova obra"
-        cidades_o = request.form.getlist("obra_cidade") + [request.form.get("nova_obra_cidade") or ""]
-        nomes_o = request.form.getlist("obra_nome") + [request.form.get("nova_obra_nome") or ""]
-        enderecos_o = request.form.getlist("obra_endereco") + [request.form.get("nova_obra_endereco") or ""]
-        mapas_o = request.form.getlist("obra_mapa") + [request.form.get("nova_obra_mapa") or ""]
-        obras = [
-            {"cidade": cid, "nome": nome,
-             "endereco": enderecos_o[i] if i < len(enderecos_o) else "",
-             "mapa": mapas_o[i] if i < len(mapas_o) else ""}
-            for i, (cid, nome) in enumerate(zip(cidades_o, nomes_o))
-            if limpar(nome)
-        ]
         motivos = _ler_lista_opcoes_form("motivos", "novo_motivo")
         tamanhos = _ler_lista_opcoes_form("tamanhos_uniforme", "novo_tamanho")
 
@@ -419,7 +405,6 @@ def personalizar_formulario():
             "pergunta_uniforme_titulo": request.form.get("pergunta_uniforme_titulo"),
             "pergunta_uniforme_subtitulo": request.form.get("pergunta_uniforme_subtitulo"),
             "pergunta_6_titulo": request.form.get("pergunta_6_titulo"),
-            "obras": obras,
             "motivos": motivos,
             "tamanhos_uniforme": tamanhos,
             "perguntas_extras": extras,
@@ -462,6 +447,7 @@ def personalizar_formulario():
     return render_template(
         "solicitar_personalizar.html",
         cfg_form=cfg_form,
+        obras_ativas=pedidos.obras_ativas(db),
         epis_protecao=epis_protecao,
         vestimentas=vestimentas,
     )

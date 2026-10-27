@@ -26,8 +26,8 @@ CATALOGO_PERMISSOES = [
     ("editar_epis", "EPIs (Cadastrar / Editar)", "Criar novos EPIs e alterar estoque mínimo, CA e prazos"),
     ("ver_fornecedores", "Fornecedores (Visualizar)", "Consultar o cadastro de fornecedores, CNPJ, contatos e histórico de compras"),
     ("editar_fornecedores", "Fornecedores (Cadastrar / Editar)", "Cadastrar novos fornecedores e atualizar CNPJ, endereço e condições comerciais"),
-    ("ver_colaboradores", "Colaboradores e Cargos (Visualizar)", "Consultar fichas de colaboradores e kits padrão por cargo"),
-    ("editar_colaboradores", "Colaboradores e Cargos (Editar)", "Cadastrar colaboradores, definir EPIs padrão por cargo e lançar solicitações"),
+    ("ver_colaboradores", "Colaboradores, Cargos e Obras (Visualizar)", "Consultar fichas de colaboradores, kits padrão por cargo e obras"),
+    ("editar_colaboradores", "Colaboradores, Cargos e Obras (Editar)", "Cadastrar colaboradores, definir EPIs padrão por cargo, lançar solicitações e cadastrar/ativar obras"),
     ("ver_movimentos", "Movimentações (Visualizar)", "Consultar histórico de entradas, saídas, baixas e imprimir comprovantes"),
     ("registrar_movimentos", "Movimentações (Lançar Estoque)", "Registrar novas entradas, entregas avulsas, baixas e ajustes de saldo"),
     ("ver_relatorios", "Relatórios", "Visualizar relatórios gerenciais por período, setor, obra e colaborador"),
@@ -159,6 +159,11 @@ def _permissao_exigida_rota(endpoint, metodo):
     if endpoint == "cadastros.cargos_padrao":
         return "editar_colaboradores" if metodo == "POST" else "ver_colaboradores"
     if endpoint.startswith("cadastros.colaborador"):
+        return "editar_colaboradores"
+    # Obras seguem as permissões de Colaboradores
+    if endpoint == "cadastros.obras_lista":
+        return "ver_colaboradores"
+    if endpoint.startswith("cadastros.obra_"):
         return "editar_colaboradores"
     if endpoint in ("movimentos.lista", "movimentos.exportar_csv", "movimentos.comprovante"):
         return "ver_movimentos"
@@ -423,7 +428,7 @@ def contexto():
         pode_editar_ctx = "editar_epis" in perms
     elif ep.startswith("cadastros.fornecedor"):
         pode_editar_ctx = "editar_fornecedores" in perms
-    elif ep.startswith("cadastros.colab") or ep == "cadastros.cargos_padrao":
+    elif ep.startswith(("cadastros.colab", "cadastros.obra")) or ep == "cadastros.cargos_padrao":
         pode_editar_ctx = "editar_colaboradores" in perms
     elif ep.startswith("pedidos."):
         pode_editar_ctx = "gerenciar_pedidos" in perms
