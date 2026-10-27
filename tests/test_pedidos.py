@@ -382,12 +382,12 @@ class TestParser(BasePedidos):
         }, follow_redirects=True)
         self.assertIn("Selecione ao menos um equipamento", r_invalido.get_data(as_text=True))
 
-        # Restrição somente números no tamanho do calçado
+        # Numeração do calçado só da lista (37 a 45)
         r_letra = anon.post("/solicitar", data={
             "nome": "João da Silva", "local": "Kasulke", "motivo": "Desgaste",
-            "epi": ["Sapatão Bidensidade"], "tam_sapatao": "41A",
+            "epi": ["Sapatão Bidensidade"], "tam_sapatao": "50",
         }, follow_redirects=True)
-        self.assertIn("somente números", r_letra.get_data(as_text=True))
+        self.assertIn("Sapatão (37 a 45)", r_letra.get_data(as_text=True))
 
         # Envio completo marcando Sapatão (41) + Botina (40) + Bota (42) + Camiseta (G) com tamanhos distintos
         r_post = anon.post("/solicitar", data={
@@ -399,8 +399,8 @@ class TestParser(BasePedidos):
             "tam_sapatao": "41",
             "tam_botina": "40",
             "tam_bota": "42",
-            "camiseta": "G",
-            "calca": "GG",  # deve ser ignorado pois nenhuma calça foi selecionada
+            f"tam_vest_{self.camiseta}_1": "G",
+            "calca": "GG",  # formato antigo: ignorado
             "observacao": "Entregar na obra de Araquari",
         }, follow_redirects=True)
         self.assertEqual(r_post.status_code, 200)
@@ -534,7 +534,7 @@ class TestFormularioPorCargo(BasePedidos):
         self.assertNotIn("Justificativa dos itens fora da função", html)
 
         r_fora = anon.post("/solicitar", data={**self.pedido_base, "epi": ["Luva G"],
-                                               "vestimento": ["Camiseta M"], "camiseta": "G"},
+                                               "vestimento": ["Camiseta M"], f"tam_vest_{self.camiseta}_1": "G"},
                            follow_redirects=True)
         texto = r_fora.get_data(as_text=True)
         self.assertIn("não fazem parte do padrão do seu cargo", texto)
@@ -582,7 +582,7 @@ class TestFormularioPorCargo(BasePedidos):
         self.assertIn("Justificativa dos itens fora da função", html)
         self.assertIn("Camiseta M", html)
 
-        dados = {**self.pedido_base, "epi": ["Luva G"], "vestimento": ["Camiseta M"], "camiseta": "G"}
+        dados = {**self.pedido_base, "epi": ["Luva G"], "vestimento": ["Camiseta M"], f"tam_vest_{self.camiseta}_1": "G"}
         r_sem = self.post("/solicitar/gestor", dados, client=gestor, follow_redirects=True)
         self.assertIn("Informe a justificativa", r_sem.get_data(as_text=True))
 
@@ -813,3 +813,52 @@ class TestPendenciasESla(BasePedidos):
         html = self.c.get("/pedidos").get_data(as_text=True)
         self.assertIn("<strong>Acordes</strong> • Garuva", html)
         self.assertNotIn("Canoinhas</strong> • Canoinhas", html)
+
+
+class TestCalcadosEVestimentas(BasePedidos):
+    def setUp(self):
+        super().setUp()
+        self.calca = self.criar_epi("Calça Brim")
+        self.bermuda = self.criar_epi("Bermuda Brim")
+        self.definir_cargo(self.joao, "Pedreiro", [self.luva, self.bota, self.camiseta, self.calca, self.bermuda])
+        self.base = {"nome": "João da Silva", "local": "Kasulke", "motivo": "Desgaste"}
+
+    def enviar(self, **dados):
+        return self.app.test_client().post("/solicitar", data={**self.base, **dados}, follow_redirects=True)
+
+    def test_numeracao_do_calcado_e_lista_de_37_a_45(self):
+        html = self.app.test_client().get("/solicitar").get_data(as_text=True)
+        self.assertIn('<select id="input-tam-bota" name="tam_bota"', html)
+        self.assertIn('<option value="37" >37</option>', html)
+        self.assertIn('<option value="45" >45</option>', html)
+        self.assertNotIn('<option value="46"', html)
+        self.assertIn("Bota (37 a 45)", self.enviar(epi=["Bota 40"], tam_bota="36").get_data(as_text=True))
+        self.assertIn("enviada com sucesso", self.enviar(epi=["Bota 40"], tam_bota="45").get_data(as_text=True))
+
+    def test_ate_tres_unidades_cada_uma_separada(self):
+        r = self.enviar(vestimento=["Camiseta M", "Calça Brim", "Bermuda Brim"], **{
+            f"qtd_vest_{self.camiseta}": "3",
+            f"tam_vest_{self.camiseta}_1": "G", f"tam_vest_{self.camiseta}_2": "GG", f"tam_vest_{self.camiseta}_3": "M",
+            f"qtd_vest_{self.calca}": "1", f"tam_vest_{self.calca}_1": "G1",
+            f"qtd_vest_{self.bermuda}": "2", f"tam_vest_{self.bermuda}_1": "G", f"tam_vest_{self.bermuda}_2": "G",
+        })
+        self.assertIn("enviada com sucesso", r.get_data(as_text=True))
+        with self.app.app_context():
+            p = pedidos.carregar(get_db(), status=("novo",))[0]
+        linhas = sorted((i["epi_id"], i["quantidade"], i["tamanho"]) for i in p["itens"])
+        self.assertEqual(linhas, sorted([
+            (self.camiseta, 1, "G"), (self.camiseta, 1, "GG"), (self.camiseta, 1, "M"),
+            (self.calca, 1, "G1"), (self.bermuda, 1, "G"), (self.bermuda, 1, "G"),
+        ]))
+
+    def test_valida_quantidade_e_tamanho_de_cada_unidade(self):
+        r = self.enviar(vestimento=["Camiseta M"], **{f"qtd_vest_{self.camiseta}": "4",
+                                                      f"tam_vest_{self.camiseta}_1": "G"})
+        self.assertIn("deve ser de 1 a 3", r.get_data(as_text=True))
+        r = self.enviar(vestimento=["Camiseta M"], **{f"qtd_vest_{self.camiseta}": "2",
+                                                      f"tam_vest_{self.camiseta}_1": "G"})
+        self.assertIn("Selecione o tamanho de Camiseta M (unidade 2)", r.get_data(as_text=True))
+        # Ao voltar com erro, o que foi escolhido continua marcado
+        html = r.get_data(as_text=True)
+        self.assertIn(f'name="qtd_vest_{self.camiseta}"', html)
+        self.assertIn('<option value="2" selected>2</option>', html)

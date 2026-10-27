@@ -15,8 +15,8 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 - **Local de entrega por obra**: a pergunta 2 mostra somente o **nome das obras ativas** (cadastradas na aba **Obras**), em uma lista única. O pedido grava o nome da obra como local de entrega, e só são aceitas obras ativas.
 - **Somente os EPIs do cargo**: ao selecionar o nome do colaborador, o formulário mostra **apenas** os equipamentos do kit padrão do cargo dele (definido em `/colaboradores/cargos`; se o colaborador não tiver cargo, vale o padrão individual da ficha). O servidor também recusa qualquer item fora desse padrão, nomes que não estão na lista de colaboradores e itens que não existem no formulário. Para pedir algo fora da função, o colaborador procura o gestor.
 - **Seletores dinâmicos e condicionais de numeração e tamanho**:
-  - **Calçados (`Sapatão`, `Botina` e `Bota`)**: abrem abas numéricas independentes (restritas a **somente números**) exclusivamente para os tipos de calçado marcados no pedido.
-  - **Uniformes (`Camiseta` e `Calça`)**: abrem seletores de tamanho nos padrões **`M, G, GG, G1, G2, G3, G4 e G5`** somente quando camiseta ou calça são selecionadas.
+  - **Calçados (`Sapatão`, `Botina` e `Bota`)**: para cada tipo marcado abre uma **lista suspensa com as numerações de 37 a 45** (o servidor também só aceita esses números).
+  - **Vestimentas**: cada peça marcada abre um seletor de **quantidade de 1 a 3**. Camisetas, calças e bermudas têm **um tamanho para cada unidade** (`M, G, GG, G1, G2, G3, G4 e G5`), e cada unidade entra no pedido como uma linha separada (ex.: 2 camisetas, uma G e outra GG, mais 1 calça e 1 bermuda).
 
 ### 1.1. Formulário do Gestor (`/solicitar/gestor`)
 - **Login separado do gestor (`/login/gestor`)**: na tela de login, abaixo do card *Solicitação de Uniforme e EPI*, fica o card **Solicitação de Uniforme e EPI (Gestor)**, que abre uma tela de login própria do gestor. Só entra quem tem a permissão **`Formulário do Gestor (fora da função)`**: ela vem no perfil **Gestor** (criado automaticamente) e no Administrador, e pode ser liberada em qualquer perfil personalizado.

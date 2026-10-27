@@ -192,32 +192,29 @@
         <div class="abas-calcados">
           <div id="bloco-tam-sapatao" class="aba-calcado-card" hidden>
             <span class="aba-calcado-titulo">🥾 Sapatão</span>
-            <label for="input-tam-sapatao">Numeração do Sapatão (somente números) <span class="obrigatorio">*</span></label>
-            <input type="text" inputmode="numeric" pattern="[0-9]+" maxlength="2"
-                   id="input-tam-sapatao" name="tam_sapatao"
-                   value="{{ form_dados.get('tam_sapatao', '') }}"
-                   placeholder="Ex.: 40, 41, 42"
-                   oninput="this.value=this.value.replace(/\D/g,'')" disabled>
+            <label for="input-tam-sapatao">Numeração do Sapatão <span class="obrigatorio">*</span></label>
+            <select id="input-tam-sapatao" name="tam_sapatao" disabled>
+              <option value="">Selecione o número</option>
+              {% for n in numeros_calcado %}<option value="{{ n }}" {{ 'selected' if form_dados.get('tam_sapatao') == n }}>{{ n }}</option>{% endfor %}
+            </select>
           </div>
 
           <div id="bloco-tam-botina" class="aba-calcado-card" hidden>
             <span class="aba-calcado-titulo">👢 Botina</span>
-            <label for="input-tam-botina">Numeração da Botina (somente números) <span class="obrigatorio">*</span></label>
-            <input type="text" inputmode="numeric" pattern="[0-9]+" maxlength="2"
-                   id="input-tam-botina" name="tam_botina"
-                   value="{{ form_dados.get('tam_botina', '') }}"
-                   placeholder="Ex.: 40, 41, 42"
-                   oninput="this.value=this.value.replace(/\D/g,'')" disabled>
+            <label for="input-tam-botina">Numeração da Botina <span class="obrigatorio">*</span></label>
+            <select id="input-tam-botina" name="tam_botina" disabled>
+              <option value="">Selecione o número</option>
+              {% for n in numeros_calcado %}<option value="{{ n }}" {{ 'selected' if form_dados.get('tam_botina') == n }}>{{ n }}</option>{% endfor %}
+            </select>
           </div>
 
           <div id="bloco-tam-bota" class="aba-calcado-card" hidden>
             <span class="aba-calcado-titulo">🥾 Bota</span>
-            <label for="input-tam-bota">Numeração da Bota (somente números) <span class="obrigatorio">*</span></label>
-            <input type="text" inputmode="numeric" pattern="[0-9]+" maxlength="2"
-                   id="input-tam-bota" name="tam_bota"
-                   value="{{ form_dados.get('tam_bota', '') }}"
-                   placeholder="Ex.: 40, 41, 42"
-                   oninput="this.value=this.value.replace(/\D/g,'')" disabled>
+            <label for="input-tam-bota">Numeração da Bota <span class="obrigatorio">*</span></label>
+            <select id="input-tam-bota" name="tam_bota" disabled>
+              <option value="">Selecione o número</option>
+              {% for n in numeros_calcado %}<option value="{{ n }}" {{ 'selected' if form_dados.get('tam_bota') == n }}>{{ n }}</option>{% endfor %}
+            </select>
           </div>
         </div>
       </div>
@@ -231,6 +228,7 @@
       {% if cfg_form.pergunta_5_subtitulo %}
       <p class="subtitulo-pergunta">{{ cfg_form.pergunta_5_subtitulo }}</p>
       {% endif %}
+      <p class="subtitulo-pergunta">Marque a peça e escolha a quantidade (até {{ max_unidades }}). Camisetas, calças e bermudas têm um tamanho para cada unidade.</p>
       {% set vest_marcadas = form_dados.get('vestimento', ()) %}
       {% set tem_img_vest = vestimentas|selectattr('imagem_url')|list|length > 0 %}
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_vest else 'lista-opcoes' }}">
@@ -254,6 +252,25 @@
             <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span>
             {% if modo_gestor %}<span class="tag-fora-funcao" {{ '' if colab_sel_id and not eh_rec else 'hidden' }}>(fora da função)</span>{% endif %}
           </span>
+          {# Quantidade (1 a 3) e, para peças com tamanho, um tamanho por unidade #}
+          {% set qtd_sel = form_dados.get('vest_qtd', {}).get(v.id, 1) %}
+          <span class="unidades-vest" data-vid="{{ v.id }}" hidden onclick="event.preventDefault()">
+            <span class="campo-unid">Quantidade
+              <select name="qtd_vest_{{ v.id }}" class="sel-qtd-vest" disabled>
+                {% for q in range(1, max_unidades + 1) %}<option value="{{ q }}" {{ 'selected' if q == qtd_sel }}>{{ q }}</option>{% endfor %}
+              </select>
+            </span>
+            {% if tipo_uniforme(v.nome) %}
+            {% for n in range(1, max_unidades + 1) %}
+            <span class="campo-unid tam-unid" data-n="{{ n }}">Tamanho{% if max_unidades > 1 %} da {{ n }}ª{% endif %}
+              <select name="tam_vest_{{ v.id }}_{{ n }}" disabled>
+                <option value="">—</option>
+                {% for t in tamanhos %}<option value="{{ t }}" {{ 'selected' if form_dados.get('vest_tam', {}).get(v.id ~ '_' ~ n) == t }}>{{ t }}</option>{% endfor %}
+              </select>
+            </span>
+            {% endfor %}
+            {% endif %}
+          </span>
         </label>
         {% else %}
         <p class="nota">Nenhuma vestimenta cadastrada no estoque no momento.</p>
@@ -262,46 +279,6 @@
       {% if not modo_gestor %}
       <p class="nota aviso-sem-itens" data-secao="vestimento" hidden></p>
       {% endif %}
-
-      <!-- Bloco dinâmico de tamanho de uniforme (aparece somente ao selecionar Camiseta ou Calça) -->
-      <div id="secao-tamanho-uniforme" class="subbloco-condicional" hidden>
-        <div class="titulo-pergunta">
-          {{ cfg_form.pergunta_uniforme_titulo }} <span class="obrigatorio">*</span>
-        </div>
-        {% if cfg_form.pergunta_uniforme_subtitulo %}
-        <p class="subtitulo-pergunta">{{ cfg_form.pergunta_uniforme_subtitulo }}</p>
-        {% endif %}
-        {% set cam_sel = form_dados.get('camiseta', '') %}
-        {% set cal_sel = form_dados.get('calca', '') %}
-        <div class="tabela-rolavel">
-          <table class="matriz-tamanhos">
-            <thead>
-              <tr>
-                <th>Peça selecionada</th>
-                {% for t in tamanhos %}<th class="centro">{{ t }}</th>{% endfor %}
-              </tr>
-            </thead>
-            <tbody>
-              <tr id="linha-tam-camiseta" hidden>
-                <td><strong>👕 Camiseta</strong> <span class="obrigatorio">*</span></td>
-                {% for t in tamanhos %}
-                <td class="centro">
-                  <input type="radio" name="camiseta" value="{{ t }}" {{ 'checked' if cam_sel == t }} title="Camiseta tamanho {{ t }}" disabled>
-                </td>
-                {% endfor %}
-              </tr>
-              <tr id="linha-tam-calca" hidden>
-                <td><strong>👖 Calça</strong> <span class="obrigatorio">*</span></td>
-                {% for t in tamanhos %}
-                <td class="centro">
-                  <input type="radio" name="calca" value="{{ t }}" {{ 'checked' if cal_sel == t }} title="Calça tamanho {{ t }}" disabled>
-                </td>
-                {% endfor %}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
     </section>
 
     <!-- Perguntas extras criadas pelo administrador no editor do formulário -->
@@ -531,19 +508,34 @@ function ampliarImagemEpi(src, nome) {
   const secaoCalcado = document.getElementById("secao-tamanho-calcado");
   const tiposCalcado = ["sapatao", "botina", "bota"];
 
-  const secaoUniforme = document.getElementById("secao-tamanho-uniforme");
-  const tiposUniforme = ["camiseta", "calca"];
+  // Vestimentas: painel de quantidade (1 a 3) e tamanho por unidade, só para as peças marcadas
+  function atualizarUnidadesVestimenta(painel) {
+    const chk = painel.closest(".opcao-item").querySelector('input[type="checkbox"]');
+    const ativo = chk.checked;
+    painel.hidden = !ativo;
+    const selQtd = painel.querySelector(".sel-qtd-vest");
+    selQtd.disabled = !ativo;
+    const qtd = Number(selQtd.value) || 1;
+    for (const campo of painel.querySelectorAll(".tam-unid")) {
+      const usado = ativo && Number(campo.dataset.n) <= qtd;
+      campo.hidden = !usado;
+      const sel = campo.querySelector("select");
+      sel.disabled = !usado;
+      sel.required = usado;
+    }
+  }
+  const paineisVest = Array.from(form.querySelectorAll(".unidades-vest"));
+  paineisVest.forEach(painel => {
+    painel.querySelector(".sel-qtd-vest").addEventListener("change", () => atualizarUnidadesVestimenta(painel));
+  });
 
   function atualizarCamposCondicionais() {
     const calcadosAtivos = new Set();
-    const uniformesAtivos = new Set();
 
     for (const chk of checkboxes) {
-      if (chk.checked) {
-        if (chk.dataset.calcado) calcadosAtivos.add(chk.dataset.calcado);
-        if (chk.dataset.uniforme) uniformesAtivos.add(chk.dataset.uniforme);
-      }
+      if (chk.checked && chk.dataset.calcado) calcadosAtivos.add(chk.dataset.calcado);
     }
+    paineisVest.forEach(atualizarUnidadesVestimenta);
 
     // Atualiza abas de Sapatão, Botina e Bota
     for (const tc of tiposCalcado) {
@@ -558,23 +550,6 @@ function ampliarImagemEpi(src, nome) {
     }
     if (secaoCalcado) {
       secaoCalcado.hidden = calcadosAtivos.size === 0;
-    }
-
-    // Atualiza linhas de Camiseta e Calça
-    for (const tu of tiposUniforme) {
-      const linha = document.getElementById(`linha-tam-${tu}`);
-      if (!linha) continue;
-      const radios = Array.from(linha.querySelectorAll(`input[type="radio"][name="${tu}"]`));
-      const ativo = uniformesAtivos.has(tu);
-      linha.hidden = !ativo;
-      radios.forEach((r, idx) => {
-        r.disabled = !ativo;
-        r.required = ativo && idx === 0;
-        if (!ativo) r.checked = false;
-      });
-    }
-    if (secaoUniforme) {
-      secaoUniforme.hidden = uniformesAtivos.size === 0;
     }
   }
 

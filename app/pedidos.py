@@ -101,7 +101,9 @@ TAMANHOS_UNIFORME = ["M", "G", "GG", "G1", "G2", "G3", "G4", "G5"]
 
 _TERMOS_CALCADO = ("sapat", "bota", "botina", "calcad")
 _TERMOS_CAMISETA = ("camis", "blusa", "polo")
-_TERMOS_CALCA = ("calca",)
+_TERMOS_CALCA = ("calca", "bermud")
+NUMEROS_CALCADO = [str(n) for n in range(37, 46)]   # opções de numeração no formulário (37 a 45)
+MAX_UNIDADES_VESTIMENTA = 3
 STATUS = {
     "novo": "Novo",
     "pendente": "Pendente",
@@ -142,7 +144,7 @@ def tipo_calcado(texto):
 
 
 def tipo_uniforme(texto):
-    """Devolve 'camiseta', 'calca' ou None conforme o nome da vestimenta."""
+    """Devolve 'camiseta', 'calca' (calça ou bermuda) ou None conforme o nome da vestimenta."""
     t = normalizar(texto)
     if any(p in t for p in _TERMOS_CAMISETA):
         return "camiseta"
@@ -235,7 +237,7 @@ CONFIG_FORMULARIO_PADRAO = {
     "pergunta_4_subtitulo": "Marque todos os EPIs que você precisa solicitar.",
     "pergunta_calcado_titulo": "Informe a numeração do calçado selecionado",
     "pergunta_calcado_subtitulo": (
-        "Digite somente números. Será fornecida uma unidade de cada item solicitado "
+        "Selecione a numeração na lista (37 a 45). Será fornecida uma unidade de cada item solicitado "
         "(caso necessite de mais unidades, informe no campo de observações)."
     ),
     "pergunta_5_titulo": "5. Selecione a vestimenta necessária abaixo",
@@ -315,6 +317,8 @@ def obter_config_formulario(db):
                             cfg[ch] = texto
         except ValueError:
             pass
+    if (cfg["pergunta_calcado_subtitulo"] or "").startswith("Digite somente números."):   # texto da versão com caixa de texto
+        cfg["pergunta_calcado_subtitulo"] = CONFIG_FORMULARIO_PADRAO["pergunta_calcado_subtitulo"]
     if cfg["pergunta_2_titulo"] == _TITULO_P2_ANTIGO:
         cfg["pergunta_2_titulo"] = CONFIG_FORMULARIO_PADRAO["pergunta_2_titulo"]
     return cfg
@@ -561,6 +565,7 @@ def criar_pedido(db, dados):
         "camiseta": _obter_campo(campos, "camiseta", "camisa", "coluna_n", "n"),
         "calca": _obter_campo(campos, "calca", "coluna_o", "o"),
     }
+    unidades_vestimenta = [u for u in (dados.get("unidades_vestimenta") or []) if isinstance(u, dict)]
 
     def executar():
         if origem_id:
@@ -620,6 +625,18 @@ def criar_pedido(db, dados):
             db.execute(
                 """INSERT INTO pedido_itens (pedido_id, coluna, texto_original, quantidade, epi_id, ignorado)
                    VALUES (?, ?, ?, ?, ?, ?)""", (pedido_id, rotulo, texto_exibicao[:300], qtd, epi_id, ignorado))
+
+        # Vestimentas do formulário: cada unidade vira uma linha própria, com o seu tamanho
+        for unidade in unidades_vestimenta:
+            texto = limpar(unidade.get("nome"))
+            if not texto:
+                continue
+            tam = limpar(unidade.get("tamanho"))
+            epi_id, ignorado = _identificar(db, epis, "Vestimento", texto)
+            texto_exibicao = f"{texto} (Tam. {tam})" if tam else texto
+            db.execute(
+                """INSERT INTO pedido_itens (pedido_id, coluna, texto_original, quantidade, epi_id, ignorado)
+                   VALUES (?, 'Vestimento', ?, 1, ?, ?)""", (pedido_id, texto_exibicao[:300], epi_id, ignorado))
 
         colunas_extras = []
         if not tem_calcado:

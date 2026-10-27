@@ -99,7 +99,7 @@ def importar_csv():
 
 def _separar_epis_e_vestimentas(epis):
     """Separa os itens ativos do estoque em (epis_protecao, vestimentas) como no formulário oficial."""
-    termos_vest = ("vestim", "uniforme", "camis", "calca", "capa de chuva", "avental", "perneira", "jardineira", "colete")
+    termos_vest = ("vestim", "uniforme", "camis", "calca", "bermud", "capa de chuva", "avental", "perneira", "jardineira", "colete")
     vestimentas = []
     epis_protecao = []
     for e in epis:
@@ -155,6 +155,9 @@ def _formulario_solicitacao(modo_gestor):
         "FROM epis WHERE ativo = 1 AND COALESCE(exibir_no_forms, 1) = 1 ORDER BY id"
     ).fetchall()
     epis_protecao, vestimentas = _separar_epis_e_vestimentas(epis_ativos)
+    id_vest_por_nome = {}
+    for v in vestimentas:
+        id_vest_por_nome.setdefault(v["nome"], v["id"])
 
     # O formulário envia o nome do item; o mesmo nome pode existir em mais de um tamanho
     ids_por_nome = {}
@@ -190,7 +193,28 @@ def _formulario_solicitacao(modo_gestor):
 
         todos_marcados = lista_epi + lista_vest
         calcados_sel = {pedidos.tipo_calcado(x) for x in todos_marcados if pedidos.tipo_calcado(x)}
-        uniformes_sel = {pedidos.tipo_uniforme(x) for x in todos_marcados if pedidos.tipo_uniforme(x)}
+
+        # Vestimentas: de 1 a 3 unidades por peça; peças com tamanho (camiseta, calça, bermuda) têm
+        # um tamanho para cada unidade, e cada unidade vira uma linha separada no pedido
+        unidades_vest, vest_qtd, vest_tam, erro_vest = [], {}, {}, None
+        for nome_v in lista_vest:
+            vid = id_vest_por_nome.get(nome_v)
+            if vid is None:
+                continue
+            bruto = request.form.get(f"qtd_vest_{vid}") or "1"
+            qtd = to_int(bruto)
+            if qtd not in range(1, pedidos.MAX_UNIDADES_VESTIMENTA + 1):
+                erro_vest = erro_vest or f"A quantidade de {nome_v} deve ser de 1 a {pedidos.MAX_UNIDADES_VESTIMENTA}."
+                qtd = 1
+            vest_qtd[vid] = qtd
+            com_tamanho = pedidos.tipo_uniforme(nome_v) is not None
+            for n in range(1, qtd + 1):
+                tam = (limpar(request.form.get(f"tam_vest_{vid}_{n}")) or "") if com_tamanho else ""
+                vest_tam[f"{vid}_{n}"] = tam
+                if com_tamanho and tam not in tamanhos:
+                    erro_vest = erro_vest or (
+                        f"Selecione o tamanho de {nome_v}" + (f" (unidade {n})." if qtd > 1 else "."))
+                unidades_vest.append({"nome": nome_v, "tamanho": tam})
 
         permitidos = padrao_colab.get(colab["id"], set()) if colab else set()
         nao_disponiveis = [x for x in todos_marcados if x not in ids_por_nome]
@@ -200,8 +224,6 @@ def _formulario_solicitacao(modo_gestor):
         tam_sapatao = (limpar(request.form.get("tam_sapatao")) or limpar(request.form.get("sapatao")) or "") if "sapatao" in calcados_sel else ""
         tam_botina = (limpar(request.form.get("tam_botina")) or limpar(request.form.get("sapatao")) or "") if "botina" in calcados_sel else ""
         tam_bota = (limpar(request.form.get("tam_bota")) or limpar(request.form.get("sapatao")) or "") if "bota" in calcados_sel else ""
-        camiseta = (limpar(request.form.get("camiseta")) or "") if "camiseta" in uniformes_sel else ""
-        calca = (limpar(request.form.get("calca")) or "") if "calca" in uniformes_sel else ""
 
         respostas_extras = {}
         erro_extra = None
@@ -229,8 +251,8 @@ def _formulario_solicitacao(modo_gestor):
             "tam_sapatao": tam_sapatao,
             "tam_botina": tam_botina,
             "tam_bota": tam_bota,
-            "camiseta": camiseta,
-            "calca": calca,
+            "vest_qtd": vest_qtd,
+            "vest_tam": vest_tam,
             "observacao": limpar(request.form.get("observacao")) or "",
             "justificativa": justificativa or "",
             "extras": respostas_extras,
@@ -256,16 +278,14 @@ def _formulario_solicitacao(modo_gestor):
                     "Para pedidos fora da sua função, procure o seu gestor.")
         elif fora_funcao and not justificativa:
             erro = f"Informe a justificativa para os itens fora da função do colaborador: {', '.join(fora_funcao)}."
-        elif "sapatao" in calcados_sel and (not tam_sapatao or not tam_sapatao.isdigit()):
-            erro = "Informe a numeração do Sapatão (somente números)."
-        elif "botina" in calcados_sel and (not tam_botina or not tam_botina.isdigit()):
-            erro = "Informe a numeração da Botina (somente números)."
-        elif "bota" in calcados_sel and (not tam_bota or not tam_bota.isdigit()):
-            erro = "Informe a numeração da Bota (somente números)."
-        elif "camiseta" in uniformes_sel and not camiseta:
-            erro = "Selecione o tamanho da Camiseta."
-        elif "calca" in uniformes_sel and not calca:
-            erro = "Selecione o tamanho da Calça."
+        elif "sapatao" in calcados_sel and tam_sapatao not in pedidos.NUMEROS_CALCADO:
+            erro = "Selecione a numeração do Sapatão (37 a 45)."
+        elif "botina" in calcados_sel and tam_botina not in pedidos.NUMEROS_CALCADO:
+            erro = "Selecione a numeração da Botina (37 a 45)."
+        elif "bota" in calcados_sel and tam_bota not in pedidos.NUMEROS_CALCADO:
+            erro = "Selecione a numeração da Bota (37 a 45)."
+        elif erro_vest:
+            erro = erro_vest
         elif erro_extra:
             erro = erro_extra
 
@@ -287,12 +307,10 @@ def _formulario_solicitacao(modo_gestor):
                     "local": local,
                     "motivo": motivo,
                     "epi": lista_epi,
-                    "vestimento": lista_vest,
+                    "unidades_vestimenta": unidades_vest,
                     "tam_sapatao": tam_sapatao,
                     "tam_botina": tam_botina,
                     "tam_bota": tam_bota,
-                    "camiseta": camiseta,
-                    "calca": calca,
                     "observacao": observacao,
                 })
                 flash(f"Solicitação enviada com sucesso! O pedido de número #{pedido_id} já foi encaminhado ao Almoxarifado.", "ok")
@@ -322,6 +340,8 @@ def _formulario_solicitacao(modo_gestor):
         padrao_ids_sel=padrao_ids_sel,
         tipo_calcado=pedidos.tipo_calcado,
         tipo_uniforme=pedidos.tipo_uniforme,
+        numeros_calcado=pedidos.NUMEROS_CALCADO,
+        max_unidades=pedidos.MAX_UNIDADES_VESTIMENTA,
     )
 
 

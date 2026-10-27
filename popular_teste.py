@@ -205,6 +205,7 @@ def popular():
             ("CAMISETA MANGA CURTA", "Vestimenta", None, None, "un", 25, 15, 29.00, 65),
             ("CAMISETA MANGA LONGA", "Vestimenta", None, None, "un", 25, 15, 34.00, 60),
             ("CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA", "Vestimenta", None, None, "un", 25, 15, 58.00, 62),
+            ("BERMUDA BRIM AZUL MARINHO C/ FAIXA REFLETIVA", "Vestimenta", None, None, "un", 12, 15, 44.00, 30),
             ("AVENTAL DE RASPA SEM EMENDA 1X0,6 (Roçada e Mecânica)", "Vestimenta", "26410", (h + timedelta(days=390)).isoformat(), "un", 8, 12, 46.00, 18),
             ("PERNEIRA DE RASPA COM VELCRO (Mecânica)", "Vestimenta", "26415", (h + timedelta(days=390)).isoformat(), "par", 6, 12, 32.00, 15),
             ("PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS (Roçada)", "Vestimenta", "33810", (h + timedelta(days=350)).isoformat(), "par", 10, 12, 38.00, 24),
@@ -708,6 +709,7 @@ def popular():
                 "BONE BRIM AZUL COM PROTETOR DE NUCA",
                 "CAMISETA MANGA CURTA",
                 "CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA",
+                "BERMUDA BRIM AZUL MARINHO C/ FAIXA REFLETIVA",
             ],
             "Servente de Obras": [
                 "LUVA DE ALGODAO MESCLA 6 FIOS",
@@ -718,6 +720,7 @@ def popular():
                 "BONE BRIM AZUL COM PROTETOR DE NUCA",
                 "CAMISETA MANGA CURTA",
                 "CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA",
+                "BERMUDA BRIM AZUL MARINHO C/ FAIXA REFLETIVA",
             ],
             "Operador de Roçadeira": [
                 "LUVAS VAQUETA PETROLEIRA",
