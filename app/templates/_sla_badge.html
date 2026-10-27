@@ -1,0 +1,24 @@
+{# Etiqueta do SLA do pedido (p.sla vem de pedidos._calcular_sla) #}
+{% set s = p.sla %}
+{% if s and s.estado %}
+<div class="sla-linha">
+  {% if s.estado == 'no_prazo' %}
+    <span class="badge sla sla-ok" title="Prazo: {{ s.prazo|hora_br }}">⏱ SLA: {{ s.restante_h|duracao }} restantes</span>
+  {% elif s.estado == 'em_risco' %}
+    <span class="badge sla sla-risco" title="Prazo: {{ s.prazo|hora_br }}">⚠️ SLA vence em {{ s.restante_h|duracao }}</span>
+  {% elif s.estado == 'atrasado' %}
+    <span class="badge sla sla-atrasado" title="Prazo era: {{ s.prazo|hora_br }}">⛔ SLA atrasado há {{ s.restante_h|duracao }}</span>
+  {% elif s.estado == 'pausado' %}
+    <span class="badge sla sla-pausado" title="O prazo começa a contar quando a separação for iniciada">⏸ SLA pausado (aguardando estoque)</span>
+  {% elif s.estado == 'cumprido' %}
+    <span class="badge sla sla-ok" title="Prazo: {{ s.prazo|hora_br }}">✅ Atendido em {{ s.tempo_atendimento_h|duracao }} (no prazo)</span>
+  {% elif s.estado == 'fora_do_prazo' %}
+    <span class="badge sla sla-atrasado" title="Prazo era: {{ s.prazo|hora_br }}">⛔ Atendido em {{ s.tempo_atendimento_h|duracao }} (fora do prazo)</span>
+  {% endif %}
+  {% if s.retirada == 'aguardando' %}
+    <span class="badge sla sla-pausado">📦 Aguardando retirada há {{ s.retirada_h|duracao }}</span>
+  {% elif s.retirada == 'atrasada' %}
+    <span class="badge sla sla-atrasado">📦 Retirada atrasada: pronto há {{ s.retirada_h|duracao }}</span>
+  {% endif %}
+</div>
+{% endif %}

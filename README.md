@@ -52,6 +52,19 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 3. **Checklist de separação e baixa automática**: ao marcar todos os itens separados e clicar em **Finalizar pedido**, o sistema valida o saldo e o CA, dá **baixa automática no estoque** e muda o status para **Pronto para retirada**.
 4. **Registro de retirada e comprovante**: registra quem retirou (próprio colaborador, encarregado ou portador), data/hora e emite o comprovante de entrega.
 
+**Finalizar com ressalva → pendência "Aguardando estoque"**
+- Quando algum item não pode ser entregue, o pedido é finalizado com ressalva (baixa só do que foi separado) e, por padrão, os itens que faltaram viram um **pedido complementar** ligado ao original.
+- Esses complementos ficam na fileira **⏳ Aguardando estoque** da aba Pedidos, com a situação de cada item (✅ disponível / ⏳ aguardando). Quando houver saldo para tudo, o card fica verde (**✅ Estoque disponível — pode separar**) e sobe para o topo da fileira; ao registrar uma entrada de estoque, o sistema avisa quais pendências já podem ser separadas.
+- No histórico, um aponta para o outro: o pedido original mostra "itens que faltaram → pendência #X" e a pendência mostra "itens que faltaram no pedido #Y".
+
+**SLA (prazos de atendimento)**
+- Padrão: pedido **pronto em até 24 h** após a chegada, **alerta 4 h antes** de vencer e **retirada em até 3 dias** depois de pronto. O administrador ajusta em **Pedidos → ⚙️ Ajustar prazos**. Contagem em horas corridas.
+- Cada card mostra uma etiqueta: ⏱ no prazo, ⚠️ em risco, ⛔ atrasado, ✅ atendido no prazo / fora do prazo e 📦 retirada atrasada. O topo da aba Pedidos resume quantos estão atrasados, em risco e no prazo, e a tela do pedido traz a linha do tempo (recebido, início, prazo, pronto, retirado).
+- Pendências aguardando estoque ficam com o SLA **pausado**: o prazo começa quando a separação é iniciada.
+- **Relatórios** mostram, para o período: % atendido no prazo, tempo médio até ficar pronto e até a retirada, desempenho por obra e a lista de atrasos. O CSV de pedidos traz as colunas de prazo e situação do SLA.
+
+**Pedidos do formulário do gestor**: o card mostra só quem pediu e a justificativa; os itens fora da função aparecem pela etiqueta **🔍 analisar (fora do cargo)**.
+
 ### 5. Painel em Tela Inteira, Estoque e Relatórios (`/`, `/epis`, `/movimentos`, `/relatorios`)
 - **Painel (`/`)**: layout distribuído em tela inteira com 7 indicadores em tempo real, tabela **Hora de pedir** (sugestão automática de compra baseada no estoque mínimo e cobertura em dias), ranking **Mais saem**, **CAs para atualizar**, **Pedidos em aberto** e **Últimas movimentações**.
 - **Livro-razão auditável (`/movimentos`)**: entradas com NF e fornecedor, entregas a colaboradores, baixas por avaria/perda e ajustes de inventário. Lançamentos nunca são apagados (apenas cancelados/estornados mediante justificativa).

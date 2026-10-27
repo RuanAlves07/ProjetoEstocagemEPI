@@ -593,9 +593,11 @@ class TestFormularioPorCargo(BasePedidos):
         with self.app.app_context():
             p = pedidos.carregar(get_db(), status=("novo",))[0]
         self.assertEqual(p["colaborador_id"], self.joao)
-        self.assertIn("Solicitado pelo gestor: Gestor1", p["observacao"])
-        self.assertIn("Fora da função: Camiseta M", p["observacao"])
-        self.assertIn("Teste como encarregado", p["observacao"])
+        self.assertEqual(p["observacao"], "[Solicitado pelo gestor: Gestor1] [Justificativa: Teste como encarregado]")
+        # Os itens fora da função aparecem pela etiqueta "analisar" no card, não na observação
+        card = self.c.get("/pedidos").get_data(as_text=True)
+        self.assertIn("analisar (fora do cargo)", card)
+        self.assertNotIn("Fora da função", card)
 
     def test_gestor_dentro_da_funcao_dispensa_justificativa(self):
         gestor = self.criar_usuario("gestor2", "gestor")
@@ -701,3 +703,106 @@ class TestObras(BasePedidos):
         self.assertEqual(ver.get("/obras/nova").status_code, 403)
         self.assertEqual(self.post(f"/obras/{self.obra_id('Kasulke')}/situacao", client=ver).status_code, 403)
         self.assertEqual(self.app.test_client().get("/obras").status_code, 302)   # sem login
+
+
+class TestPendenciasESla(BasePedidos):
+    def pedido_com_ressalva(self, gerar=True):
+        """Pedido com Luva G, Bota 40 e Camiseta M; só a luva é separada e finaliza com ressalva."""
+        pid = self.novo_pedido()
+        self.post(f"/pedidos/{pid}/iniciar")
+        luva = next(i for i in self.itens(pid) if i["epi_id"] == self.luva)
+        self.post(f"/pedidos/{pid}/itens/{luva['id']}/separar", {"separado": "1"})
+        dados = {"com_ressalva": "1", "ressalva_observacao": "Bota e camiseta em falta"}
+        if gerar:
+            dados["gerar_pendencia"] = "1"
+        r = self.post(f"/pedidos/{pid}/finalizar", dados, follow_redirects=True)
+        return pid, r.get_data(as_text=True)
+
+    def complementos(self, pid):
+        with self.app.app_context():
+            return [dict(r) for r in get_db().execute("SELECT * FROM pedidos WHERE pedido_origem_id = ?", (pid,))]
+
+    def test_ressalva_cria_pendencia_aguardando_estoque(self):
+        pid, html = self.pedido_com_ressalva()
+        filhos = self.complementos(pid)
+        self.assertEqual(len(filhos), 1)
+        comp = filhos[0]
+        self.assertEqual((comp["status"], comp["colaborador_id"], comp["local_destino"]), ("pendente", self.joao, "Obra A"))
+        self.assertIn(f"pendência #{comp['id']}", html)
+        self.assertEqual(sorted(i["epi_id"] for i in self.itens(comp["id"])), sorted([self.bota, self.camiseta]))
+        self.assertEqual(self.pedido(pid)["status"], "pronto")
+        self.assertEqual(self.saldo(self.luva), 8)   # só a luva (2x) teve baixa
+
+        lista = self.c.get("/pedidos").get_data(as_text=True)
+        self.assertIn("Aguardando estoque (itens que faltaram na ressalva)", lista)
+        self.assertIn("Estoque disponível — pode separar", lista)   # bota e camiseta têm saldo
+        self.assertIn("SLA pausado", lista)
+        detalhe = self.c.get(f"/pedidos/{comp['id']}").get_data(as_text=True)
+        self.assertIn(f"pedido #{pid}", detalhe)
+
+        # Sem saldo de bota, a pendência fica aguardando; uma entrada avisa que já pode separar
+        self.mov("baixa", self.bota, 10, motivo="Avaria")
+        self.assertNotIn("Estoque disponível — pode separar", self.c.get("/pedidos").get_data(as_text=True))
+        r = self.mov("entrada", self.bota, 5)
+        avisos = self.c.get(r.headers["Location"]).get_data(as_text=True)
+        self.assertIn(f"Chegou estoque para #{comp['id']}", avisos)
+
+        # Iniciar a separação tira da fileira "aguardando" e o SLA começa a contar
+        self.post(f"/pedidos/{comp['id']}/iniciar")
+        with self.app.app_context():
+            p = pedidos.carregar(get_db(), pedido_id=comp["id"])[0]
+        self.assertFalse(p["aguardando_estoque"])
+        self.assertEqual(p["sla"]["estado"], "no_prazo")
+
+    def test_ressalva_sem_pendencia(self):
+        pid, _ = self.pedido_com_ressalva(gerar=False)
+        self.assertEqual(self.complementos(pid), [])
+
+    def test_estados_do_sla(self):
+        pids = [self.novo_pedido(id=f"r-{n}") for n in range(3)]
+        with self.app.app_context():
+            db = get_db()
+            for pid, horas in zip(pids, (1, 22, 30)):   # 24 h de prazo e alerta 4 h antes (padrão)
+                db.execute("UPDATE pedidos SET recebido_em = datetime('now', 'localtime', ?) WHERE id = ?",
+                           (f"-{horas} hours", pid))
+            estados = {p["id"]: p["sla"]["estado"] for p in pedidos.carregar(db, status=("novo",))}
+        self.assertEqual([estados[p] for p in pids], ["no_prazo", "em_risco", "atrasado"])
+        lista = self.c.get("/pedidos").get_data(as_text=True)
+        self.assertIn("1 atrasado(s)", lista)
+        self.assertIn("1 em risco", lista)
+
+        # Atendido dentro do prazo
+        self.post(f"/pedidos/{pids[0]}/iniciar")
+        for it in self.itens(pids[0]):
+            self.post(f"/pedidos/{pids[0]}/itens/{it['id']}/separar", {"separado": "1"})
+        self.post(f"/pedidos/{pids[0]}/finalizar")
+        with self.app.app_context():
+            p = pedidos.carregar(get_db(), pedido_id=pids[0])[0]
+        self.assertEqual((p["sla"]["estado"], p["sla"]["retirada"]), ("cumprido", "aguardando"))
+
+        rel = self.c.get("/relatorios").get_data(as_text=True)
+        self.assertIn("SLA dos pedidos", rel)
+        self.assertIn("atendidos no prazo (1 de 1)", rel)
+        self.assertIn("Prazo SLA", self.c.get("/pedidos/exportar.csv").get_data(as_text=True))
+
+    def test_config_sla_so_admin(self):
+        r = self.post("/pedidos/sla", {"horas_atendimento": "48", "horas_alerta": "8", "dias_retirada": "5"},
+                      follow_redirects=True)
+        self.assertIn("Prazos do SLA atualizados", r.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(pedidos.obter_config_sla(get_db()),
+                             {"horas_atendimento": 48, "horas_alerta": 8, "dias_retirada": 5})
+        r = self.post("/pedidos/sla", {"horas_atendimento": "4", "horas_alerta": "8", "dias_retirada": "5"},
+                      follow_redirects=True)
+        self.assertIn("O alerta precisa ser menor", r.get_data(as_text=True))
+
+        self.post("/usuarios/novo", {"nome": "Almox", "login": "almox", "perfil": "almoxarifado",
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        almox = self.app.test_client()
+        self.post("/login", {"login": "almox", "senha": "senha1234"}, client=almox)
+        self.assertEqual(self.post("/pedidos/sla", {"horas_atendimento": "1"}, client=almox).status_code, 403)
+
+    def test_observacao_antiga_do_gestor_aparece_limpa(self):
+        from app.filtros import _obs_pedido
+        antiga = "[Solicitado pelo gestor: Ana] [Fora da função: Máscara, Perneira — Justificativa: teste] | obs"
+        self.assertEqual(_obs_pedido(antiga), "[Solicitado pelo gestor: Ana] [Justificativa: teste] | obs")

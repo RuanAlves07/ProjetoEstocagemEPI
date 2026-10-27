@@ -57,7 +57,7 @@
       {% endfor %}
     </ul>
     {% if pedido_enviado.observacao %}
-    <p class="pedido-obs" style="margin-bottom:1.2rem">💬 <strong>Observações:</strong> {{ pedido_enviado.observacao }}</p>
+    <p class="pedido-obs" style="margin-bottom:1.2rem">💬 <strong>Observações:</strong> {{ pedido_enviado.observacao|obs_pedido }}</p>
     {% endif %}
     <div class="acoes">
       <a class="btn primario" href="{{ url_for(endpoint_form) }}">Enviar outra solicitação</a>

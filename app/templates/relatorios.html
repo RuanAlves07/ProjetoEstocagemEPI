@@ -240,6 +240,48 @@
   </div>
 </section>
 
+{# ==================== SLA DOS PEDIDOS ==================== #}
+<section class="cartao">
+  <h2>SLA dos pedidos (recebidos no período)</h2>
+  <p class="nota" style="margin-top:-.3rem">Meta: pronto para retirada em até <strong>{{ sla.cfg.horas_atendimento }} h</strong> após a chegada · retirada em até <strong>{{ sla.cfg.dias_retirada }} dia(s)</strong>. Pendências de ressalva contam a partir do início da separação.</p>
+  <div class="indicadores">
+    <div class="indicador"><span class="valor">{{ sla.recebidos }}</span><span>pedidos recebidos</span></div>
+    <div class="indicador"><span class="valor">{{ sla.atendidos }}</span><span>atendidos (prontos/retirados)</span></div>
+    <div class="indicador {{ 'alerta' if sla.pct_no_prazo is not none and sla.pct_no_prazo < 80 }}"><span class="valor">{{ sla.pct_no_prazo ~ '%' if sla.pct_no_prazo is not none else '—' }}</span><span>atendidos no prazo ({{ sla.no_prazo }} de {{ sla.atendidos }})</span></div>
+    <div class="indicador"><span class="valor">{{ sla.media_atendimento_h|duracao }}</span><span>tempo médio até ficar pronto</span></div>
+    <div class="indicador"><span class="valor">{{ sla.media_retirada_h|duracao }}</span><span>tempo médio até a retirada</span></div>
+    <div class="indicador {{ 'alerta' if sla.abertos_atrasados }}"><span class="valor">{{ sla.abertos_atrasados|length }}</span><span>em aberto e atrasados agora</span></div>
+  </div>
+  <div class="grade-2" style="margin-top:.8rem">
+    <div>
+      <h3 style="margin:.2rem 0 .4rem;font-size:1rem">Por obra</h3>
+      <div class="tabela-rolavel"><table>
+        <thead><tr><th>Obra</th><th class="num">Atendidos</th><th class="num">No prazo</th><th class="num">Tempo médio</th></tr></thead>
+        <tbody>
+        {% for o in sla.por_obra %}
+          <tr><td>{{ o.nome }}</td><td class="num">{{ o.total }}</td>
+              <td class="num"><span class="badge {{ 'sla-ok' if o.pct >= 80 else 'sla-risco' if o.pct >= 50 else 'sla-atrasado' }}">{{ o.pct }}%</span></td>
+              <td class="num">{{ o.media_h|duracao }}</td></tr>
+        {% else %}<tr><td colspan="4" class="vazio">Nenhum pedido atendido no período.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+    <div>
+      <h3 style="margin:.2rem 0 .4rem;font-size:1rem">Atrasos (em aberto e atendidos fora do prazo)</h3>
+      <div class="tabela-rolavel"><table>
+        <thead><tr><th>Pedido</th><th>Obra</th><th>Situação</th></tr></thead>
+        <tbody>
+        {% for p in sla.abertos_atrasados + sla.fora_do_prazo %}
+          <tr><td><a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }}</a> {{ p.solicitante }}</td>
+              <td>{{ p.local_destino or '—' }}</td>
+              <td>{% include '_sla_badge.html' %}</td></tr>
+        {% else %}<tr><td colspan="3" class="vazio">Nenhum atraso no período. 🎉</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
+
 {# ==================== 4. RANKING DE SAÍDAS, LOCAIS, SETORES E EVOLUÇÃO MENSAL ==================== #}
 <section class="cartao">
   <h2>Itens com mais saída</h2>

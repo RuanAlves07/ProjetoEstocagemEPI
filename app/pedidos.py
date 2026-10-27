@@ -7,6 +7,7 @@ import re
 import secrets
 import sqlite3
 import unicodedata
+from datetime import datetime, timedelta
 
 from . import estoque
 from .estoque import ErroValidacao, _transacao
@@ -829,7 +830,175 @@ def carregar(db, status=None, pedido_id=None, limite=None):
 
         p["itens_para_analisar"] = [i for i in validos if i.get("requer_analise")]
         p["total_analise"] = len(p["itens_para_analisar"])
+
+        # Pendência de ressalva ("aguardando estoque"): complemento ainda não iniciado
+        p["eh_complemento"] = bool(p.get("pedido_origem_id"))
+        p["aguardando_estoque"] = p["eh_complemento"] and p["status"] == "pendente"
+        p["itens_com_saldo"] = sum(1 for i in validos if i["epi_id"] and not i["falta"])
+        p["estoque_disponivel"] = bool(validos) and p["itens_com_saldo"] == len(validos)
+
+    # Pendências geradas a partir de cada pedido (para o histórico do pedido de origem)
+    filhos = {}
+    for r in db.execute(
+        f"SELECT id, status, pedido_origem_id FROM pedidos WHERE pedido_origem_id IN ({','.join('?' * len(ids))}) ORDER BY id",
+        ids,
+    ):
+        filhos.setdefault(r["pedido_origem_id"], []).append({"id": r["id"], "status": r["status"]})
+    for p in pedidos:
+        p["complementos"] = filhos.get(p["id"], [])
+
+    _calcular_sla(db, pedidos)
     return pedidos
+
+
+# ------------------------------------------------------------ SLA (prazos de atendimento)
+
+SLA_PADRAO = {
+    "horas_atendimento": 24,   # da chegada do pedido até ficar "pronto para retirada"
+    "horas_alerta": 4,         # quanto antes do vencimento o pedido passa a "em risco"
+    "dias_retirada": 3,        # depois de pronto, prazo para o colaborador/encarregado retirar
+}
+_LIMITES_SLA = {"horas_atendimento": (1, 720), "horas_alerta": (0, 168), "dias_retirada": (1, 60)}
+
+
+def obter_config_sla(db):
+    cfg = dict(SLA_PADRAO)
+    linha = db.execute("SELECT valor FROM configuracoes WHERE chave = 'sla_pedidos'").fetchone()
+    if linha and linha["valor"]:
+        try:
+            salvo = json.loads(linha["valor"])
+            for ch, (minimo, maximo) in _LIMITES_SLA.items():
+                if isinstance(salvo.get(ch), (int, float)) and minimo <= salvo[ch] <= maximo:
+                    cfg[ch] = int(salvo[ch])
+        except (ValueError, AttributeError):
+            pass
+    return cfg
+
+
+def salvar_config_sla(db, dados):
+    cfg = {}
+    for ch, (minimo, maximo) in _LIMITES_SLA.items():
+        try:
+            valor = int(str(dados.get(ch, "")).strip())
+        except ValueError:
+            raise ErroValidacao("Informe os prazos do SLA em números inteiros.")
+        if not minimo <= valor <= maximo:
+            raise ErroValidacao(f"Valor fora do limite para o SLA ({minimo} a {maximo}).")
+        cfg[ch] = valor
+    if cfg["horas_alerta"] >= cfg["horas_atendimento"]:
+        raise ErroValidacao("O alerta precisa ser menor que o prazo de atendimento.")
+    db.execute(
+        "INSERT INTO configuracoes (chave, valor) VALUES ('sla_pedidos', ?) "
+        "ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor",
+        (json.dumps(cfg),),
+    )
+    return cfg
+
+
+def _data_hora(valor):
+    try:
+        return datetime.strptime(str(valor)[:19], "%Y-%m-%d %H:%M:%S") if valor else None
+    except ValueError:
+        return None
+
+
+def _horas(delta):
+    return delta.total_seconds() / 3600
+
+
+def _calcular_sla(db, pedidos):
+    """Preenche p['sla'] com o prazo e a situação de cada pedido.
+
+    O relógio começa na chegada do pedido; numa pendência de ressalva ele só começa quando a separação
+    é iniciada (enquanto aguarda estoque, o SLA fica pausado). Contagem em horas corridas.
+    """
+    cfg = obter_config_sla(db)
+    agora = _data_hora(db.execute("SELECT datetime('now', 'localtime') AS agora").fetchone()["agora"])
+    prazo_h = cfg["horas_atendimento"]
+    for p in pedidos:
+        sla = {"estado": None, "prazo": None, "restante_h": None, "tempo_atendimento_h": None,
+               "retirada": None, "retirada_h": None, "horas_atendimento": prazo_h}
+        inicio = _data_hora(p["iniciado_em"] if p["eh_complemento"] else p["recebido_em"])
+        prazo = inicio + timedelta(hours=prazo_h) if inicio else None
+        sla["prazo"] = prazo.strftime("%Y-%m-%d %H:%M:%S") if prazo else None
+
+        if p["status"] in ("novo", "pendente", "em_separacao"):
+            if p["aguardando_estoque"] or not prazo:
+                sla["estado"] = "pausado"
+            else:
+                restante = _horas(prazo - agora)
+                sla["restante_h"] = restante
+                sla["estado"] = ("atrasado" if restante < 0
+                                 else "em_risco" if restante <= cfg["horas_alerta"] else "no_prazo")
+        elif p["status"] in ("pronto", "retirado"):
+            fim = _data_hora(p["finalizado_em"])
+            if inicio and fim:
+                sla["tempo_atendimento_h"] = _horas(fim - inicio)
+                sla["estado"] = "cumprido" if fim <= prazo else "fora_do_prazo"
+            if fim and p["status"] == "pronto":
+                espera = _horas(agora - fim)
+                sla["retirada_h"] = espera
+                sla["retirada"] = "atrasada" if espera > cfg["dias_retirada"] * 24 else "aguardando"
+            elif fim and p["status"] == "retirado":
+                retirado = _data_hora(p["retirado_em"])
+                if retirado:
+                    sla["retirada_h"] = _horas(retirado - fim)
+                    sla["retirada"] = "no_prazo" if sla["retirada_h"] <= cfg["dias_retirada"] * 24 else "fora_do_prazo"
+        p["sla"] = sla
+
+
+def resumo_sla(pedidos_abertos):
+    """Contagem para o painel da aba Pedidos: atrasados, em risco, no prazo, pausados e retiradas atrasadas."""
+    resumo = {"atrasado": 0, "em_risco": 0, "no_prazo": 0, "pausado": 0, "retirada_atrasada": 0}
+    for p in pedidos_abertos:
+        estado = p["sla"]["estado"]
+        if estado in resumo:
+            resumo[estado] += 1
+        if p["sla"]["retirada"] == "atrasada":
+            resumo["retirada_atrasada"] += 1
+    return resumo
+
+
+def relatorio_sla(db, de, ate):
+    """Indicadores de SLA dos pedidos recebidos no período (datas ISO 'AAAA-MM-DD')."""
+    todos = [p for p in carregar(db, status=("pronto", "retirado", "novo", "pendente", "em_separacao"))
+             if de <= (p["recebido_em"] or "")[:10] <= ate]
+    atendidos = [p for p in todos if p["sla"]["estado"] in ("cumprido", "fora_do_prazo")]
+    no_prazo = [p for p in atendidos if p["sla"]["estado"] == "cumprido"]
+    retirados = [p for p in todos if p["status"] == "retirado" and p["sla"]["retirada_h"] is not None]
+
+    def media(valores):
+        valores = [v for v in valores if v is not None]
+        return sum(valores) / len(valores) if valores else None
+
+    por_obra = {}
+    for p in atendidos:
+        o = por_obra.setdefault(p["local_destino"] or "(sem obra)", {"total": 0, "no_prazo": 0, "horas": []})
+        o["total"] += 1
+        o["no_prazo"] += p["sla"]["estado"] == "cumprido"
+        o["horas"].append(p["sla"]["tempo_atendimento_h"])
+    obras = sorted(
+        ({"nome": k, "total": v["total"], "no_prazo": v["no_prazo"],
+          "pct": round(100 * v["no_prazo"] / v["total"]), "media_h": media(v["horas"])} for k, v in por_obra.items()),
+        key=lambda o: (o["pct"], -o["total"]),
+    )
+    return {
+        "cfg": obter_config_sla(db),
+        "recebidos": len(todos),
+        "atendidos": len(atendidos),
+        "no_prazo": len(no_prazo),
+        "pct_no_prazo": round(100 * len(no_prazo) / len(atendidos)) if atendidos else None,
+        "media_atendimento_h": media([p["sla"]["tempo_atendimento_h"] for p in atendidos]),
+        "media_retirada_h": media([p["sla"]["retirada_h"] for p in retirados]),
+        "abertos_atrasados": [p for p in todos if p["sla"]["estado"] == "atrasado"],
+        "fora_do_prazo": [p for p in atendidos if p["sla"]["estado"] == "fora_do_prazo"][:15],
+        "por_obra": obras,
+    }
+
+
+def pendencias_com_estoque(db):
+    """Ids das pendências de ressalva que já têm saldo para todos os itens (podem ser separadas)."""
+    return [p["id"] for p in carregar(db, status=("pendente",)) if p["aguardando_estoque"] and p["estoque_disponivel"]]
 
 
 def contagens(db):
@@ -923,11 +1092,13 @@ def vincular_colaborador(db, pedido_id, colaborador_id=None, criar_novo=False):
     db.execute("UPDATE pedidos SET colaborador_id = ? WHERE id = ?", (colaborador_id, pedido_id))
 
 
-def finalizar(db, pedido_id, usuario_id, com_ressalva=False, ressalva_obs=None):
+def finalizar(db, pedido_id, usuario_id, com_ressalva=False, ressalva_obs=None, gerar_pendencia=True):
     """Dá baixa no estoque (uma entrega) e deixa o pedido 'pronto para retirada'.
 
     Se `com_ressalva=True`, permite finalizar mesmo com itens não marcados como separados,
     exigindo `ressalva_obs` e dando baixa no estoque apenas dos itens efetivamente separados.
+    Com `gerar_pendencia`, os itens que faltaram viram um pedido complementar "aguardando estoque"
+    (status pendente, ligado ao original por pedido_origem_id). Devolve o id desse complemento ou None.
     """
     obs_ressalva = limpar(ressalva_obs) if com_ressalva else None
     if com_ressalva and not obs_ressalva:
@@ -971,7 +1142,26 @@ def finalizar(db, pedido_id, usuario_id, com_ressalva=False, ressalva_obs=None):
             "finalizado_em = datetime('now', 'localtime'), ressalva_observacao = ? WHERE id = ?",
             (grupo, usuario_id, obs_ressalva[:1000] if obs_ressalva else None, pedido_id),
         )
-        return grupo
+
+        faltantes = [i for i in itens if not i["separado"]] if com_ressalva and gerar_pendencia else []
+        if not faltantes:
+            return None
+        cur = db.execute(
+            """INSERT INTO pedidos (solicitante, local_destino, motivo, observacao, colaborador_id, status,
+                                    pedido_origem_id, dados_brutos)
+               VALUES (?, ?, ?, ?, ?, 'pendente', ?, ?)""",
+            (p["solicitante"], p["local_destino"], p["motivo"],
+             f"Ressalva: {obs_ressalva}"[:1000],
+             p["colaborador_id"], pedido_id, json.dumps({"complemento_de": pedido_id})),
+        )
+        novo_id = cur.lastrowid
+        for i in faltantes:
+            db.execute(
+                """INSERT INTO pedido_itens (pedido_id, coluna, texto_original, quantidade, epi_id)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (novo_id, i["coluna"], i["texto_original"], i["quantidade"], i["epi_id"]),
+            )
+        return novo_id
 
     return _transacao(db, executar)
 

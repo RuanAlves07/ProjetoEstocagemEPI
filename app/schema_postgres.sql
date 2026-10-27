@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
     finalizado_por      INTEGER REFERENCES usuarios (id),
     finalizado_em       TEXT,
     ressalva_observacao TEXT,
+    pedido_origem_id    INTEGER REFERENCES pedidos (id),
     grupo               TEXT,
     retirado_por_nome   TEXT,
     retirado_descricao  TEXT,
@@ -163,6 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_pedidos_status ON pedidos (status);
 CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido ON pedido_itens (pedido_id);
 
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS ressalva_observacao TEXT;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pedido_origem_id INTEGER REFERENCES pedidos (id);
 
 CREATE TABLE IF NOT EXISTS cargo_epis_padrao (
     cargo      TEXT NOT NULL,

@@ -607,7 +607,13 @@ def popular():
         pedidos.cancelar(db, pid_cancelado, "Pedido em duplicidade — o colaborador enviou o formulário duas vezes",
                          uid, pode_estornar=True)
 
-        # Pedido #8: FINALIZADO COM RESSALVA (um item sem saldo ficou de fora; pronto para retirada)
+        # Abafador 26DB zerado (lote com defeito devolvido): o pedido #8 sai com ressalva e gera pendência
+        id_abafador = epi_id["ABAFADOR TIPO CONCHA 26DB (Máquina Aberta)"]
+        estoque.registrar(db, "baixa", [{"epi_id": id_abafador, "quantidade": estoque.saldo(db, id_abafador)}],
+                          h - timedelta(days=3), uid, motivo="Avaria",
+                          observacao="Lote com defeito devolvido à Casa do EPI")
+
+        # Pedido #8: FINALIZADO COM RESSALVA (item sem saldo ficou de fora e virou pendência “aguardando estoque”)
         pid_ressalva, _ = pedidos.criar_pedido(db, {
             "id": "forms-208",
             "nome": "JOSE AMARO FERNANDES",
@@ -648,17 +654,33 @@ def popular():
             "vestimento": [fora[1]],
             "observacao": (
                 "[Solicitado pelo gestor: Gestor de Obras (Teste)] "
-                f"[Fora da função: {', '.join(fora)} — Justificativa: período de teste de 30 dias na equipe de roçada] "
+                "[Justificativa: período de teste de 30 dias na equipe de roçada] "
                 "| Começa na segunda-feira"
             ),
         })
 
-        # Datas de chegada escalonadas (do mais antigo ao mais recente), como seria no dia a dia
+        # Datas escalonadas (chegada, separação, pronto, retirada) para o SLA mostrar todas as situações
+        def quando(dias, hora):
+            return f"{(h - timedelta(days=dias)).isoformat()} {hora}"
+
         for pid_d, dias, hora in ((pid_retirado, 20, "07:42:10"), (pid_cancelado, 9, "16:05:33"),
-                                  (pid_pronto, 3, "08:15:02"), (pid_ressalva, 2, "10:31:47"),
-                                  (pid_pendente, 2, "14:20:09"), (pid_ruan, 1, "09:03:55")):
-            db.execute("UPDATE pedidos SET recebido_em = ? WHERE id = ?",
-                       (f"{(h - timedelta(days=dias)).isoformat()} {hora}", pid_d))
+                                  (pid_pronto, 4, "08:15:02"), (pid_ressalva, 2, "10:31:47"),
+                                  (pid_pendente, 0, "06:20:09"), (pid_ruan, 0, "07:03:55")):
+            db.execute("UPDATE pedidos SET recebido_em = ? WHERE id = ?", (quando(dias, hora), pid_d))
+        # Retirado: pronto em ~6 h (SLA cumprido) e retirado no dia seguinte
+        db.execute("UPDATE pedidos SET iniciado_em = ?, finalizado_em = ?, retirado_em = ? WHERE id = ?",
+                   (quando(20, "08:10:00"), quando(20, "13:20:00"), quando(19, "16:00:00"), pid_retirado))
+        # Pronto: atendido no prazo, mas ninguém retirou há 4 dias (retirada atrasada)
+        db.execute("UPDATE pedidos SET iniciado_em = ?, finalizado_em = ? WHERE id = ?",
+                   (quando(4, "09:00:00"), quando(4, "15:40:00"), pid_pronto))
+        # Com ressalva: ficou pronto em ~28 h (fora do prazo); a pendência gerada aguarda estoque
+        db.execute("UPDATE pedidos SET iniciado_em = ?, finalizado_em = ? WHERE id = ?",
+                   (quando(2, "11:00:00"), quando(1, "14:45:00"), pid_ressalva))
+        db.execute("UPDATE pedidos SET recebido_em = ? WHERE pedido_origem_id = ?", (quando(1, "14:45:00"), pid_ressalva))
+        db.execute("UPDATE pedidos SET iniciado_em = ? WHERE id = ?", (quando(0, "07:30:00"), pid_ruan))
+        # Novos: um atrasado (30 h), um em risco (21 h) e os demais recentes (no prazo)
+        db.execute("UPDATE pedidos SET recebido_em = datetime('now', 'localtime', '-30 hours') WHERE origem_id = 'forms-205'")
+        db.execute("UPDATE pedidos SET recebido_em = datetime('now', 'localtime', '-21 hours') WHERE origem_id = 'forms-206'")
 
         # 8. Padronização de EPIs por Cargo + Equipamentos solicitados fora do padrão do cargo
         padroes_por_cargo = {

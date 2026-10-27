@@ -9,6 +9,7 @@
     Pedido #{{ p.id }}
     <span class="badge status-{{ p.status }}">{{ STATUS[p.status] }}</span>
     {% if p.ressalva_observacao %}<span class="badge amarelo">⚠️ Com ressalva</span>{% endif %}
+    {% if p.aguardando_estoque %}<span class="badge sla-pausado">⏳ Aguardando estoque</span>{% endif %}
     {% if em_aberto and p.total_analise > 0 %}<span class="badge badge-analisar">🔍 {{ p.total_analise }} para analisar</span>{% endif %}
   </h1>
   <div class="acoes"><a class="btn" href="{{ url_for('pedidos.lista') }}">← Pedidos</a></div>
@@ -25,12 +26,38 @@
     <div><span class="suave">Motivo</span><strong>{{ p.motivo or '—' }}</strong></div>
     <div><span class="suave">Recebido</span><strong>{{ p.recebido_em|hora_br }}</strong></div>
   </div>
-  {% if p.observacao %}<p class="pedido-obs">💬 <strong>Observação do pedido:</strong> {{ p.observacao }}</p>{% endif %}
+  {% if p.observacao %}<p class="pedido-obs">💬 <strong>Observação do pedido:</strong> {{ p.observacao|obs_pedido }}</p>{% endif %}
   {% if p.ressalva_observacao %}
   <div class="aviso alerta-analise" style="margin:.75rem 0 0">
     <strong>⚠️ Ressalva da separação:</strong> {{ p.ressalva_observacao }}
+    {% for c in p.complementos %}
+      <br>📦 Os itens que faltaram foram para a <a href="{{ url_for('pedidos.detalhe', pedido_id=c.id) }}"><strong>pendência #{{ c.id }}</strong></a>
+      ({{ 'aguardando estoque' if c.status == 'pendente' else STATUS[c.status]|lower }}).
+    {% endfor %}
   </div>
   {% endif %}
+  {% if p.eh_complemento %}
+  <div class="faixa-complemento" style="margin-top:.75rem">
+    🔗 Este pedido reúne os itens que faltaram no <a href="{{ url_for('pedidos.detalhe', pedido_id=p.pedido_origem_id) }}"><strong>pedido #{{ p.pedido_origem_id }}</strong></a> (finalizado com ressalva).
+    {% if p.aguardando_estoque %}
+      {% if p.estoque_disponivel %}<br><strong class="ok-texto">✅ Já há estoque para todos os itens — pode iniciar a separação.</strong>
+      {% else %}<br>⏳ {{ p.itens_com_saldo }} de {{ p.total_itens }} item(ns) com saldo. O SLA começa a contar quando a separação for iniciada.{% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# Linha do tempo e SLA #}
+  <div class="linha-tempo-sla">
+    {% include '_sla_badge.html' %}
+    <ol class="linha-tempo">
+      <li><span class="suave">Recebido</span> {{ p.recebido_em|hora_br }}</li>
+      {% if p.iniciado_em %}<li><span class="suave">Separação iniciada</span> {{ p.iniciado_em|hora_br }}</li>{% endif %}
+      {% if p.sla.prazo %}<li><span class="suave">Prazo do SLA ({{ p.sla.horas_atendimento }} h)</span> {{ p.sla.prazo|hora_br }}</li>{% endif %}
+      {% if p.finalizado_em %}<li><span class="suave">Pronto para retirada</span> {{ p.finalizado_em|hora_br }}</li>{% endif %}
+      {% if p.retirado_em %}<li><span class="suave">Retirado</span> {{ p.retirado_em|hora_br }}</li>{% endif %}
+      {% if p.cancelado_em %}<li><span class="suave">Cancelado</span> {{ p.cancelado_em|hora_br }}</li>{% endif %}
+    </ol>
+  </div>
 </section>
 
 {% if em_aberto and pode_editar and p.status != 'em_separacao' %}
@@ -66,7 +93,7 @@
           <span class="item-nome">{{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}{% if i.tamanho %} <span class="badge">Tam. {{ i.tamanho }}</span>{% endif %}</span>
           {% if i.epi_ativo == false %}<span class="badge vermelho">EPI inativo</span>{% endif %}
           {% if p.status in ('pronto', 'retirado') and not i.separado %}
-            <span class="badge amarelo">⚠️ não atendido (ressalva)</span>
+            <span class="badge amarelo">⚠️ não atendido (ressalva){% if p.complementos %} → pendência #{{ p.complementos[0].id }}{% endif %}</span>
           {% endif %}
           {% if i.alertas_analise %}
           <div class="alertas-item-pedido" style="display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.25rem">
@@ -151,6 +178,10 @@
       <p class="nota" style="margin:0">
         Apenas os itens marcados com check (✓) terão baixa no estoque. Os itens desmarcados ficarão registrados como não atendidos.
       </p>
+      <label class="check">
+        <input type="checkbox" name="gerar_pendencia" value="1" checked>
+        Criar pendência com os itens que faltaram (fica em <strong>Pedidos → Aguardando estoque</strong> até chegar estoque)
+      </label>
       <label>
         <span class="rotulo-campo">Observação / motivo da ressalva <span class="obrigatorio">*</span></span>
         <textarea name="ressalva_observacao" id="campo-ressalva-obs" rows="3" required

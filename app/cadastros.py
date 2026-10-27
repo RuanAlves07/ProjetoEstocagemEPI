@@ -644,6 +644,9 @@ def _solicitados_fora_do_padrao(db, colab_id, padrao_ids):
            JOIN pedidos p ON p.id = i.pedido_id
            JOIN epis e ON e.id = i.epi_id
            WHERE p.colaborador_id = ? AND p.status != 'cancelado' AND i.ignorado = 0
+             -- item não atendido numa ressalva que virou pendência: aparece só pela pendência
+             AND NOT (i.separado = 0 AND p.status IN ('pronto', 'retirado')
+                      AND EXISTS (SELECT 1 FROM pedidos c WHERE c.pedido_origem_id = p.id))
            ORDER BY p.id DESC, i.id DESC""",
         (colab_id,),
     ).fetchall()

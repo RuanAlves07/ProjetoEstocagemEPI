@@ -273,7 +273,8 @@ def _formulario_solicitacao(modo_gestor):
             # Registra no pedido quem pediu e por quê, para o almoxarifado e para a ficha do colaborador
             marcas = [f"[Solicitado pelo gestor: {g.usuario['nome']}]"]
             if fora_funcao:
-                marcas.append(f"[Fora da função: {', '.join(fora_funcao)} — Justificativa: {justificativa}]")
+                # Os itens fora da função já aparecem com a etiqueta "analisar" no card; aqui só a justificativa
+                marcas.append(f"[Justificativa: {justificativa}]")
             observacao = " | ".join(x for x in (" ".join(marcas), observacao) if x)
 
         if erro:
@@ -606,14 +607,35 @@ def lista():
         "colaboradores": colaboradores,
         "locais": locais,
     }
+    contexto_form["sla_cfg"] = pedidos.obter_config_sla(db)
     if aba == "abertos":
         todos = pedidos.carregar(db, status=pedidos.ABERTOS)
-        grupos = [(chave, rotulo, [p for p in todos if p["status"] == chave])
-                  for chave, rotulo in ROTULOS_GRUPOS.items()]
-        return render_template("pedidos_lista.html", aba=aba, grupos=grupos, historico=None, **contexto_form)
+        grupos = []
+        for chave, rotulo in ROTULOS_GRUPOS.items():
+            if chave == "pendente":
+                grupos.append((chave, rotulo, [p for p in todos if p["status"] == "pendente" and not p["aguardando_estoque"]]))
+                # Pendências de ressalva: as que já têm estoque aparecem primeiro
+                aguardando = sorted((p for p in todos if p["aguardando_estoque"]),
+                                    key=lambda p: (not p["estoque_disponivel"], p["id"]))
+                grupos.append(("aguardando", "⏳ Aguardando estoque (itens que faltaram na ressalva)", aguardando))
+            else:
+                grupos.append((chave, rotulo, [p for p in todos if p["status"] == chave]))
+        return render_template("pedidos_lista.html", aba=aba, grupos=grupos, historico=None,
+                               resumo_sla=pedidos.resumo_sla(todos), **contexto_form)
     status = ("retirado",) if aba == "retirados" else ("cancelado",)
     return render_template("pedidos_lista.html", aba=aba, grupos=None,
                            historico=pedidos.carregar(db, status=status, limite=200), **contexto_form)
+
+
+@bp.post("/pedidos/sla")
+def config_sla():
+    """Administrador ajusta os prazos do SLA dos pedidos."""
+    try:
+        pedidos.salvar_config_sla(get_db(), request.form)
+        flash("Prazos do SLA atualizados.", "ok")
+    except ErroValidacao as e:
+        flash(str(e), "erro")
+    return redirect(url_for("pedidos.lista"))
 
 
 @bp.get("/pedidos/novos")
@@ -643,16 +665,25 @@ def exportar_csv():
            LEFT JOIN usuarios uf ON uf.id = p.finalizado_por
            LEFT JOIN usuarios ue ON ue.id = p.entregue_por
            ORDER BY p.id DESC""").fetchall()
+    sla_por_id = {p["id"]: p for p in pedidos.carregar(get_db())}
+    rotulo_sla = {"no_prazo": "No prazo", "em_risco": "Em risco", "atrasado": "Atrasado",
+                  "pausado": "Pausado (aguardando estoque)", "cumprido": "Cumprido", "fora_do_prazo": "Fora do prazo"}
     saida = io.StringIO()
     w = csv.writer(saida, delimiter=";")
     w.writerow(["Pedido", "Recebido em", "Solicitante", "Local", "Motivo", "Observação", "Situação",
                 "Colaborador cadastrado", "Itens", "Separado por", "Retirado por", "Descrição de quem retirou",
-                "Retirado em", "Entregue por"])
+                "Retirado em", "Entregue por", "Prazo SLA", "Pronto em", "Horas até ficar pronto", "SLA",
+                "Pendência de (pedido)"])
     for p in linhas:
+        info = sla_por_id.get(p["id"]) or {}
+        sla = info.get("sla") or {}
+        horas = sla.get("tempo_atendimento_h")
         w.writerow([p["id"], p["recebido_em"], p["solicitante"], p["local_destino"] or "", p["motivo"] or "",
                     p["observacao"] or "", pedidos.STATUS[p["status"]], p["colaborador"] or "", p["itens"] or "",
                     p["separado_por"] or "", p["retirado_por_nome"] or "", p["retirado_descricao"] or "",
-                    p["retirado_em"] or "", p["entregue_por"] or ""])
+                    p["retirado_em"] or "", p["entregue_por"] or "", sla.get("prazo") or "",
+                    info.get("finalizado_em") or "", f"{horas:.1f}".replace(".", ",") if horas is not None else "",
+                    rotulo_sla.get(sla.get("estado"), ""), info.get("pedido_origem_id") or ""])
     return _csv_response(saida, "pedidos.csv")
 
 
@@ -753,19 +784,23 @@ def finalizar(pedido_id):
         or request.path.endswith("/finalizar-ressalva")
     )
     obs_ressalva = request.form.get("ressalva_observacao")
-    msg = (
-        "Pedido finalizado com ressalva: baixa registrada para os itens separados e justificativa gravada."
-        if com_ressalva
-        else "Pedido finalizado: baixa feita no estoque e pronto para retirada."
-    )
-    return _executar(
-        lambda: pedidos.finalizar(
+    gerar_pendencia = not com_ressalva or request.form.get("gerar_pendencia") == "1"
+    try:
+        complemento = pedidos.finalizar(
             get_db(), pedido_id, g.usuario["id"],
-            com_ressalva=com_ressalva, ressalva_obs=obs_ressalva,
-        ),
-        pedido_id,
-        msg,
-    )
+            com_ressalva=com_ressalva, ressalva_obs=obs_ressalva, gerar_pendencia=gerar_pendencia,
+        )
+    except ErroValidacao as e:
+        flash(str(e), "erro")
+        return redirect(url_for("pedidos.detalhe", pedido_id=pedido_id))
+    if not com_ressalva:
+        flash("Pedido finalizado: baixa feita no estoque e pronto para retirada.", "ok")
+    elif complemento:
+        flash(f"Pedido finalizado com ressalva. Os itens que faltaram foram para a pendência #{complemento} "
+              "(Pedidos → Aguardando estoque).", "ok")
+    else:
+        flash("Pedido finalizado com ressalva: baixa registrada para os itens separados e justificativa gravada.", "ok")
+    return redirect(url_for("pedidos.detalhe", pedido_id=pedido_id))
 
 
 @bp.post("/pedidos/<int:pedido_id>/retirar")

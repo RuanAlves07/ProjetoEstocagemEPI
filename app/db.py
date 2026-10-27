@@ -327,6 +327,8 @@ def _migrar(conn):
     colunas_pedidos = {r["name"] for r in conn.execute("PRAGMA table_info(pedidos)")}
     if "ressalva_observacao" not in colunas_pedidos:
         conn.execute("ALTER TABLE pedidos ADD COLUMN ressalva_observacao TEXT")
+    if "pedido_origem_id" not in colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN pedido_origem_id INTEGER REFERENCES pedidos (id)")
 
     # Remove o CHECK fixo da coluna perfil em bancos SQLite antigos para permitir perfis personalizados
     info_usu = conn.execute(

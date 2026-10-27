@@ -213,6 +213,21 @@ details.cancelar-pedido { margin-bottom: 2rem; } details.cancelar-pedido summary
 .opcao-item.recomendado-cargo:hover { background: #d6f0e0; border-color: #3da363; }
 .tag-recomendado { display: inline-block; margin-left: .35rem; padding: .1rem .55rem; background: var(--verde); color: #fff; border-radius: 999px; font-size: .78rem; font-weight: 700; }
 .tag-recomendado[hidden] { display: none !important; }
+.sla-linha { display: flex; flex-wrap: wrap; gap: .3rem; }
+.badge.sla-ok { background: #dcf3e5; color: #14602f; }
+.badge.sla-risco { background: #fff0cc; color: #7a5300; }
+.badge.sla-atrasado { background: #fbdcdc; color: #8e1d1d; }
+.badge.sla-pausado { background: #e8ebf1; color: #46505f; }
+.resumo-sla { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.resumo-sla .badge { font-size: .85rem; padding: .25rem .7rem; }
+.faixa-complemento { font-size: .88rem; background: #f1f5fb; border-radius: 6px; padding: .4rem .6rem; }
+.pedido-card.aguardando-estoque { border-left-color: #94a3b8; border-left-style: dashed; }
+.pedido-card.estoque-chegou { border-left-color: var(--verde); border-left-style: solid; box-shadow: 0 0 0 2px #bfe8cf; }
+.ok-texto { color: #14602f; }
+.linha-tempo-sla { margin-top: .9rem; display: flex; flex-direction: column; gap: .45rem; }
+.linha-tempo { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .35rem 1.2rem; font-size: .88rem; }
+.linha-tempo li { display: flex; flex-direction: column; }
+.linha-tempo li .suave { font-size: .76rem; }
 .filtro-colaborador { margin-bottom: .4rem; }
 .filtro-colaborador-info { margin: -.15rem 0 .4rem; font-size: .85rem; }
 .filtro-colaborador-info[hidden] { display: none; }

@@ -439,6 +439,7 @@ def relatorios():
         filtro_epi_id=filtro_epi_id,
         filtro_tam=filtro_tam,
         filtro_categoria=filtro_categoria,
+        sla=pedidos.relatorio_sla(db, p[0], p[1]),
     )
 
 

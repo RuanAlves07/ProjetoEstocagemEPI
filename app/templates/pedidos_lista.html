@@ -93,13 +93,40 @@
 </div>
 
 {% if grupos %}
+  <div class="resumo-sla">
+    <strong>SLA:</strong>
+    <span class="badge sla-atrasado">⛔ {{ resumo_sla.atrasado }} atrasado(s)</span>
+    <span class="badge sla-risco">⚠️ {{ resumo_sla.em_risco }} em risco</span>
+    <span class="badge sla-ok">⏱ {{ resumo_sla.no_prazo }} no prazo</span>
+    <span class="badge sla-pausado">⏸ {{ resumo_sla.pausado }} aguardando estoque</span>
+    {% if resumo_sla.retirada_atrasada %}<span class="badge sla-atrasado">📦 {{ resumo_sla.retirada_atrasada }} retirada(s) atrasada(s)</span>{% endif %}
+    <span class="nota">Prazo: pronto em até {{ sla_cfg.horas_atendimento }} h · alerta {{ sla_cfg.horas_alerta }} h antes · retirada em até {{ sla_cfg.dias_retirada }} dia(s)</span>
+    {% if eh_admin %}
+    <details class="editar-item">
+      <summary class="btn pequeno">⚙️ Ajustar prazos</summary>
+      <form method="post" action="{{ url_for('pedidos.config_sla') }}" class="cartao linha-form" style="margin-top:.5rem">
+        {{ csrf() }}
+        <label>Pronto em até (horas) <input type="number" name="horas_atendimento" min="1" max="720" value="{{ sla_cfg.horas_atendimento }}" required style="width:6rem"></label>
+        <label>Alertar antes (horas) <input type="number" name="horas_alerta" min="0" max="168" value="{{ sla_cfg.horas_alerta }}" required style="width:6rem"></label>
+        <label>Retirada em até (dias) <input type="number" name="dias_retirada" min="1" max="60" value="{{ sla_cfg.dias_retirada }}" required style="width:6rem"></label>
+        <button class="btn primario pequeno">Salvar</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+
   {% for chave, rotulo, lista in grupos %}
+  {% if chave != 'aguardando' or lista %}
   <section class="grupo-pedidos">
     <h2>{{ rotulo }} <span class="contador {{ 'alerta' if chave == 'novo' and lista }}">{{ lista|length }}</span></h2>
+    {% if chave == 'aguardando' %}
+    <p class="nota" style="margin-top:-.4rem">Itens que não puderam ser entregues num “Finalizar com ressalva”. Quando chegar estoque, o card fica verde (“✅ Estoque disponível”) — é só iniciar a separação. O SLA fica pausado até lá.</p>
+    {% endif %}
     {% if lista %}
       <div class="grade-cards">{% for p in lista %}{% include '_pedido_card.html' %}{% endfor %}</div>
     {% else %}<p class="vazio">Nenhum pedido aqui.</p>{% endif %}
   </section>
+  {% endif %}
   {% endfor %}
 {% else %}
   <div class="cartao"><div class="tabela-rolavel"><table>

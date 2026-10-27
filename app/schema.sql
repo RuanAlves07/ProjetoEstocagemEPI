@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
     finalizado_por      INTEGER REFERENCES usuarios (id),
     finalizado_em       TEXT,
     ressalva_observacao TEXT,            -- justificativa quando finalizado com ressalva (itens não atendidos)
+    pedido_origem_id    INTEGER REFERENCES pedidos (id),  -- complemento: itens que faltaram no pedido de origem
     grupo               TEXT,            -- grupo das movimentações geradas na finalização
     retirado_por_nome   TEXT,
     retirado_descricao  TEXT,

@@ -136,7 +136,7 @@ def _permissao_exigida_rota(endpoint, metodo):
         return "ver_painel"
     if endpoint == "painel.relatorios":
         return "ver_relatorios"
-    if endpoint == "pedidos.integracao":
+    if endpoint in ("pedidos.integracao", "pedidos.config_sla"):
         return "__admin__"
     if endpoint == "pedidos.personalizar_formulario" or endpoint.startswith("pedidos.form_"):
         return ("gerenciar_pedidos", "editar_epis")

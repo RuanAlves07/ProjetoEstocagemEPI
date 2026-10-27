@@ -174,6 +174,12 @@ def movimentar(tipo):
                 flash("Entrega registrada. Imprima o comprovante para a assinatura do colaborador.", "ok")
                 return redirect(url_for("movimentos.comprovante", grupo=grupo))
             flash("Movimentação registrada.", "ok")
+            if tipo_real in ("entrada", "ajuste_mais"):
+                from . import pedidos   # import local: pedidos depende de estoque
+                prontas = pedidos.pendencias_com_estoque(db)
+                if prontas:
+                    flash("📦 Chegou estoque para " + ", ".join(f"#{i}" for i in prontas)
+                          + " — pendência(s) de ressalva que já podem ser separadas (Pedidos → Aguardando estoque).", "ok")
             return redirect(url_for("movimentos.lista"))
         except ErroValidacao as e:
             flash(str(e), "erro")
