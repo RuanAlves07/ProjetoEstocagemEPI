@@ -24,7 +24,7 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 - Mostra **todos** os EPIs e vestimentas do formulário: os do cargo do colaborador ficam em verde **`(recomendado pelo cargo)`** e os demais recebem a etiqueta **`(fora da função)`**.
 - Ao marcar algum item fora da função, o campo **Justificativa** passa a ser obrigatório.
 - O pedido entra na mesma fila do almoxarifado, com a observação **`[Solicitado pelo gestor: Nome]`** e **`[Fora da função: itens — Justificativa: ...]`**, que também aparece na aba *Equipamentos solicitados* da ficha do colaborador.
-- Atalho no topo do formulário público (**👔 Formulário do Gestor**) e na aba *Formulário* do sistema.
+- Atalho no topo do formulário público (**Formulário do Gestor**) e na aba *Formulário* do sistema.
 
 ### 2. Colaboradores e Padronização por Cargo (`/colaboradores` e `/colaboradores/cargos`)
 - **Padrão de EPIs por Cargo (`/colaboradores/cargos`)**:
@@ -54,12 +54,12 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 
 **Finalizar com ressalva → pendência "Aguardando estoque"**
 - Quando algum item não pode ser entregue, o pedido é finalizado com ressalva (baixa só do que foi separado) e, por padrão, os itens que faltaram viram um **pedido complementar** ligado ao original.
-- Esses complementos ficam na fileira **⏳ Aguardando estoque** da aba Pedidos, com a situação de cada item (✅ disponível / ⏳ aguardando). Quando houver saldo para tudo, o card fica verde (**✅ Estoque disponível — pode separar**) e sobe para o topo da fileira; ao registrar uma entrada de estoque, o sistema avisa quais pendências já podem ser separadas.
+- Esses complementos ficam na fileira **Aguardando estoque** da aba Pedidos, com a situação de cada item (disponível / aguardando). Quando houver saldo para tudo, o card fica verde (**Estoque disponível — pode separar**) e sobe para o topo da fileira; ao registrar uma entrada de estoque, o sistema avisa quais pendências já podem ser separadas.
 - No histórico, um aponta para o outro: o pedido original mostra "itens que faltaram → pendência #X" e a pendência mostra "itens que faltaram no pedido #Y".
 
 **SLA (prazos de atendimento)**
 - Padrão: pedido **pronto em até 24 h** após a chegada, **alerta 4 h antes** de vencer e **retirada em até 3 dias** depois de pronto. O administrador ajusta em **Pedidos → ⚙️ Ajustar prazos**. Contagem em horas corridas.
-- Cada card mostra uma etiqueta: ⏱ no prazo, ⚠️ em risco, ⛔ atrasado, ✅ atendido no prazo / fora do prazo e 📦 retirada atrasada. O topo da aba Pedidos resume quantos estão atrasados, em risco e no prazo, e a tela do pedido traz a linha do tempo (recebido, início, prazo, pronto, retirado).
+- Cada card mostra uma etiqueta: ⏱ no prazo, em risco, atrasado, atendido no prazo / fora do prazo e retirada atrasada. O topo da aba Pedidos resume quantos estão atrasados, em risco e no prazo, e a tela do pedido traz a linha do tempo (recebido, início, prazo, pronto, retirado).
 - Pendências aguardando estoque ficam com o SLA **pausado**: o prazo começa quando a separação é iniciada.
 - **Relatórios** mostram, para o período: % atendido no prazo, tempo médio até ficar pronto e até a retirada, desempenho por obra e a lista de atrasos. O CSV de pedidos traz as colunas de prazo e situação do SLA.
 
@@ -93,21 +93,6 @@ python3 -m venv .venv
   ```bash
   .venv/bin/python -m unittest discover -s tests -v
   ```
-
----
-
-##  Deploy em Produção (Supabase + Vercel)
-
-O projeto já possui configuração nativa para rodar em nuvem com **Supabase (PostgreSQL)** e **Vercel**:
-
-1. **Banco de Dados (Supabase)**:
-   - Crie um projeto no [Supabase](https://supabase.com/) e copie a **Connection String (URI)** do *Session Pooler* (porta `5432`) ou *Transaction Pooler* (porta `6543`).
-   - As tabelas são criadas automaticamente a partir de [`app/schema_postgres.sql`](app/schema_postgres.sql) (ou você pode popular o banco remoto executando `.venv/bin/python popular_teste.py "postgresql://..."`).
-2. **Aplicação Web (Vercel)**:
-   -Os arquivos [`vercel.json`](vercel.json) e [`api/index.py`](api/index.py) já configuram o ambiente serverless Python.
-   - Ao importar o repositório na [Vercel](https://vercel.com/), defina em **Environment Variables**:
-     - `DATABASE_URL`: URI de conexão PostgreSQL do seu projeto no Supabase.
-     - `EPI_SECRET_KEY`: chave secreta para assinatura das sessões de login.
 
 ---
 
