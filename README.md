@@ -58,8 +58,8 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 - No histórico, um aponta para o outro: o pedido original mostra "itens que faltaram → pendência #X" e a pendência mostra "itens que faltaram no pedido #Y".
 
 **SLA (prazos de atendimento)**
-- Padrão: pedido **pronto em até 24 h** após a chegada, **alerta 4 h antes** de vencer e **retirada em até 3 dias** depois de pronto. O administrador ajusta em **Pedidos → ⚙️ Ajustar prazos**. Contagem em horas corridas.
-- Cada card mostra uma etiqueta: ⏱ no prazo, em risco, atrasado, atendido no prazo / fora do prazo e retirada atrasada. O topo da aba Pedidos resume quantos estão atrasados, em risco e no prazo, e a tela do pedido traz a linha do tempo (recebido, início, prazo, pronto, retirado).
+- Padrão: pedido **pronto em até 24 h** após a chegada, **alerta 4 h antes** de vencer e **retirada em até 3 dias** depois de pronto. O administrador ajusta em **Pedidos → Ajustar prazos**. Contagem em horas corridas.
+- Cada card mostra uma etiqueta: no prazo, em risco, atrasado, atendido no prazo / fora do prazo e retirada atrasada. O topo da aba Pedidos resume quantos estão atrasados, em risco e no prazo, e a tela do pedido traz a linha do tempo (recebido, início, prazo, pronto, retirado).
 - Pendências aguardando estoque ficam com o SLA **pausado**: o prazo começa quando a separação é iniciada.
 - **Relatórios** mostram, para o período: % atendido no prazo, tempo médio até ficar pronto e até a retirada, desempenho por obra e a lista de atrasos. O CSV de pedidos traz as colunas de prazo e situação do SLA.
 
