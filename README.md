@@ -2,8 +2,7 @@
 
 Aplicação web completa (**Web Desktop em tela inteira + Web Mobile responsiva**) para controle de inventário de EPIs e uniformes, formulário público de solicitação para obras, fila de separação estilo comanda, padronização de kits por cargo, fichas de colaboradores, gestão de fornecedores e controle granular de perfis de acesso.
 
-Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **PostgreSQL (Supabase)** + deploy serverless na **Vercel**.
-
+Compatível tanto com **SQLite local** (`instance/epi.sqlite`)
 ---
 
 ##  Principais Funcionalidades
@@ -100,7 +99,7 @@ python3 -m venv .venv
 
 ```text
 ├── api/
-│   └── index.py               # Entrypoint WSGI para deploy serverless na Vercel
+│   └── index.py               # Entrypoint WSGI
 ├── app/
 │   ├── __init__.py            # Factory Flask, filtros Jinja e configuração híbrida SQLite/Postgres
 │   ├── auth.py                # Autenticação, CSRF, perfis dinâmicos e controle de permissões por rota
@@ -119,5 +118,4 @@ python3 -m venv .venv
 ├── popular_teste.py           # Script de carga inicial com os 33 itens, 9 cargos e 158 colaboradores
 ├── requirements.txt           # Dependências Python (Flask, psycopg2-binary)
 ├── run.py                     # Inicializador local de desenvolvimento / rede interna
-└── vercel.json                # Configuração de rotas para a Vercel
 ```
