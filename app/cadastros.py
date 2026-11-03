@@ -123,6 +123,19 @@ def _validar_duplicidade_epi(db, nome, tamanho, epi_id=None):
     return db.execute(sql, params).fetchone()
 
 
+CATEGORIAS_PADRAO = (
+    "Calçados",
+    "Vestimenta",
+    "Mãos",
+    "Cabeça",
+    "Olhos e Face",
+    "Auditivo",
+    "Respiratório",
+    "Trabalho em Altura",
+    "Outros / EPI",
+)
+
+
 def _extrair_tamanhos_form(form):
     """Extrai lista ordenada e sem duplicatas de tamanhos/numerações selecionados no formulário."""
     brutos = []
@@ -338,7 +351,7 @@ def epi_novo():
                 erros.append("Já existe um EPI cadastrado com esse nome e tamanho.")
         for e in erros:
             flash(e, "erro")
-    return render_template("epi_form.html", epi=dados, novo=True, qtds_por_tam=qtds_por_tam)
+    return render_template("epi_form.html", epi=dados, novo=True, qtds_por_tam=qtds_por_tam, categorias_padrao=CATEGORIAS_PADRAO)
 
 
 @bp.route("/epis/<int:epi_id>/editar", methods=["GET", "POST"])
@@ -368,7 +381,7 @@ def epi_editar(epi_id):
         for e in erros:
             flash(e, "erro")
         epi = dados
-    return render_template("epi_form.html", epi=epi, novo=False, epi_id=epi_id)
+    return render_template("epi_form.html", epi=epi, novo=False, epi_id=epi_id, categorias_padrao=CATEGORIAS_PADRAO)
 
 
 @bp.get("/epis/<int:epi_id>")

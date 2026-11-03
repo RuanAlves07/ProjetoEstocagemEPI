@@ -3,6 +3,10 @@
 {% block titulo %}{{ 'Novo EPI' if novo else 'Editar EPI' }}{% endblock %}
 {% block conteudo %}
 {% set tams_atuais = epi.get('tamanhos_lista') if epi is mapping and epi.get('tamanhos_lista') is not none else ([epi.tamanho] if epi.tamanho else []) %}
+{% set cat_atual = (epi.categoria or '')|trim %}
+{% set categorias_disponiveis = categorias_padrao or [
+  'Calçados', 'Vestimenta', 'Mãos', 'Cabeça', 'Olhos e Face', 'Auditivo', 'Respiratório', 'Trabalho em Altura', 'Outros / EPI'
+] %}
 <div class="cartao" style="max-width:920px;margin:0 auto">
   <h1>{{ 'Novo EPI' if novo else 'Editar EPI' }}</h1>
   <form method="post" enctype="multipart/form-data" class="formulario" id="form-cadastro-epi">
@@ -10,19 +14,16 @@
     <input type="hidden" name="presenca_forms" value="1">
 
     <!-- Bloco de busca automática pelo Nº do CA (API_BaseCAEPI) -->
-    <div style="padding:.9rem 1rem;background:#f0f6ff;border:1px solid #bfd6f6;border-left:4px solid var(--cor-primaria);border-radius:8px;display:flex;flex-direction:column;gap:.55rem">
+    <div style="padding:.85rem 1rem;background:#f0f6ff;border:1px solid #bfd6f6;border-left:4px solid var(--cor-primaria);border-radius:8px;display:flex;flex-direction:column;gap:.5rem">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
-        <strong style="color:var(--cor-primaria-esc);font-size:.95rem">Preenchimento Automático pelo Nº do CA</strong>
-        <span class="badge">Atualização diária às 20:00</span>
+        <strong style="color:var(--cor-primaria-esc);font-size:.92rem">Preenchimento Automático pelo Nº do CA</strong>
+        <span class="badge">Base CAEPI</span>
       </div>
-      <p class="nota" style="margin:0">
-        Digite apenas o <strong>Nº do CA</strong> para puxar automaticamente a <strong>Validade do CA</strong>, o <strong>Nome do Equipamento</strong>, a <strong>Categoria</strong> e a <strong>Unidade</strong>. (Para vestimentas isentas de CA, deixe o CA em branco e preencha o nome abaixo).
-      </p>
       <div class="linha" style="align-items:flex-end">
         <label style="flex:1">
           <span>Nº do CA</span>
           <div style="display:flex;gap:.45rem">
-            <input name="ca" id="campo-ca-epi" value="{{ epi.ca or '' }}" placeholder="Ex.: 39840, 43105, 11269, 31469..." autofocus>
+            <input name="ca" id="campo-ca-epi" value="{{ epi.ca or '' }}" placeholder="Ex.: 39840, 43105, 11269..." autofocus>
             <button type="button" class="btn primario" id="btn-buscar-ca" onclick="buscarDadosCaEpi(true)" style="white-space:nowrap">🔍 Puxar pelo CA</button>
           </div>
         </label>
@@ -31,18 +32,26 @@
           <input name="validade_ca" id="campo-validade-ca" type="date" value="{{ epi.validade_ca or '' }}">
         </label>
       </div>
-      <div id="aviso-caepi" class="aviso" style="margin:0;padding:.55rem .8rem;font-size:.86rem" hidden></div>
+      <div id="aviso-caepi" class="aviso" style="margin:0;padding:.5rem .75rem;font-size:.85rem" hidden></div>
     </div>
 
     <label>
       <span class="rotulo-campo">Nome do EPI / Vestimenta <span class="obrigatorio">*</span></span>
-      <input name="nome" id="campo-nome-epi" value="{{ epi.nome or '' }}" placeholder="Preenchido automaticamente pelo CA ou digite manualmente" oninput="autoDestacarSecaoTamanho()">
+      <input name="nome" id="campo-nome-epi" value="{{ epi.nome or '' }}" placeholder="Nome do equipamento ou vestimenta" oninput="autoDestacarSecaoTamanho()">
     </label>
 
     <div class="linha">
       <label style="flex:1.4">
-        <span class="rotulo-campo">Categoria</span>
-        <input name="categoria" id="campo-categoria-epi" value="{{ epi.categoria or '' }}" placeholder="Ex.: Calçados, Vestimenta, Luvas, Olhos e Face" oninput="autoDestacarSecaoTamanho()">
+        <span class="rotulo-campo">Categoria do Produto <span class="obrigatorio">*</span></span>
+        <select name="categoria" id="campo-categoria-epi" onchange="autoDestacarSecaoTamanho()" required>
+          <option value="">Selecione a categoria…</option>
+          {% for cat in categorias_disponiveis %}
+          <option value="{{ cat }}" {{ 'selected' if cat_atual.lower() == cat.lower() }}>{{ cat }}</option>
+          {% endfor %}
+          {% if cat_atual and cat_atual not in categorias_disponiveis %}
+          <option value="{{ cat_atual }}" selected>{{ cat_atual }}</option>
+          {% endif %}
+        </select>
       </label>
       {% if novo %}
       <label style="flex:1">
@@ -69,10 +78,10 @@
     </div>
 
     <!-- Bloco Dedicado de Tamanho / Numeração (Estocagem por tamanho + Cadastro em Massa) -->
-    <div class="bloco-tamanho-epi" style="padding:1rem;background:#fbfdff;border:1px solid #bfdbfe;border-left:4px solid #0284c7;border-radius:8px;display:flex;flex-direction:column;gap:.75rem">
+    <div id="bloco-tamanho-grade" class="bloco-tamanho-epi" style="padding:1rem;background:#fbfdff;border:1px solid #bfdbfe;border-left:4px solid #0284c7;border-radius:8px;display:flex;flex-direction:column;gap:.75rem">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
         <strong style="color:#0369a1;font-size:.98rem">
-         Seletor de númeração {% if novo %}{% endif %}
+          Seletor de numeração
         </strong>
       </div>
     
@@ -83,7 +92,7 @@
             <label style="flex:1">
               <span class="rotulo-campo">{{ 'Tamanho(s) / Numeração(ões) selecionados' if novo else 'Tamanho / Numeração do Produto' }}</span>
               <input name="tamanho" id="campo-tamanho-epi" value="{{ epi.tamanho or '' }}"
-                     placeholder="{{ 'Ex.: 36, 37, 42 ou M, G, GG (ou clique nos botões abaixo)' if novo else 'Ex.: 40 ou M' }}"
+                     placeholder="{{ 'Ex.: 36, 37, 42 ou M, G, GG' if novo else 'Ex.: 40 ou M' }}"
                      autocomplete="off" oninput="sincronizarPorInputTexto(this.value)">
             </label>
             <button type="button" class="btn pequeno" onclick="limparTamanhoEpi()" style="white-space:nowrap;margin-bottom:.2rem">✕ Sem tamanho / Único</button>
@@ -92,7 +101,7 @@
           <!-- Seletor Rápido: Numeração de Calçados (Bota, Botina, Sapatão) -->
           <div id="seletor-calcados-chips" style="display:flex;flex-direction:column;gap:.35rem;padding:.6rem .7rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
             <span style="font-weight:600;font-size:.85rem;color:#1e293b">
-              👞 Numeração de Calçados (Bota, Botina, Sapatão){% if novo %} — <em>múltipla escolha</em>{% endif %}:
+              Numeração de Calçados (Bota, Botina, Sapatão):
             </span>
             <div style="display:flex;flex-wrap:wrap;gap:.35rem">
               {% for n in range(33, 49) %}
@@ -106,7 +115,7 @@
           <!-- Seletor Rápido: Letras de Uniformes e Vestimentas (Camisetas, Calças, Camisas, Jaquetas) -->
           <div id="seletor-uniformes-chips" style="display:flex;flex-direction:column;gap:.35rem;padding:.6rem .7rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
             <span style="font-weight:600;font-size:.85rem;color:#1e293b">
-              👕 Letras de Vestimentas (Camisetas, Calças, Uniformes){% if novo %} — <em>múltipla escolha</em>{% endif %}:
+              Letras de Vestimentas (Camisetas, Calças, Uniformes):
             </span>
             <div style="display:flex;flex-wrap:wrap;gap:.35rem">
               {% for t in ['PP', 'P', 'M', 'G', 'GG', 'XG', 'EXG', 'G1', 'G2', 'G3', 'G4', 'G5'] %}
@@ -121,13 +130,12 @@
         {% if novo %}
         <div id="painel-distribuicao-tamanhos" style="background:#ffffff;border:1px solid #93c5fd;border-radius:8px;padding:.85rem 1rem;display:flex;flex-direction:column;gap:.65rem;box-shadow:0 2px 6px rgba(2,132,199,0.06)">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;border-bottom:1px solid #e2e8f0;padding-bottom:.45rem">
-            <strong style="color:#0f172a;font-size:.92rem">📦 Unidades por numeração / tamanho</strong>
+            <strong style="color:#0f172a;font-size:.92rem">Unidades por numeração / tamanho</strong>
             <button type="button" class="btn pequeno" id="btn-dividir-igual" onclick="dividirUnidadesIgualmente()" hidden title="Divide o total de unidades igualmente entre os tamanhos marcados">⚡ Dividir igual</button>
           </div>
 
-          <div id="estado-vazio-tamanhos" class="nota" style="margin:0;padding:.6rem 0;text-align:center;color:#64748b">
-            Nenhum tamanho/numeração selecionado.<br>
-            <small>Clique nos números (ex.: <strong>36, 37, 42</strong>) ou letras (ex.: <strong>M, G, GG</strong>) ao lado para informar quantas unidades de cada tamanho serão incluídas.</small>
+          <div id="estado-vazio-tamanhos" style="margin:0;padding:.6rem 0;text-align:center;color:#64748b;font-size:.86rem">
+            Nenhum tamanho/numeração selecionado.
           </div>
 
           <div id="lista-inputs-tamanho" style="display:flex;flex-direction:column;gap:.5rem" hidden></div>
@@ -139,25 +147,24 @@
     </div>
 
     <div class="linha">
-      <label><span class="rotulo-campo">Estoque mínimo (por tamanho/item) <span class="obrigatorio">*</span></span><input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
-      <label><span class="rotulo-campo">Prazo de reposição (dias) <span class="obrigatorio">*</span></span><input name="prazo_reposicao_dias" type="number" min="0" required value="{{ epi.prazo_reposicao_dias }}"></label>
+      <label><span class="rotulo-campo">Estoque mínimo (alerta de reposição) <span class="obrigatorio">*</span></span><input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
+      <label><span class="rotulo-campo">Prazo de reposição do fornecedor (dias) <span class="obrigatorio">*</span></span><input name="prazo_reposicao_dias" type="number" min="0" required value="{{ epi.prazo_reposicao_dias }}"></label>
     </div>
     <div class="bloco-upload-epi" style="padding:.85rem;background:var(--fundo);border:1px solid var(--borda);border-radius:8px;display:flex;flex-direction:column;gap:.55rem">
-      <strong style="font-size:.92rem">🖼️ Imagem de identificação para o Formulário (opcional)</strong>
+      <strong style="font-size:.92rem">🖼️ Imagem do produto (opcional)</strong>
       {% if epi.imagem_url %}
       <div style="display:flex;align-items:center;gap:.85rem;flex-wrap:wrap">
         <img src="{{ epi.imagem_url }}" alt="{{ epi.nome }}" class="miniatura-epi-form">
         <label class="check" style="margin:0"><input type="checkbox" name="remover_imagem" value="1"> Remover imagem atual</label>
       </div>
       {% endif %}
-      <label style="font-weight:500;font-size:.88rem">Enviar arquivo de foto (PNG, JPG, WEBP ou SVG — máx. 2 MB)
+      <label style="font-weight:500;font-size:.88rem">Enviar foto (PNG, JPG, WEBP ou SVG — máx. 2 MB)
         <input type="file" name="imagem" accept="image/*">
       </label>
       <label style="font-weight:500;font-size:.88rem">Ou informe uma URL de imagem
         <input type="text" name="imagem_url" value="{{ epi.imagem_url if epi.imagem_url and not epi.imagem_url.startswith('data:') else '' }}" placeholder="https://...">
       </label>
     </div>
-    <p class="nota">O <strong>estoque mínimo</strong> dispara o alerta de pedido. O <strong>prazo de reposição</strong> é quanto o fornecedor leva para entregar: o item também é sinalizado quando o estoque duraria menos que isso.</p>
     <label class="check"><input type="checkbox" name="exibir_no_forms" value="1" {{ 'checked' if epi.exibir_no_forms is not defined or epi.exibir_no_forms }}> Exibir este item como opção no Formulário de Solicitação (/solicitar)</label>
     {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if epi.ativo }}> EPI ativo (inativos não aparecem para movimentar)</label>{% endif %}
     <div class="acoes">
@@ -330,7 +337,7 @@ function atualizarSomaTamanhos() {
     resumo.style.background = "#f1f5f9";
     resumo.style.color = "#475569";
     resumo.style.border = "1px solid #cbd5e1";
-    resumo.innerHTML = `💡 Informe a <strong>Quantidade de unidades</strong> acima (ex.: 100) e distribua entre os ${tamanhosSelecionados.length} tamanho(s) selecionados (ou deixe em 0 para cadastrar sem saldo inicial).`;
+    resumo.innerHTML = `Informe a <strong>Quantidade de unidades</strong> acima e distribua entre os tamanhos selecionados.`;
     return;
   }
 
@@ -343,7 +350,7 @@ function atualizarSomaTamanhos() {
     resumo.style.background = "#fef3c7";
     resumo.style.color = "#92400e";
     resumo.style.border = "1px solid #fde68a";
-    resumo.innerHTML = `⚠️ Soma nos tamanhos: <strong>${soma}</strong> un. Preencha <strong>${soma}</strong> no campo “Quantidade de unidades” acima para confirmar (<a href="#" onclick="document.getElementById('campo-qtd-inicial').value='${soma}';atualizarSomaTamanhos();return false;">preencher ${soma} agora</a>).`;
+    resumo.innerHTML = `⚠️ Soma nos tamanhos: <strong>${soma}</strong> un. Preencha <strong>${soma}</strong> no campo “Quantidade de unidades” acima.`;
   } else {
     const diff = totalInformado - soma;
     resumo.style.background = "#fee2e2";
@@ -393,7 +400,10 @@ async function buscarDadosCaEpi(forcarSobrescritaNome) {
 
     const d = json.dados;
     if (inpVal && d.validade_ca) inpVal.value = d.validade_ca;
-    if (inpCat && d.categoria && (!inpCat.value.trim() || forcarSobrescritaNome)) inpCat.value = d.categoria;
+    if (inpCat && d.categoria && (!inpCat.value.trim() || forcarSobrescritaNome)) {
+      // Ajusta o dropdown para bater com a categoria vinda da base
+      selecionarCategoriaPorTexto(d.categoria);
+    }
     if (inpUn && d.unidade) inpUn.value = d.unidade;
     const nomeSug = d.nome_sugerido || d.nome_equipamento || "";
     if (inpNome && nomeSug && (!inpNome.value.trim() || forcarSobrescritaNome)) {
@@ -404,9 +414,8 @@ async function buscarDadosCaEpi(forcarSobrescritaNome) {
     if (aviso) {
       const sit = d.situacao || "VÁLIDO";
       const fab = d.fabricante ? ` · Fabricante: <strong>${d.fabricante}</strong>` : "";
-      const desc = d.descricao ? `<br><small>${d.descricao}</small>` : "";
       aviso.className = sit.includes("VENCID") || sit.includes("SUSPENS") || sit.includes("CANCEL") ? "aviso erro" : "aviso ok";
-      aviso.innerHTML = `✅ <strong>CA ${d.ca} localizado (${sit})</strong> — Validade: <strong>${d.validade_ca || '—'}</strong> · Categoria: <strong>${d.categoria || 'EPI'}</strong>${fab}${desc}`;
+      aviso.innerHTML = `✅ <strong>CA ${d.ca} localizado (${sit})</strong> — Validade: <strong>${d.validade_ca || '—'}</strong> · Categoria: <strong>${d.categoria || 'EPI'}</strong>${fab}`;
       aviso.hidden = false;
     }
   } catch (e) {
@@ -420,22 +429,62 @@ async function buscarDadosCaEpi(forcarSobrescritaNome) {
   }
 }
 
+function selecionarCategoriaPorTexto(catTexto) {
+  const sel = document.getElementById("campo-categoria-epi");
+  if (!sel || !catTexto) return;
+  const t = catTexto.trim().toLowerCase();
+  for (let i = 0; i < sel.options.length; i++) {
+    const optVal = sel.options[i].value.trim().toLowerCase();
+    if (optVal === t || (t.includes("calcado") && optVal.includes("calcado")) || (t.includes("vestimenta") && optVal.includes("vestimenta"))) {
+      sel.selectedIndex = i;
+      return;
+    }
+  }
+  // Se for uma categoria não padrão, adiciona no select
+  const novaOpt = document.createElement("option");
+  novaOpt.value = catTexto;
+  novaOpt.textContent = catTexto;
+  novaOpt.selected = true;
+  sel.appendChild(novaOpt);
+}
+
 function autoDestacarSecaoTamanho() {
   const nome = (document.getElementById("campo-nome-epi")?.value || "").toLowerCase();
   const cat = (document.getElementById("campo-categoria-epi")?.value || "").toLowerCase();
   const secCalc = document.getElementById("seletor-calcados-chips");
   const secUnif = document.getElementById("seletor-uniformes-chips");
+  const blocoGrade = document.getElementById("bloco-tamanho-grade");
 
   const ehCalcado = cat.includes("calcado") || cat.includes("calçado") || nome.includes("bota") || nome.includes("botina") || nome.includes("sapato") || nome.includes("sapatao") || nome.includes("sapatão");
-  const ehVestimenta = cat.includes("vestimenta") || nome.includes("camisa") || nome.includes("camiseta") || nome.includes("calca") || nome.includes("calça") || nome.includes("jaqueta") || nome.includes("uniforme") || nome.includes("blusao") || nome.includes("macacao") || nome.includes("macacão");
+  const ehVestimenta = cat.includes("vestimenta") || cat.includes("uniforme") || nome.includes("camisa") || nome.includes("camiseta") || nome.includes("calca") || nome.includes("calça") || nome.includes("jaqueta") || nome.includes("uniforme") || nome.includes("blusao") || nome.includes("macacao") || nome.includes("macacão");
 
+  // Regra de validação: Se for calçado mostra somente numeração; se for vestimenta mostra somente letras de uniforme
   if (secCalc) {
-    secCalc.style.borderColor = ehCalcado ? "#0284c7" : "#e2e8f0";
-    secCalc.style.background = ehCalcado ? "#eff6ff" : "#fff";
+    if (ehCalcado && !ehVestimenta) {
+      secCalc.style.display = "flex";
+      secCalc.style.borderColor = "#0284c7";
+      secCalc.style.background = "#eff6ff";
+    } else if (ehVestimenta && !ehCalcado) {
+      secCalc.style.display = "none";
+    } else {
+      secCalc.style.display = "flex";
+      secCalc.style.borderColor = "#e2e8f0";
+      secCalc.style.background = "#fff";
+    }
   }
+
   if (secUnif) {
-    secUnif.style.borderColor = ehVestimenta ? "#0284c7" : "#e2e8f0";
-    secUnif.style.background = ehVestimenta ? "#eff6ff" : "#fff";
+    if (ehVestimenta && !ehCalcado) {
+      secUnif.style.display = "flex";
+      secUnif.style.borderColor = "#0284c7";
+      secUnif.style.background = "#eff6ff";
+    } else if (ehCalcado && !ehVestimenta) {
+      secUnif.style.display = "none";
+    } else {
+      secUnif.style.display = "flex";
+      secUnif.style.borderColor = "#e2e8f0";
+      secUnif.style.background = "#fff";
+    }
   }
 }
 
