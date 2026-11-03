@@ -541,7 +541,7 @@ def _obter_campo(campos, *chaves):
     return ""
 
 
-def criar_pedido(db, dados):
+def criar_pedido(db, dados, solicitante_usuario_id=None, solicitante_email=None):
     """Cria um pedido a partir do JSON do formulário. Devolve (pedido_id, criado).
 
     Se 'id' (id da resposta do Forms) já existir, devolve o pedido existente sem duplicar.
@@ -577,16 +577,28 @@ def criar_pedido(db, dados):
                            if normalizar(r["nome"]) == normalizar(nome)]
         colaborador_id = correspondentes[0]["id"] if len(correspondentes) == 1 else None
 
+        email_form = limpar(_obter_campo(campos, "email_solicitante", "solicitante_email", "email"))
+        email_final = (solicitante_email or email_form or "").strip().lower() or None
+        uid_final = solicitante_usuario_id or dados.get("solicitante_usuario_id")
         cur = db.execute(
             """INSERT INTO pedidos (origem_id, solicitante, local_destino, motivo, observacao,
-                                    colaborador_id, dados_brutos)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                    colaborador_id, dados_brutos, solicitante_usuario_id, solicitante_email)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (origem_id, nome[:200], local, motivo, observacao,
-             colaborador_id, json.dumps(dados, ensure_ascii=False)[:20000]),
+             colaborador_id, json.dumps(dados, ensure_ascii=False)[:20000],
+             uid_final, email_final),
         )
         pedido_id = cur.lastrowid
 
-        epis = {normalizar(e["nome"]): e["id"] for e in db.execute("SELECT id, nome FROM epis WHERE ativo = 1")}
+        epis_rows = db.execute("SELECT id, nome, tamanho FROM epis WHERE ativo = 1 ORDER BY id").fetchall()
+        epis = {}
+        epis_por_nome_tam = {}
+        for e in epis_rows:
+            n_nome = normalizar(e["nome"])
+            n_tam = normalizar(e["tamanho"] or "")
+            epis_por_nome_tam[(n_nome, n_tam)] = e["id"]
+            if n_nome not in epis or not n_tam:
+                epis[n_nome] = e["id"]
 
         # Verifica se calçado, camiseta ou calça já foram marcados nas colunas de EPI / Vestimento
         itens_vest_epi = []
@@ -612,16 +624,20 @@ def criar_pedido(db, dados):
         tam_calca = _limpar_tam("calca")
 
         for chave, rotulo, qtd, texto in itens_vest_epi:
-            epi_id, ignorado = _identificar(db, epis, rotulo, texto)
             texto_exibicao = texto
             tc = tipo_calcado(texto)
             tu = tipo_uniforme(texto)
+            tam_item = None
             if tc and tams_calcado.get(tc):
-                texto_exibicao = f"{texto} (Tam. {tams_calcado[tc]})"
+                tam_item = tams_calcado[tc]
+                texto_exibicao = f"{texto} (Tam. {tam_item})"
             elif tu == "camiseta" and tam_camiseta:
-                texto_exibicao = f"{texto} (Tam. {tam_camiseta})"
+                tam_item = tam_camiseta
+                texto_exibicao = f"{texto} (Tam. {tam_item})"
             elif tu == "calca" and tam_calca:
-                texto_exibicao = f"{texto} (Tam. {tam_calca})"
+                tam_item = tam_calca
+                texto_exibicao = f"{texto} (Tam. {tam_item})"
+            epi_id, ignorado = _identificar(db, epis, rotulo, texto, tamanho=tam_item, epis_por_nome_tam=epis_por_nome_tam)
             db.execute(
                 """INSERT INTO pedido_itens (pedido_id, coluna, texto_original, quantidade, epi_id, ignorado)
                    VALUES (?, ?, ?, ?, ?, ?)""", (pedido_id, rotulo, texto_exibicao[:300], qtd, epi_id, ignorado))
@@ -632,7 +648,7 @@ def criar_pedido(db, dados):
             if not texto:
                 continue
             tam = limpar(unidade.get("tamanho"))
-            epi_id, ignorado = _identificar(db, epis, "Vestimento", texto)
+            epi_id, ignorado = _identificar(db, epis, "Vestimento", texto, tamanho=tam, epis_por_nome_tam=epis_por_nome_tam)
             texto_exibicao = f"{texto} (Tam. {tam})" if tam else texto
             db.execute(
                 """INSERT INTO pedido_itens (pedido_id, coluna, texto_original, quantidade, epi_id, ignorado)
@@ -718,11 +734,28 @@ def importar_csv_forms(db, texto_csv):
     return criados, duplicados
 
 
-def _identificar(db, epis, rotulo, texto):
-    """Devolve (epi_id | None, ignorado) para um texto do formulário."""
+def _identificar(db, epis, rotulo, texto, tamanho=None, epis_por_nome_tam=None):
+    """Devolve (epi_id | None, ignorado) para um texto do formulário, priorizando o tamanho exato quando informado."""
+    if tamanho:
+        apelido_tam = db.execute(
+            "SELECT epi_id FROM epi_apelidos WHERE chave = ?",
+            (chave_apelido(rotulo, f"{texto} (Tam. {tamanho})"),),
+        ).fetchone()
+        if apelido_tam:
+            return (apelido_tam["epi_id"], 0) if apelido_tam["epi_id"] else (None, 1)
     apelido = db.execute("SELECT epi_id FROM epi_apelidos WHERE chave = ?", (chave_apelido(rotulo, texto),)).fetchone()
     if apelido:
         return (apelido["epi_id"], 0) if apelido["epi_id"] else (None, 1)
+
+    n_tam = normalizar(tamanho or "")
+    if epis_por_nome_tam and n_tam:
+        for candidato in (texto, f"{rotulo} {texto}", f"{texto} {rotulo}"):
+            nc = normalizar(candidato)
+            if (nc, n_tam) in epis_por_nome_tam:
+                return epis_por_nome_tam[(nc, n_tam)], 0
+            if (nc, "") in epis_por_nome_tam:
+                return epis_por_nome_tam[(nc, "")], 0
+
     for candidato in (texto, f"{rotulo} {texto}", f"{texto} {rotulo}"):
         if normalizar(candidato) in epis:
             return epis[normalizar(candidato)], 0
@@ -754,19 +787,34 @@ def carregar(db, status=None, pedido_id=None, limite=None):
 
     ids = [p["id"] for p in pedidos]
     saldos = {e["id"]: e for e in estoque.epis_com_saldo(db, somente_ativos=False)}
+    variantes_por_nome = {}
+    for e in saldos.values():
+        variantes_por_nome.setdefault(normalizar(e["nome"]), []).append(e)
+
     itens = db.execute(
         f"SELECT * FROM pedido_itens WHERE pedido_id IN ({','.join('?' * len(ids))}) ORDER BY id", ids).fetchall()
 
     # Kits padrão por cargo e tamanhos registrados na ficha do colaborador para sinalizar "Analisar"
+    # Expande para incluir todas as numerações/tamanhos do mesmo EPI autorizado no cargo
     padrao_por_cargo = {}
     for r in db.execute("SELECT cargo, epi_id FROM cargo_epis_padrao"):
         ch_cargo = (r["cargo"] or "").strip().casefold()
         if ch_cargo:
-            padrao_por_cargo.setdefault(ch_cargo, set()).add(r["epi_id"])
+            conj = padrao_por_cargo.setdefault(ch_cargo, set())
+            conj.add(r["epi_id"])
+            epi_ref = saldos.get(r["epi_id"])
+            if epi_ref:
+                for var in variantes_por_nome.get(normalizar(epi_ref["nome"]), ()):
+                    conj.add(var["id"])
 
     padrao_por_colab = {}
     for r in db.execute("SELECT colaborador_id, epi_id FROM colaborador_epis_padrao"):
-        padrao_por_colab.setdefault(r["colaborador_id"], set()).add(r["epi_id"])
+        conj = padrao_por_colab.setdefault(r["colaborador_id"], set())
+        conj.add(r["epi_id"])
+        epi_ref = saldos.get(r["epi_id"])
+        if epi_ref:
+            for var in variantes_por_nome.get(normalizar(epi_ref["nome"]), ()):
+                conj.add(var["id"])
 
     tamanhos_por_colab = {}
     for r in db.execute("SELECT colaborador_id, chave, tamanho FROM colaborador_tamanhos"):
@@ -776,12 +824,59 @@ def carregar(db, status=None, pedido_id=None, limite=None):
     for it in itens:
         it = dict(it)
         epi = saldos.get(it["epi_id"])
-        it["epi_nome"] = epi["nome"] if epi else None
         m_tam = re.search(r"\(Tam\.\s*([^)]+)\)$", it["texto_original"] or "")
-        it["tamanho"] = m_tam.group(1).strip() if m_tam else None
+        tam_pedido = m_tam.group(1).strip() if m_tam else None
+
+        # Se o pedido especificou um tamanho (ex.: Tam. 42) e o epi_id aponta para outra numeração do mesmo EPI,
+        # procura a variante exata daquele tamanho (ou identifica que aquele tamanho não tem estoque cadastrado)
+        numeracao_nao_cadastrada = False
+        if epi and tam_pedido:
+            tam_epi_atual = (epi.get("tamanho") or "").strip()
+            if normalizar(tam_epi_atual) != normalizar(tam_pedido):
+                variantes = variantes_por_nome.get(normalizar(epi["nome"]), [])
+                exata = next((v for v in variantes if normalizar(v.get("tamanho") or "") == normalizar(tam_pedido)), None)
+                if exata:
+                    epi = exata
+                    it["epi_id"] = exata["id"]
+                elif tam_epi_atual:
+                    # O EPI é controlado por tamanho (ex.: 36, 37, 42), mas o tamanho solicitado no pedido não existe no estoque
+                    numeracao_nao_cadastrada = True
+
+        tam_estoque = (epi.get("tamanho") or "").strip() if epi else None
+        it["epi_nome"] = epi["nome"] if epi else None
+        it["tamanho_solicitado"] = tam_pedido
+        it["tamanho_estoque"] = tam_estoque or None
+        it["tamanho"] = tam_pedido or tam_estoque or None
         it["unidade"] = epi["unidade"] if epi else ""
-        it["saldo"] = epi["saldo"] if epi else None
+        it["saldo"] = 0 if numeracao_nao_cadastrada else (epi["saldo"] if epi else None)
         it["epi_ativo"] = bool(epi["ativo"]) if epi else None
+        it["numeracao_nao_cadastrada"] = numeracao_nao_cadastrada
+        it["zerado_por_numeracao"] = False
+        it["motivo_zerado_numeracao"] = None
+
+        if epi and (it["saldo"] is not None and it["saldo"] <= 0):
+            variantes = variantes_por_nome.get(normalizar(epi["nome"]), [])
+            com_saldo = [v for v in variantes if (v.get("saldo") or 0) > 0 and (numeracao_nao_cadastrada or v["id"] != epi["id"])]
+            resumo_outros = ", ".join(
+                f"Nº/Tam. {v.get('tamanho') or 'Único'}: {v['saldo']} {v['unidade']}" for v in com_saldo
+            )
+            if numeracao_nao_cadastrada:
+                it["zerado_por_numeracao"] = True
+                it["motivo_zerado_numeracao"] = (
+                    f"Zerado por conta da numeração: o Tam. {tam_pedido} solicitado não possui unidades cadastradas "
+                    + (f"(disponível em: {resumo_outros})" if resumo_outros else "(nenhuma numeração com saldo)")
+                )
+            elif it["tamanho"]:
+                it["zerado_por_numeracao"] = True
+                if resumo_outros:
+                    it["motivo_zerado_numeracao"] = (
+                        f"Zerado na numeração/tamanho {it['tamanho']} (há estoque em outros tamanhos: {resumo_outros})"
+                    )
+                else:
+                    it["motivo_zerado_numeracao"] = (
+                        f"Zerado na numeração/tamanho {it['tamanho']} (0 {it['unidade']} lançadas no estoque para este número)"
+                    )
+
         por_pedido[it["pedido_id"]].append(it)
 
     for p in pedidos:
@@ -840,7 +935,10 @@ def carregar(db, status=None, pedido_id=None, limite=None):
             if i["quantidade"] > 1:
                 alertas.append(f"Quantidade acima de 1 un. ({i['quantidade']}×)")
             if i["falta"]:
-                alertas.append(f"Estoque insuficiente (saldo: {i['saldo']} {i['unidade']})")
+                if i.get("motivo_zerado_numeracao"):
+                    alertas.append(i["motivo_zerado_numeracao"])
+                else:
+                    alertas.append(f"Estoque insuficiente (saldo: {i['saldo']} {i['unidade']})")
 
             i["alertas_analise"] = alertas
             i["requer_analise"] = len(alertas) > 0
@@ -1173,11 +1271,12 @@ def finalizar(db, pedido_id, usuario_id, com_ressalva=False, ressalva_obs=None, 
             return None
         cur = db.execute(
             """INSERT INTO pedidos (solicitante, local_destino, motivo, observacao, colaborador_id, status,
-                                    pedido_origem_id, dados_brutos)
-               VALUES (?, ?, ?, ?, ?, 'pendente', ?, ?)""",
+                                    pedido_origem_id, dados_brutos, solicitante_usuario_id, solicitante_email)
+               VALUES (?, ?, ?, ?, ?, 'pendente', ?, ?, ?, ?)""",
             (p["solicitante"], p["local_destino"], p["motivo"],
              f"Ressalva: {obs_ressalva}"[:1000],
-             p["colaborador_id"], pedido_id, json.dumps({"complemento_de": pedido_id})),
+             p["colaborador_id"], pedido_id, json.dumps({"complemento_de": pedido_id}),
+             p["solicitante_usuario_id"], p["solicitante_email"]),
         )
         novo_id = cur.lastrowid
         for i in faltantes:

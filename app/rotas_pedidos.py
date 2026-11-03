@@ -6,7 +6,7 @@ import io
 from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template,
                    request, url_for)
 
-from . import caepi, estoque, pedidos
+from . import caepi, email_service, estoque, pedidos
 from .auth import admin_required, escrita_required, usuario_tem_permissao
 from .cadastros import _csv_response
 from .db import get_db
@@ -40,6 +40,8 @@ def api_criar():
         pedido_id, criado = pedidos.criar_pedido(db, dados)
     except ErroValidacao as e:
         return jsonify(erro=str(e)), 400
+    if criado:
+        email_service.notificar_evento_pedido(db, pedido_id, "criado", ator_nome="Integração / Forms")
     return jsonify(id=pedido_id, criado=criado), 201 if criado else 200
 
 
@@ -64,7 +66,17 @@ def simular():
         valores = [v.strip() for v in request.form.getlist(c) if v and v.strip()]
         dados[c] = "; ".join(valores)
     try:
-        pedido_id, _ = pedidos.criar_pedido(get_db(), dados)
+        db = get_db()
+        pedido_id, criado = pedidos.criar_pedido(
+            db,
+            dados,
+            solicitante_usuario_id=g.usuario["id"] if g.get("usuario") else None,
+            solicitante_email=g.usuario["email"] if g.get("usuario") else None,
+        )
+        if criado:
+            email_service.notificar_evento_pedido(
+                db, pedido_id, "criado", ator_nome=g.usuario["nome"] if g.get("usuario") else None
+            )
         flash(f"Pedido #{pedido_id} criado e enviado para a fila de novos pedidos.", "ok")
     except ErroValidacao as e:
         flash(str(e), "erro")
@@ -97,14 +109,21 @@ def importar_csv():
 
 # ------------------------------------------------------------ formulário público (/solicitar)
 
-def _separar_epis_e_vestimentas(epis):
-    """Separa os itens ativos do estoque em (epis_protecao, vestimentas) como no formulário oficial."""
+def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False):
+    """Separa os itens ativos do estoque em (epis_protecao, vestimentas) como no formulário oficial.
+    Quando agrupar_por_nome=True, evita repetir o mesmo produto várias vezes quando cadastrado em múltiplos tamanhos.
+    """
     termos_vest = ("vestim", "uniforme", "camis", "calca", "bermud", "capa de chuva", "avental", "perneira", "jardineira", "colete")
     vestimentas = []
     epis_protecao = []
+    vistos_nome = set()
     for e in epis:
-        cat_norm = pedidos.normalizar(e["categoria"] or "")
         nome_norm = pedidos.normalizar(e["nome"] or "")
+        if agrupar_por_nome:
+            if nome_norm in vistos_nome:
+                continue
+            vistos_nome.add(nome_norm)
+        cat_norm = pedidos.normalizar(e["categoria"] or "")
         if cat_norm in ("vestimenta", "vestimento", "uniforme") or any(t in nome_norm for t in termos_vest):
             vestimentas.append(e)
         else:
@@ -113,15 +132,37 @@ def _separar_epis_e_vestimentas(epis):
 
 
 def _padrao_por_colaborador(db, colaboradores):
-    """Mapa {id do colaborador: ids dos EPIs padrão}, pelo cargo (ou pelo padrão individual se não tiver cargo)."""
+    """Mapa {id do colaborador: ids dos EPIs padrão}, pelo cargo (ou pelo padrão individual se não tiver cargo).
+    Expande automaticamente para todas as numerações/tamanhos do mesmo EPI.
+    """
+    todos_epis = db.execute("SELECT id, nome FROM epis").fetchall()
+    nome_por_id = {r["id"]: pedidos.normalizar(r["nome"]) for r in todos_epis}
+    ids_por_nome_norm = {}
+    for r in todos_epis:
+        ids_por_nome_norm.setdefault(pedidos.normalizar(r["nome"]), set()).add(r["id"])
+
+    def _expandir_tamanhos(conj_ids):
+        expandido = set(conj_ids)
+        for eid in list(conj_ids):
+            nm = nome_por_id.get(eid)
+            if nm:
+                expandido.update(ids_por_nome_norm.get(nm, ()))
+        return expandido
+
     por_cargo = {}
     for r in db.execute("SELECT cargo, epi_id FROM cargo_epis_padrao"):
         chave_cargo = (r["cargo"] or "").strip().casefold()
         if chave_cargo:
             por_cargo.setdefault(chave_cargo, set()).add(r["epi_id"])
+    for ch in list(por_cargo.keys()):
+        por_cargo[ch] = _expandir_tamanhos(por_cargo[ch])
+
     individual = {}
     for r in db.execute("SELECT colaborador_id, epi_id FROM colaborador_epis_padrao"):
         individual.setdefault(r["colaborador_id"], set()).add(r["epi_id"])
+    for cid in list(individual.keys()):
+        individual[cid] = _expandir_tamanhos(individual[cid])
+
     resultado = {}
     for c in colaboradores:
         cargo = (c["funcao"] or "").strip().casefold()
@@ -154,7 +195,7 @@ def _formulario_solicitacao(modo_gestor):
         "SELECT id, nome, categoria, imagem_url, COALESCE(exibir_no_forms, 1) AS exibir_no_forms "
         "FROM epis WHERE ativo = 1 AND COALESCE(exibir_no_forms, 1) = 1 ORDER BY id"
     ).fetchall()
-    epis_protecao, vestimentas = _separar_epis_e_vestimentas(epis_ativos)
+    epis_protecao, vestimentas = _separar_epis_e_vestimentas(epis_ativos, agrupar_por_nome=True)
     id_vest_por_nome = {}
     for v in vestimentas:
         id_vest_por_nome.setdefault(v["nome"], v["id"])
@@ -190,6 +231,7 @@ def _formulario_solicitacao(modo_gestor):
         lista_vest = [v.strip() for v in request.form.getlist("vestimento") if v and v.strip()]
         observacao = limpar(request.form.get("observacao"))
         justificativa = limpar(request.form.get("justificativa")) if modo_gestor else ""
+        email_solicitante = (limpar(request.form.get("email_solicitante")) or "").lower()
 
         todos_marcados = lista_epi + lista_vest
         calcados_sel = {pedidos.tipo_calcado(x) for x in todos_marcados if pedidos.tipo_calcado(x)}
@@ -255,6 +297,7 @@ def _formulario_solicitacao(modo_gestor):
             "vest_tam": vest_tam,
             "observacao": limpar(request.form.get("observacao")) or "",
             "justificativa": justificativa or "",
+            "email_solicitante": email_solicitante,
             "extras": respostas_extras,
         }
 
@@ -288,6 +331,8 @@ def _formulario_solicitacao(modo_gestor):
             erro = erro_vest
         elif erro_extra:
             erro = erro_extra
+        elif email_solicitante and not email_service.email_valido(email_solicitante):
+            erro = "Informe um endereço de e-mail válido para acompanhamento (ou deixe o campo em branco)." 
 
         if modo_gestor:
             # Registra no pedido quem pediu e por quê, para o almoxarifado e para a ficha do colaborador
@@ -301,18 +346,32 @@ def _formulario_solicitacao(modo_gestor):
             flash(erro, "erro")
         else:
             try:
-                pedido_id, _ = pedidos.criar_pedido(db, {
-                    "data_pedido": data_pedido,
-                    "nome": nome,
-                    "local": local,
-                    "motivo": motivo,
-                    "epi": lista_epi,
-                    "unidades_vestimenta": unidades_vest,
-                    "tam_sapatao": tam_sapatao,
-                    "tam_botina": tam_botina,
-                    "tam_bota": tam_bota,
-                    "observacao": observacao,
-                })
+                uid_logado = g.usuario["id"] if g.get("usuario") else None
+                email_notif = email_solicitante or (g.usuario["email"] if g.get("usuario") else None)
+                pedido_id, criado = pedidos.criar_pedido(
+                    db,
+                    {
+                        "data_pedido": data_pedido,
+                        "nome": nome,
+                        "local": local,
+                        "motivo": motivo,
+                        "epi": lista_epi,
+                        "unidades_vestimenta": unidades_vest,
+                        "tam_sapatao": tam_sapatao,
+                        "tam_botina": tam_botina,
+                        "tam_bota": tam_bota,
+                        "observacao": observacao,
+                    },
+                    solicitante_usuario_id=uid_logado,
+                    solicitante_email=email_notif,
+                )
+                if criado:
+                    email_service.notificar_evento_pedido(
+                        db,
+                        pedido_id,
+                        "criado",
+                        ator_nome=g.usuario["nome"] if g.get("usuario") else nome,
+                    )
                 flash(f"Solicitação enviada com sucesso! O pedido de número #{pedido_id} já foi encaminhado ao Almoxarifado.", "ok")
                 return redirect(url_for(endpoint_form, enviado=pedido_id))
             except ErroValidacao as e:
@@ -742,13 +801,23 @@ def _executar(acao, pedido_id, sucesso=None, destino=None):
 @bp.post("/pedidos/<int:pedido_id>/iniciar")
 @escrita_required
 def iniciar(pedido_id):
-    return _executar(lambda: pedidos.iniciar(get_db(), pedido_id, g.usuario["id"]), pedido_id)
+    db = get_db()
+    antes = db.execute("SELECT status FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
+    def _acao():
+        pedidos.iniciar(db, pedido_id, g.usuario["id"])
+        if not antes or antes["status"] != "em_separacao":
+            email_service.notificar_evento_pedido(db, pedido_id, "em_separacao", ator_nome=g.usuario["nome"])
+    return _executar(_acao, pedido_id)
 
 
 @bp.post("/pedidos/<int:pedido_id>/mais-tarde")
 @escrita_required
 def mais_tarde(pedido_id):
-    return _executar(lambda: pedidos.adiar(get_db(), pedido_id), pedido_id,
+    db = get_db()
+    def _acao():
+        pedidos.adiar(db, pedido_id)
+        email_service.notificar_evento_pedido(db, pedido_id, "pendente", ator_nome=g.usuario["nome"])
+    return _executar(_acao, pedido_id,
                      "Pedido guardado em Pendentes.",
                      destino=_destino_seguro(request.form.get("voltar") or url_for("pedidos.lista")))
 
@@ -805,14 +874,16 @@ def finalizar(pedido_id):
     )
     obs_ressalva = request.form.get("ressalva_observacao")
     gerar_pendencia = not com_ressalva or request.form.get("gerar_pendencia") == "1"
+    db = get_db()
     try:
         complemento = pedidos.finalizar(
-            get_db(), pedido_id, g.usuario["id"],
+            db, pedido_id, g.usuario["id"],
             com_ressalva=com_ressalva, ressalva_obs=obs_ressalva, gerar_pendencia=gerar_pendencia,
         )
     except ErroValidacao as e:
         flash(str(e), "erro")
         return redirect(url_for("pedidos.detalhe", pedido_id=pedido_id))
+    email_service.notificar_evento_pedido(db, pedido_id, "finalizado", ator_nome=g.usuario["nome"])
     if not com_ressalva:
         flash("Pedido finalizado: baixa feita no estoque e pronto para retirada.", "ok")
     elif complemento:
@@ -826,15 +897,24 @@ def finalizar(pedido_id):
 @bp.post("/pedidos/<int:pedido_id>/retirar")
 @escrita_required
 def retirar(pedido_id):
-    return _executar(lambda: pedidos.retirar(
-        get_db(), pedido_id, limpar(request.form.get("retirado_por_nome")),
-        limpar(request.form.get("retirado_descricao")), g.usuario["id"]), pedido_id,
-        "Retirada registrada.")
+    db = get_db()
+    def _acao():
+        pedidos.retirar(
+            db, pedido_id, limpar(request.form.get("retirado_por_nome")),
+            limpar(request.form.get("retirado_descricao")), g.usuario["id"],
+        )
+        email_service.notificar_evento_pedido(db, pedido_id, "retirado", ator_nome=g.usuario["nome"])
+    return _executar(_acao, pedido_id, "Retirada registrada.")
 
 
 @bp.post("/pedidos/<int:pedido_id>/cancelar")
 @escrita_required
 def cancelar(pedido_id):
-    return _executar(lambda: pedidos.cancelar(
-        get_db(), pedido_id, limpar(request.form.get("motivo")), g.usuario["id"],
-        pode_estornar=usuario_tem_permissao("cancelar_estornar")), pedido_id, "Pedido cancelado.")
+    db = get_db()
+    def _acao():
+        pedidos.cancelar(
+            db, pedido_id, limpar(request.form.get("motivo")), g.usuario["id"],
+            pode_estornar=usuario_tem_permissao("cancelar_estornar"),
+        )
+        email_service.notificar_evento_pedido(db, pedido_id, "cancelado", ator_nome=g.usuario["nome"])
+    return _executar(_acao, pedido_id, "Pedido cancelado.")

@@ -1,20 +1,27 @@
 services:
   estoque-epi:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: ruanalves07/estoque-epis:latest
     container_name: estoque_epis
+    # Reinicia automaticamente em caso de falha ou reboot do servidor, a menos que pare manualmente
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "3020:5000"
     volumes:
-      # Persiste o banco SQLite e arquivos de sessão localmente
-      - epi_dados:/app/instance
+      # Persiste o banco SQLite (epi.sqlite) e chaves de sessão no disco do host
+      - ./data:/app/instance
     environment:
       - TZ=America/Sao_Paulo
+      - EPI_PROXY=1
       # Opcional: Se for usar PostgreSQL (Supabase/Neon), descomente abaixo:
       # - DATABASE_URL=postgresql://postgres:senha@host:5432/postgres
       # - EPI_SECRET_KEY=sua_chave_secreta_aqui
+    networks:
+      - abecker-containers
 
-volumes:
-  epi_dados:
-    driver: local
+networks:
+  abecker-containers:
+    name: abecker-containers
+    external: true

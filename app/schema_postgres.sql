@@ -2,16 +2,20 @@
 -- Pode ser executado direto no SQL Editor do Supabase ou automaticamente pelo sistema via DATABASE_URL.
 
 CREATE TABLE IF NOT EXISTS usuarios (
-    id          SERIAL PRIMARY KEY,
-    nome        TEXT NOT NULL,
-    login       TEXT NOT NULL UNIQUE,
-    senha_hash  TEXT NOT NULL,
-    perfil      TEXT NOT NULL,
-    ativo       INTEGER NOT NULL DEFAULT 1,
-    criado_em   TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
+    id                    SERIAL PRIMARY KEY,
+    nome                  TEXT NOT NULL,
+    login                 TEXT NOT NULL UNIQUE,
+    email                 TEXT,
+    receber_notificacoes  INTEGER NOT NULL DEFAULT 1,
+    senha_hash            TEXT NOT NULL,
+    perfil                TEXT NOT NULL,
+    ativo                 INTEGER NOT NULL DEFAULT 1,
+    criado_em             TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
 ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS receber_notificacoes INTEGER NOT NULL DEFAULT 1;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_login_lower ON usuarios (LOWER(login));
 
@@ -81,31 +85,33 @@ CREATE TABLE IF NOT EXISTS fornecedores (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fornecedores_nome_lower ON fornecedores (LOWER(nome));
 
 CREATE TABLE IF NOT EXISTS pedidos (
-    id                  SERIAL PRIMARY KEY,
-    origem_id           TEXT UNIQUE,
-    solicitante         TEXT NOT NULL,
-    local_destino       TEXT,
-    motivo              TEXT,
-    observacao          TEXT,
-    colaborador_id      INTEGER REFERENCES colaboradores (id),
-    status              TEXT NOT NULL DEFAULT 'novo'
-                        CHECK (status IN ('novo', 'pendente', 'em_separacao', 'pronto', 'retirado', 'cancelado')),
-    dados_brutos        TEXT,
-    recebido_em         TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')),
-    iniciado_por        INTEGER REFERENCES usuarios (id),
-    iniciado_em         TEXT,
-    finalizado_por      INTEGER REFERENCES usuarios (id),
-    finalizado_em       TEXT,
-    ressalva_observacao TEXT,
-    pedido_origem_id    INTEGER REFERENCES pedidos (id),
-    grupo               TEXT,
-    retirado_por_nome   TEXT,
-    retirado_descricao  TEXT,
-    retirado_em         TEXT,
-    entregue_por        INTEGER REFERENCES usuarios (id),
-    cancelado_motivo    TEXT,
-    cancelado_por       INTEGER REFERENCES usuarios (id),
-    cancelado_em        TEXT
+    id                     SERIAL PRIMARY KEY,
+    origem_id              TEXT UNIQUE,
+    solicitante            TEXT NOT NULL,
+    local_destino          TEXT,
+    motivo                 TEXT,
+    observacao             TEXT,
+    colaborador_id         INTEGER REFERENCES colaboradores (id),
+    status                 TEXT NOT NULL DEFAULT 'novo'
+                           CHECK (status IN ('novo', 'pendente', 'em_separacao', 'pronto', 'retirado', 'cancelado')),
+    dados_brutos           TEXT,
+    recebido_em            TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')),
+    iniciado_por           INTEGER REFERENCES usuarios (id),
+    iniciado_em            TEXT,
+    finalizado_por         INTEGER REFERENCES usuarios (id),
+    finalizado_em          TEXT,
+    ressalva_observacao    TEXT,
+    pedido_origem_id       INTEGER REFERENCES pedidos (id),
+    grupo                  TEXT,
+    retirado_por_nome      TEXT,
+    retirado_descricao     TEXT,
+    retirado_em            TEXT,
+    entregue_por           INTEGER REFERENCES usuarios (id),
+    cancelado_motivo       TEXT,
+    cancelado_por          INTEGER REFERENCES usuarios (id),
+    cancelado_em           TEXT,
+    solicitante_usuario_id INTEGER REFERENCES usuarios (id),
+    solicitante_email      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS movimentacoes (
@@ -165,6 +171,8 @@ CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido ON pedido_itens (pedido_id);
 
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS ressalva_observacao TEXT;
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS pedido_origem_id INTEGER REFERENCES pedidos (id);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS solicitante_usuario_id INTEGER REFERENCES usuarios (id);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS solicitante_email TEXT;
 
 CREATE TABLE IF NOT EXISTS cargo_epis_padrao (
     cargo      TEXT NOT NULL,
@@ -229,3 +237,26 @@ CREATE TABLE IF NOT EXISTS obras (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_obras_nome_lower ON obras (LOWER(nome));
+
+CREATE TABLE IF NOT EXISTS recuperacao_senha (
+    id              SERIAL PRIMARY KEY,
+    usuario_id      INTEGER NOT NULL REFERENCES usuarios (id),
+    token_hash      TEXT NOT NULL UNIQUE,
+    codigo_hash     TEXT NOT NULL,
+    expira_em       TEXT NOT NULL,
+    usado_em        TEXT,
+    ip_solicitante  TEXT,
+    criado_em       TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rec_senha_usuario ON recuperacao_senha (usuario_id);
+
+CREATE TABLE IF NOT EXISTS emails_enviados (
+    id             SERIAL PRIMARY KEY,
+    destinatarios  TEXT NOT NULL,
+    assunto        TEXT NOT NULL,
+    tipo           TEXT NOT NULL DEFAULT 'geral',
+    status         TEXT NOT NULL DEFAULT 'enviado',
+    erro           TEXT,
+    criado_em      TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
+);

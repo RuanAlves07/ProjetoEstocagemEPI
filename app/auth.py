@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+import hashlib
 import hmac
 import re
 import secrets
@@ -10,6 +12,7 @@ from flask import (Blueprint, abort, flash, g, redirect, render_template, reques
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from . import email_service
 from .db import get_db
 from .util import limpar
 
@@ -47,15 +50,31 @@ _IMPLICITAS = {
     "registrar_movimentos": "ver_movimentos",
 }
 
-ROTAS_PUBLICAS = {"auth.login", "auth.login_gestor", "auth.setup", "static", "pedidos.api_criar", "pedidos.solicitar", "favicon"}
+ROTAS_PUBLICAS = {
+    "auth.login",
+    "auth.login_gestor",
+    "auth.esqueci_senha",
+    "auth.redefinir_senha",
+    "auth.redefinir_senha_token",
+    "auth.setup",
+    "static",
+    "pedidos.api_criar",
+    "pedidos.solicitar",
+    "favicon",
+}
 # A API usa chave própria (X-API-Key) e o formulário público pode ser enviado sem sessão prévia
 CSRF_ISENTAS = {"pedidos.api_criar", "pedidos.solicitar"}
 SENHA_MIN = 8
+EXPIRACAO_RECUPERACAO_MIN = 30
 
 # Bloqueio simples contra tentativas repetidas de senha (em memória)
 _falhas = {}
 MAX_FALHAS = 5
 BLOQUEIO_SEG = 300
+
+
+def _hash_segredo(valor):
+    return hashlib.sha256((valor or "").encode("utf-8")).hexdigest()
 
 
 def gerar_chave_perfil(nome):
@@ -297,17 +316,21 @@ def setup():
     if db.execute("SELECT 1 FROM usuarios LIMIT 1").fetchone():
         return redirect(url_for("auth.login"))
     if request.method == "POST":
-        nome, login = limpar(request.form.get("nome")), limpar(request.form.get("login"))
+        nome = limpar(request.form.get("nome"))
+        login = limpar(request.form.get("login"))
+        email = (limpar(request.form.get("email")) or "").lower() or None
         senha = request.form.get("senha", "")
         erro = _senha_valida(senha, request.form.get("confirmacao", ""))
         if not nome or not login:
             erro = "Informe nome e login."
+        elif email and not email_service.email_valido(email):
+            erro = "Informe um endereço de e-mail válido."
         if erro:
             flash(erro, "erro")
         else:
             db.execute(
-                "INSERT INTO usuarios (nome, login, senha_hash, perfil) VALUES (?, ?, ?, 'admin')",
-                (nome, login, generate_password_hash(senha)),
+                "INSERT INTO usuarios (nome, login, email, receber_notificacoes, senha_hash, perfil) VALUES (?, ?, ?, 1, ?, 'admin')",
+                (nome, login, email, generate_password_hash(senha)),
             )
             flash("Administrador criado. Entre com o login e a senha cadastrados.", "ok")
             return redirect(url_for("auth.login"))
@@ -378,6 +401,171 @@ def login_gestor():
     return render_template("login_gestor.html")
 
 
+# --------------------------------------------------------- Esqueceu a senha? / Redefinir senha
+
+@bp.route("/esqueci-senha", methods=["GET", "POST"])
+def esqueci_senha():
+    """Passo 1 da recuperação de senha: pede o login do usuário e envia o código/link para o e-mail."""
+    origem = (request.args.get("origem") or request.form.get("origem") or "").strip()
+    login_digitado = (request.args.get("login") or "").strip()
+
+    if request.method == "POST":
+        login_digitado = (limpar(request.form.get("login")) or "").strip()
+        if not login_digitado:
+            flash("Informe o seu login de usuário.", "erro")
+            return render_template("esqueci_senha.html", login=login_digitado, origem=origem)
+
+        db = get_db()
+        usuario = db.execute(
+            "SELECT * FROM usuarios WHERE login = ? COLLATE NOCASE AND ativo = 1",
+            (login_digitado,),
+        ).fetchone()
+
+        if not usuario:
+            flash("Usuário não encontrado ou inativo. Verifique o login informado.", "erro")
+            return render_template("esqueci_senha.html", login=login_digitado, origem=origem)
+
+        email_cad = (usuario["email"] or "").strip()
+        if not email_service.email_valido(email_cad):
+            flash(
+                "Este usuário ainda não possui um e-mail cadastrado. "
+                "Peça ao administrador do sistema para cadastrar seu e-mail na aba Usuários.",
+                "erro",
+            )
+            return render_template("esqueci_senha.html", login=login_digitado, origem=origem)
+
+        # Invalida códigos anteriores ainda não usados deste usuário
+        agora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        expira_str = (datetime.now() + timedelta(minutes=EXPIRACAO_RECUPERACAO_MIN)).strftime("%Y-%m-%d %H:%M:%S")
+        db.execute(
+            "UPDATE recuperacao_senha SET usado_em = ? WHERE usuario_id = ? AND usado_em IS NULL",
+            (agora_str, usuario["id"]),
+        )
+
+        token = secrets.token_urlsafe(24)
+        codigo = f"{secrets.randbelow(900000) + 100000}"
+        db.execute(
+            """INSERT INTO recuperacao_senha
+               (usuario_id, token_hash, codigo_hash, expira_em, ip_solicitante)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                usuario["id"],
+                _hash_segredo(token),
+                _hash_segredo(codigo),
+                expira_str,
+                request.remote_addr or "",
+            ),
+        )
+
+        ok, erro_envio = email_service.enviar_email_recuperacao_senha(usuario, token, codigo)
+        email_masc = email_service.mascarar_email(email_cad)
+        if ok:
+            flash(
+                f"Enviamos as instruções e o código de recuperação para o e-mail cadastrado: {email_masc}",
+                "ok",
+            )
+        else:
+            flash(
+                f"Solicitação registrada para o e-mail {email_masc}, mas houve um alerta no disparo ({erro_envio}). "
+                "Verifique com o administrador caso o e-mail não chegue em instantes.",
+                "erro",
+            )
+        return redirect(url_for("auth.redefinir_senha", login=usuario["login"], origem=origem))
+
+    return render_template("esqueci_senha.html", login=login_digitado, origem=origem)
+
+
+@bp.route("/redefinir-senha", methods=["GET", "POST"])
+@bp.route("/redefinir-senha/<token>", methods=["GET", "POST"], endpoint="redefinir_senha_token")
+def redefinir_senha(token=None):
+    """Passo 2 da recuperação de senha: exibe o e-mail mascarado (2 letras iniciais e 2 finais)
+    e permite redefinir a senha via link direto (token) ou código de 6 dígitos enviado por e-mail.
+    """
+    db = get_db()
+    origem = (request.args.get("origem") or request.form.get("origem") or "").strip()
+    token = (token or request.form.get("token") or "").strip()
+    login_param = (request.args.get("login") or request.form.get("login") or "").strip()
+
+    agora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    usuario = None
+    reg_token = None
+
+    if token:
+        reg_token = db.execute(
+            """SELECT r.*, u.login, u.nome, u.email, u.perfil
+               FROM recuperacao_senha r
+               JOIN usuarios u ON u.id = r.usuario_id
+               WHERE r.token_hash = ? AND r.usado_em IS NULL AND r.expira_em >= ? AND u.ativo = 1""",
+            (_hash_segredo(token), agora_str),
+        ).fetchone()
+        if not reg_token:
+            flash("Este link de recuperação de senha é inválido ou já expirou. Solicite um novo código.", "erro")
+            return redirect(url_for("auth.esqueci_senha", origem=origem))
+        login_param = reg_token["login"]
+        usuario = db.execute("SELECT * FROM usuarios WHERE id = ?", (reg_token["usuario_id"],)).fetchone()
+    elif login_param:
+        usuario = db.execute(
+            "SELECT * FROM usuarios WHERE login = ? COLLATE NOCASE AND ativo = 1",
+            (login_param,),
+        ).fetchone()
+
+    email_mascarado = email_service.mascarar_email(usuario["email"]) if (usuario and usuario["email"]) else ""
+
+    if request.method == "POST":
+        senha_nova = request.form.get("senha", "")
+        confirmacao = request.form.get("confirmacao", "")
+        codigo_digitado = (request.form.get("codigo") or "").strip()
+
+        erro = _senha_valida(senha_nova, confirmacao)
+        registro_valido = reg_token
+
+        if not erro and not registro_valido:
+            if not usuario:
+                erro = "Informe um login de usuário válido."
+            elif not codigo_digitado:
+                erro = "Digite o código de 6 dígitos enviado para o seu e-mail."
+            else:
+                registro_valido = db.execute(
+                    """SELECT * FROM recuperacao_senha
+                       WHERE usuario_id = ? AND codigo_hash = ?
+                         AND usado_em IS NULL AND expira_em >= ?
+                       ORDER BY id DESC LIMIT 1""",
+                    (usuario["id"], _hash_segredo(codigo_digitado), agora_str),
+                ).fetchone()
+                if not registro_valido:
+                    erro = "Código de verificação incorreto ou expirado. Verifique o e-mail ou solicite um novo código."
+
+        if erro:
+            flash(erro, "erro")
+        else:
+            uid_alvo = registro_valido["usuario_id"]
+            db.execute(
+                "UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+                (generate_password_hash(senha_nova), uid_alvo),
+            )
+            db.execute(
+                "UPDATE recuperacao_senha SET usado_em = ? WHERE usuario_id = ? AND usado_em IS NULL",
+                (agora_str, uid_alvo),
+            )
+            u_alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (uid_alvo,)).fetchone()
+            if u_alvo:
+                _falhas.pop((request.remote_addr, u_alvo["login"].lower()), None)
+            flash("Sua senha foi redefinida com sucesso! Entre com a nova senha.", "ok")
+            perms_alvo = permissoes_do_perfil(u_alvo["perfil"], db) if u_alvo else set()
+            if origem == "gestor" or _eh_so_gestor(u_alvo, perms_alvo):
+                return redirect(url_for("auth.login_gestor"))
+            return redirect(url_for("auth.login"))
+
+    return render_template(
+        "redefinir_senha.html",
+        token=token,
+        login=login_param,
+        email_mascarado=email_mascarado,
+        origem=origem,
+        SENHA_MIN=SENHA_MIN,
+    )
+
+
 @bp.post("/sair")
 def sair():
     so_gestor = _eh_so_gestor(g.get("usuario"), g.get("permissoes_usuario"))
@@ -390,22 +578,30 @@ def minha_senha():
     db = get_db()
     if request.method == "POST":
         novo_login = limpar(request.form.get("login")) or g.usuario["login"]
+        novo_email = (limpar(request.form.get("email")) or "").lower() or None
+        receber_notif = 1 if request.form.get("receber_notificacoes") else 0
         senha_nova = request.form.get("senha", "")
+
         if not check_password_hash(g.usuario["senha_hash"], request.form.get("atual", "")):
             flash("Senha atual incorreta.", "erro")
         elif not novo_login:
             flash("Informe um login válido.", "erro")
+        elif novo_email and not email_service.email_valido(novo_email):
+            flash("Informe um endereço de e-mail válido.", "erro")
         else:
             erro = _senha_valida(senha_nova, request.form.get("confirmacao", "")) if senha_nova else None
             if erro:
                 flash(erro, "erro")
             else:
                 try:
-                    db.execute("UPDATE usuarios SET login = ? WHERE id = ?", (novo_login, g.usuario["id"]))
+                    db.execute(
+                        "UPDATE usuarios SET login = ?, email = ?, receber_notificacoes = ? WHERE id = ?",
+                        (novo_login, novo_email, receber_notif, g.usuario["id"]),
+                    )
                     if senha_nova:
                         db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
                                    (generate_password_hash(senha_nova), g.usuario["id"]))
-                    flash("Dados de acesso atualizados com sucesso.", "ok")
+                    flash("Dados de acesso e preferências de e-mail atualizados com sucesso.", "ok")
                     return redirect(primeira_rota_permitida())
                 except sqlite3.IntegrityError:
                     flash("Esse login já está em uso por outro usuário.", "erro")
@@ -450,4 +646,5 @@ def contexto():
         "pode_solicitar_gestor": "solicitar_fora_funcao" in perms,
         "so_gestor": _eh_so_gestor(u, perms),
         "eh_admin": perfil == "admin",
+        "mascarar_email": email_service.mascarar_email,
     }

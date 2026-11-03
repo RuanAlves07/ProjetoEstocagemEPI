@@ -2,7 +2,8 @@
 {% from '_macros.html' import csrf with context %}
 {% block titulo %}{{ 'Novo EPI' if novo else 'Editar EPI' }}{% endblock %}
 {% block conteudo %}
-<div class="cartao estreito-card">
+{% set tams_atuais = epi.get('tamanhos_lista') if epi is mapping and epi.get('tamanhos_lista') is not none else ([epi.tamanho] if epi.tamanho else []) %}
+<div class="cartao" style="max-width:920px;margin:0 auto">
   <h1>{{ 'Novo EPI' if novo else 'Editar EPI' }}</h1>
   <form method="post" enctype="multipart/form-data" class="formulario" id="form-cadastro-epi">
     {{ csrf() }}
@@ -34,54 +35,119 @@
     </div>
 
     <label>
-      <span class="rotulo-campo">Nome do EPI / Vestimenta</span>
+      <span class="rotulo-campo">Nome do EPI / Vestimenta <span class="obrigatorio">*</span></span>
       <input name="nome" id="campo-nome-epi" value="{{ epi.nome or '' }}" placeholder="Preenchido automaticamente pelo CA ou digite manualmente" oninput="autoDestacarSecaoTamanho()">
     </label>
+
     <div class="linha">
-      <label>Categoria <input name="categoria" id="campo-categoria-epi" value="{{ epi.categoria or '' }}" placeholder="Ex.: Calçados, Vestimenta, Mãos, Olhos e Face" oninput="autoDestacarSecaoTamanho()"></label>
-      <label>Unidade <input name="unidade" id="campo-unidade-epi" value="{{ epi.unidade or 'un' }}" placeholder="un, par, cx"></label>
+      <label style="flex:1.4">
+        <span class="rotulo-campo">Categoria</span>
+        <input name="categoria" id="campo-categoria-epi" value="{{ epi.categoria or '' }}" placeholder="Ex.: Calçados, Vestimenta, Luvas, Olhos e Face" oninput="autoDestacarSecaoTamanho()">
+      </label>
+      {% if novo %}
+      <label style="flex:1">
+        <span class="rotulo-campo">Quantidade de unidades (Estoque inicial)</span>
+        <input name="quantidade_inicial" id="campo-qtd-inicial" type="number" min="0" step="1"
+               value="{{ epi.quantidade_inicial if epi.quantidade_inicial is not none and epi.quantidade_inicial != 0 else '' }}"
+               placeholder="Ex.: 100" oninput="atualizarSomaTamanhos()">
+      </label>
+      {% endif %}
+      <label style="max-width:190px">
+        <span class="rotulo-campo">Tipo de medida</span>
+        {% set un_atual = epi.unidade or 'un' %}
+        <select name="unidade" id="campo-unidade-epi">
+          <option value="un" {{ 'selected' if un_atual == 'un' }}>un (Unidade)</option>
+          <option value="par" {{ 'selected' if un_atual == 'par' }}>par (Par)</option>
+          <option value="cx" {{ 'selected' if un_atual == 'cx' }}>cx (Caixa)</option>
+          <option value="pct" {{ 'selected' if un_atual == 'pct' }}>pct (Pacote)</option>
+          <option value="kit" {{ 'selected' if un_atual == 'kit' }}>kit (Kit)</option>
+          {% if un_atual not in ('un', 'par', 'cx', 'pct', 'kit') %}
+          <option value="{{ un_atual }}" selected>{{ un_atual }}</option>
+          {% endif %}
+        </select>
+      </label>
     </div>
 
-    <!-- Bloco Dedicado de Tamanho / Numeração (Estocagem por tamanho) -->
-    <div class="bloco-tamanho-epi" style="padding:.9rem 1rem;background:#fbfdff;border:1px solid #bfdbfe;border-left:4px solid #0284c7;border-radius:8px;display:flex;flex-direction:column;gap:.65rem">
+    <!-- Bloco Dedicado de Tamanho / Numeração (Estocagem por tamanho + Cadastro em Massa) -->
+    <div class="bloco-tamanho-epi" style="padding:1rem;background:#fbfdff;border:1px solid #bfdbfe;border-left:4px solid #0284c7;border-radius:8px;display:flex;flex-direction:column;gap:.75rem">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
-        <strong style="color:#0369a1;font-size:.95rem">📏 Grade de Tamanho / Numeração (Estocagem Específica)</strong>
+        <strong style="color:#0369a1;font-size:.98rem">
+          📏 Grade de Tamanho / Numeração {% if novo %}(Seleção Múltipla — Cadastro em Massa){% endif %}
+        </strong>
         <span class="nota" style="margin:0">Botas/Botinas/Sapatões: <strong>Número</strong> · Camisetas/Calças: <strong>Letra</strong></span>
       </div>
       <p class="nota" style="margin:0">
-        Cada tamanho é um produto separado no estoque (saldo próprio). Selecione abaixo ou digite:
+        {% if novo %}
+          Você pode clicar em <strong>vários tamanhos/numerações ao mesmo tempo</strong> (ex.: <strong>36, 37 e 42</strong> ou <strong>M, G e GG</strong>). Ao lado direito do card aparecerá o campo <em>“Quantas unidades do número/tamanho XX?”</em> para cada um, e a soma deve bater com a quantidade total informada acima.
+        {% else %}
+          Cada numeração/tamanho possui saldo próprio no estoque. Selecione abaixo ou deixe sem tamanho para item de tamanho único:
+        {% endif %}
       </p>
 
-      <div class="linha" style="align-items:flex-end">
-        <label style="flex:1">
-          <span class="rotulo-campo">Tamanho / Numeração do Produto</span>
-          <input name="tamanho" id="campo-tamanho-epi" value="{{ epi.tamanho or '' }}" placeholder="Ex.: 39, 40, 41 (Calçados) ou P, M, G, GG (Camisetas e Calças)..." autocomplete="off" oninput="atualizarChipsTamanhoVisual(this.value)">
-        </label>
-        <button type="button" class="btn pequeno" onclick="limparTamanhoEpi()" style="white-space:nowrap;margin-bottom:.2rem">✕ Sem tamanho / Único</button>
-      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;align-items:start">
+        <!-- COLUNA ESQUERDA: Seleção de Tamanhos / Numerações -->
+        <div style="display:flex;flex-direction:column;gap:.65rem">
+          <div class="linha" style="align-items:flex-end">
+            <label style="flex:1">
+              <span class="rotulo-campo">{{ 'Tamanho(s) / Numeração(ões) selecionados' if novo else 'Tamanho / Numeração do Produto' }}</span>
+              <input name="tamanho" id="campo-tamanho-epi" value="{{ epi.tamanho or '' }}"
+                     placeholder="{{ 'Ex.: 36, 37, 42 ou M, G, GG (ou clique nos botões abaixo)' if novo else 'Ex.: 40 ou M' }}"
+                     autocomplete="off" oninput="sincronizarPorInputTexto(this.value)">
+            </label>
+            <button type="button" class="btn pequeno" onclick="limparTamanhoEpi()" style="white-space:nowrap;margin-bottom:.2rem">✕ Sem tamanho / Único</button>
+          </div>
 
-      <!-- Seletor Rápido: Numeração de Calçados (Bota, Botina, Sapatão) -->
-      <div id="seletor-calcados-chips" style="display:flex;flex-direction:column;gap:.3rem;padding:.5rem .6rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
-        <span style="font-weight:600;font-size:.85rem;color:#1e293b">👞 Numeração de Calçados (Bota, Botina, Sapatão):</span>
-        <div style="display:flex;flex-wrap:wrap;gap:.35rem">
-          {% for n in range(33, 49) %}
-          <button type="button" class="btn pequeno chip-tam {{ 'primario' if epi.tamanho == (n|string) else '' }}" data-tam="{{ n }}" onclick="selecionarTamanhoEpi('{{ n }}')">{{ n }}</button>
-          {% endfor %}
-        </div>
-      </div>
+          <!-- Seletor Rápido: Numeração de Calçados (Bota, Botina, Sapatão) -->
+          <div id="seletor-calcados-chips" style="display:flex;flex-direction:column;gap:.35rem;padding:.6rem .7rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
+            <span style="font-weight:600;font-size:.85rem;color:#1e293b">
+              👞 Numeração de Calçados (Bota, Botina, Sapatão){% if novo %} — <em>múltipla escolha</em>{% endif %}:
+            </span>
+            <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+              {% for n in range(33, 49) %}
+              {% set n_str = n|string %}
+              <button type="button" class="btn pequeno chip-tam {{ 'primario' if n_str in tams_atuais else '' }}"
+                      data-tam="{{ n_str }}" onclick="alternarTamanhoEpi('{{ n_str }}')">{{ n_str }}</button>
+              {% endfor %}
+            </div>
+          </div>
 
-      <!-- Seletor Rápido: Letras de Uniformes e Vestimentas (Camisetas, Calças, Camisas, Jaquetas) -->
-      <div id="seletor-uniformes-chips" style="display:flex;flex-direction:column;gap:.3rem;padding:.5rem .6rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
-        <span style="font-weight:600;font-size:.85rem;color:#1e293b">👕 Letras de Vestimentas (Camisetas e Calças):</span>
-        <div style="display:flex;flex-wrap:wrap;gap:.35rem">
-          {% for t in ['PP', 'P', 'M', 'G', 'GG', 'XG', 'EXG', 'G1', 'G2', 'G3', 'G4', 'G5'] %}
-          <button type="button" class="btn pequeno chip-tam {{ 'primario' if epi.tamanho == t else '' }}" data-tam="{{ t }}" onclick="selecionarTamanhoEpi('{{ t }}')">{{ t }}</button>
-          {% endfor %}
+          <!-- Seletor Rápido: Letras de Uniformes e Vestimentas (Camisetas, Calças, Camisas, Jaquetas) -->
+          <div id="seletor-uniformes-chips" style="display:flex;flex-direction:column;gap:.35rem;padding:.6rem .7rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px">
+            <span style="font-weight:600;font-size:.85rem;color:#1e293b">
+              👕 Letras de Vestimentas (Camisetas, Calças, Uniformes){% if novo %} — <em>múltipla escolha</em>{% endif %}:
+            </span>
+            <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+              {% for t in ['PP', 'P', 'M', 'G', 'GG', 'XG', 'EXG', 'G1', 'G2', 'G3', 'G4', 'G5'] %}
+              <button type="button" class="btn pequeno chip-tam {{ 'primario' if t in tams_atuais else '' }}"
+                      data-tam="{{ t }}" onclick="alternarTamanhoEpi('{{ t }}')">{{ t }}</button>
+              {% endfor %}
+            </div>
+          </div>
         </div>
+
+        <!-- COLUNA DIREITA: Distribuição de unidades por numeração/tamanho selecionado -->
+        {% if novo %}
+        <div id="painel-distribuicao-tamanhos" style="background:#ffffff;border:1px solid #93c5fd;border-radius:8px;padding:.85rem 1rem;display:flex;flex-direction:column;gap:.65rem;box-shadow:0 2px 6px rgba(2,132,199,0.06)">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;border-bottom:1px solid #e2e8f0;padding-bottom:.45rem">
+            <strong style="color:#0f172a;font-size:.92rem">📦 Unidades por numeração / tamanho</strong>
+            <button type="button" class="btn pequeno" id="btn-dividir-igual" onclick="dividirUnidadesIgualmente()" hidden title="Divide o total de unidades igualmente entre os tamanhos marcados">⚡ Dividir igual</button>
+          </div>
+
+          <div id="estado-vazio-tamanhos" class="nota" style="margin:0;padding:.6rem 0;text-align:center;color:#64748b">
+            Nenhum tamanho/numeração selecionado.<br>
+            <small>Clique nos números (ex.: <strong>36, 37, 42</strong>) ou letras (ex.: <strong>M, G, GG</strong>) ao lado para informar quantas unidades de cada tamanho serão incluídas.</small>
+          </div>
+
+          <div id="lista-inputs-tamanho" style="display:flex;flex-direction:column;gap:.5rem" hidden></div>
+
+          <div id="resumo-soma-tamanhos" style="padding:.6rem .75rem;border-radius:6px;font-size:.86rem;font-weight:600" hidden></div>
+        </div>
+        {% endif %}
       </div>
     </div>
+
     <div class="linha">
-      <label><span class="rotulo-campo">Estoque mínimo <span class="obrigatorio">*</span></span><input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
+      <label><span class="rotulo-campo">Estoque mínimo (por tamanho/item) <span class="obrigatorio">*</span></span><input name="estoque_minimo" type="number" min="0" required value="{{ epi.estoque_minimo }}"></label>
       <label><span class="rotulo-campo">Prazo de reposição (dias) <span class="obrigatorio">*</span></span><input name="prazo_reposicao_dias" type="number" min="0" required value="{{ epi.prazo_reposicao_dias }}"></label>
     </div>
     <div class="bloco-upload-epi" style="padding:.85rem;background:var(--fundo);border:1px solid var(--borda);border-radius:8px;display:flex;flex-direction:column;gap:.55rem">
@@ -103,13 +169,199 @@
     <label class="check"><input type="checkbox" name="exibir_no_forms" value="1" {{ 'checked' if epi.exibir_no_forms is not defined or epi.exibir_no_forms }}> Exibir este item como opção no Formulário de Solicitação (/solicitar)</label>
     {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if epi.ativo }}> EPI ativo (inativos não aparecem para movimentar)</label>{% endif %}
     <div class="acoes">
-      <button class="btn primario">Salvar</button>
+      <button class="btn primario" id="btn-salvar-epi">Salvar</button>
       <a class="btn" href="{{ url_for('cadastros.epi_detalhe', epi_id=epi_id) if not novo else url_for('cadastros.epis_lista') }}">Cancelar</a>
     </div>
   </form>
 </div>
 
 <script>
+const MODO_NOVO_EPI = {{ 'true' if novo else 'false' }};
+const QTDS_INICIAIS_SERVIDOR = {{ (qtds_por_tam or {})|tojson }};
+let tamanhosSelecionados = [];
+let mapaQuantidadesTamanho = Object.assign({}, QTDS_INICIAIS_SERVIDOR);
+
+function parseListaTamanhos(str) {
+  const vistos = new Set();
+  const res = [];
+  (str || "").split(/[,;/]+/).forEach(p => {
+    const t = p.trim().toUpperCase();
+    if (t && !vistos.has(t)) {
+      vistos.add(t);
+      res.push(t);
+    }
+  });
+  return res;
+}
+
+function alternarTamanhoEpi(tam) {
+  const t = String(tam || "").trim().toUpperCase();
+  if (!t) return;
+  if (!MODO_NOVO_EPI) {
+    tamanhosSelecionados = [t];
+  } else {
+    const idx = tamanhosSelecionados.indexOf(t);
+    if (idx >= 0) {
+      tamanhosSelecionados.splice(idx, 1);
+    } else {
+      tamanhosSelecionados.push(t);
+    }
+  }
+  const inp = document.getElementById("campo-tamanho-epi");
+  if (inp) inp.value = tamanhosSelecionados.join(", ");
+  atualizarInterfaceTamanhos();
+}
+
+function limparTamanhoEpi() {
+  tamanhosSelecionados = [];
+  const inp = document.getElementById("campo-tamanho-epi");
+  if (inp) inp.value = "";
+  atualizarInterfaceTamanhos();
+}
+
+function sincronizarPorInputTexto(valor) {
+  if (!MODO_NOVO_EPI) {
+    const v = (valor || "").trim().toUpperCase();
+    tamanhosSelecionados = v ? [v] : [];
+  } else {
+    tamanhosSelecionados = parseListaTamanhos(valor);
+  }
+  atualizarInterfaceTamanhos();
+}
+
+function atualizarInterfaceTamanhos() {
+  const conj = new Set(tamanhosSelecionados.map(x => x.toUpperCase()));
+  document.querySelectorAll(".chip-tam").forEach(b => {
+    const bt = (b.getAttribute("data-tam") || "").trim().toUpperCase();
+    b.classList.toggle("primario", conj.has(bt));
+  });
+
+  if (!MODO_NOVO_EPI) return;
+
+  const vazio = document.getElementById("estado-vazio-tamanhos");
+  const lista = document.getElementById("lista-inputs-tamanho");
+  const resumo = document.getElementById("resumo-soma-tamanhos");
+  const btnDiv = document.getElementById("btn-dividir-igual");
+  if (!lista || !vazio || !resumo) return;
+
+  // Salva valores já digitados antes de reconstruir
+  lista.querySelectorAll("input[data-tam-qtd]").forEach(el => {
+    const k = el.getAttribute("data-tam-qtd");
+    if (el.value !== "") mapaQuantidadesTamanho[k] = parseInt(el.value, 10) || 0;
+  });
+
+  if (tamanhosSelecionados.length === 0) {
+    vazio.hidden = false;
+    lista.hidden = true;
+    resumo.hidden = true;
+    if (btnDiv) btnDiv.hidden = true;
+    lista.innerHTML = "";
+    return;
+  }
+
+  vazio.hidden = true;
+  lista.hidden = false;
+  resumo.hidden = false;
+  if (btnDiv) btnDiv.hidden = tamanhosSelecionados.length < 2;
+
+  const qtdTotalInput = document.getElementById("campo-qtd-inicial");
+  const qtdTotal = qtdTotalInput ? (parseInt(qtdTotalInput.value, 10) || 0) : 0;
+
+  // Se há apenas 1 tamanho selecionado e o usuário já digitou o total, pré-preenche automaticamente
+  if (tamanhosSelecionados.length === 1 && qtdTotal > 0 && mapaQuantidadesTamanho[tamanhosSelecionados[0]] === undefined) {
+    mapaQuantidadesTamanho[tamanhosSelecionados[0]] = qtdTotal;
+  }
+
+  lista.innerHTML = "";
+  tamanhosSelecionados.forEach(t => {
+    const ehNumero = /^\d+$/.test(t);
+    const rotuloTipo = ehNumero ? `do número <strong>${t}</strong>` : `do tamanho <strong>${t}</strong>`;
+    const valAtual = mapaQuantidadesTamanho[t] !== undefined ? mapaQuantidadesTamanho[t] : "";
+    const linha = document.createElement("div");
+    linha.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.4rem .55rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px";
+    linha.innerHTML = `
+      <label for="inp-qtd-tam-${t}" style="margin:0;font-size:.88rem;color:#1e293b;flex:1;cursor:pointer">
+        Quantas unidades ${rotuloTipo}?
+      </label>
+      <input type="number" id="inp-qtd-tam-${t}" name="qtd_tam_${t}" data-tam-qtd="${t}"
+             min="0" step="1" value="${valAtual}" placeholder="0"
+             style="width:95px;text-align:right;font-weight:700"
+             oninput="aoDigitarQtdTamanho('${t}', this.value)">
+    `;
+    lista.appendChild(linha);
+  });
+
+  atualizarSomaTamanhos();
+}
+
+function aoDigitarQtdTamanho(tam, valor) {
+  if (valor === "") {
+    delete mapaQuantidadesTamanho[tam];
+  } else {
+    mapaQuantidadesTamanho[tam] = Math.max(0, parseInt(valor, 10) || 0);
+  }
+  atualizarSomaTamanhos();
+}
+
+function dividirUnidadesIgualmente() {
+  const inpTotal = document.getElementById("campo-qtd-inicial");
+  const total = inpTotal ? (parseInt(inpTotal.value, 10) || 0) : 0;
+  const n = tamanhosSelecionados.length;
+  if (n === 0 || total <= 0) return;
+  const base = Math.floor(total / n);
+  let resto = total - (base * n);
+  tamanhosSelecionados.forEach(t => {
+    const q = base + (resto > 0 ? 1 : 0);
+    if (resto > 0) resto--;
+    mapaQuantidadesTamanho[t] = q;
+    const el = document.getElementById("inp-qtd-tam-" + t);
+    if (el) el.value = q;
+  });
+  atualizarSomaTamanhos();
+}
+
+function atualizarSomaTamanhos() {
+  if (!MODO_NOVO_EPI) return;
+  const resumo = document.getElementById("resumo-soma-tamanhos");
+  const inpTotal = document.getElementById("campo-qtd-inicial");
+  if (!resumo || tamanhosSelecionados.length === 0) return;
+
+  const totalInformado = inpTotal ? (parseInt(inpTotal.value, 10) || 0) : 0;
+  let soma = 0;
+  let algumPreenchido = false;
+  document.querySelectorAll("input[data-tam-qtd]").forEach(el => {
+    if (el.value.trim() !== "") algumPreenchido = true;
+    soma += Math.max(0, parseInt(el.value, 10) || 0);
+  });
+
+  if (totalInformado === 0 && soma === 0 && !algumPreenchido) {
+    resumo.style.background = "#f1f5f9";
+    resumo.style.color = "#475569";
+    resumo.style.border = "1px solid #cbd5e1";
+    resumo.innerHTML = `💡 Informe a <strong>Quantidade de unidades</strong> acima (ex.: 100) e distribua entre os ${tamanhosSelecionados.length} tamanho(s) selecionados (ou deixe em 0 para cadastrar sem saldo inicial).`;
+    return;
+  }
+
+  if (totalInformado > 0 && soma === totalInformado) {
+    resumo.style.background = "#dcfce7";
+    resumo.style.color = "#166534";
+    resumo.style.border = "1px solid #86efac";
+    resumo.innerHTML = `✅ Total confere! Soma dos tamanhos: <strong>${soma}</strong> de <strong>${totalInformado}</strong> unidades.`;
+  } else if (totalInformado === 0 && soma > 0) {
+    resumo.style.background = "#fef3c7";
+    resumo.style.color = "#92400e";
+    resumo.style.border = "1px solid #fde68a";
+    resumo.innerHTML = `⚠️ Soma nos tamanhos: <strong>${soma}</strong> un. Preencha <strong>${soma}</strong> no campo “Quantidade de unidades” acima para confirmar (<a href="#" onclick="document.getElementById('campo-qtd-inicial').value='${soma}';atualizarSomaTamanhos();return false;">preencher ${soma} agora</a>).`;
+  } else {
+    const diff = totalInformado - soma;
+    resumo.style.background = "#fee2e2";
+    resumo.style.color = "#991b1b";
+    resumo.style.border = "1px solid #fca5a5";
+    const msgDiff = diff > 0 ? `faltam <strong>${diff}</strong> unidade(s)` : `passou <strong>${Math.abs(diff)}</strong> unidade(s)`;
+    resumo.innerHTML = `❌ A soma dos tamanhos (<strong>${soma}</strong>) precisa bater com o total informado (<strong>${totalInformado}</strong>) — ${msgDiff}.`;
+  }
+}
+
 async function buscarDadosCaEpi(forcarSobrescritaNome) {
   const inpCa = document.getElementById("campo-ca-epi");
   const inpVal = document.getElementById("campo-validade-ca");
@@ -150,7 +402,7 @@ async function buscarDadosCaEpi(forcarSobrescritaNome) {
     const d = json.dados;
     if (inpVal && d.validade_ca) inpVal.value = d.validade_ca;
     if (inpCat && d.categoria && (!inpCat.value.trim() || forcarSobrescritaNome)) inpCat.value = d.categoria;
-    if (inpUn && d.unidade && (!inpUn.value.trim() || inpUn.value.trim() === "un" || forcarSobrescritaNome)) inpUn.value = d.unidade;
+    if (inpUn && d.unidade) inpUn.value = d.unidade;
     const nomeSug = d.nome_sugerido || d.nome_equipamento || "";
     if (inpNome && nomeSug && (!inpNome.value.trim() || forcarSobrescritaNome)) {
       inpNome.value = nomeSug;
@@ -174,30 +426,6 @@ async function buscarDadosCaEpi(forcarSobrescritaNome) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
   }
-}
-
-function selecionarTamanhoEpi(tam) {
-  const inp = document.getElementById("campo-tamanho-epi");
-  if (inp) {
-    inp.value = tam;
-    atualizarChipsTamanhoVisual(tam);
-  }
-}
-
-function limparTamanhoEpi() {
-  const inp = document.getElementById("campo-tamanho-epi");
-  if (inp) {
-    inp.value = "";
-    atualizarChipsTamanhoVisual("");
-  }
-}
-
-function atualizarChipsTamanhoVisual(valor) {
-  const v = (valor || "").trim().toUpperCase();
-  document.querySelectorAll(".chip-tam").forEach(b => {
-    const bt = (b.getAttribute("data-tam") || "").trim().toUpperCase();
-    b.classList.toggle("primario", bt === v && v !== "");
-  });
 }
 
 function autoDestacarSecaoTamanho() {
@@ -229,6 +457,10 @@ function autoDestacarSecaoTamanho() {
         buscarDadosCaEpi(true);
       }
     });
+  }
+  const inpTam = document.getElementById("campo-tamanho-epi");
+  if (inpTam && inpTam.value) {
+    sincronizarPorInputTexto(inpTam.value);
   }
   autoDestacarSecaoTamanho();
 })();

@@ -11,6 +11,14 @@
       <input name="login" required autocomplete="off" value="{{ u.login or '' }}">
       {% if not novo %}<small class="suave">Você pode alterar o login deste usuário a qualquer momento.</small>{% endif %}
     </label>
+    <label>E-mail do usuário (para recuperação de senha e disparo de notificações)
+      <input name="email" type="email" autocomplete="email" value="{{ u.email or '' }}" placeholder="usuario@abecker.com.br">
+      <small class="suave">Usado quando o usuário clica em “Esqueceu a senha?” e para enviar o andamento dos pedidos.</small>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="receber_notificacoes" value="1" {{ 'checked' if u.receber_notificacoes is none or u.receber_notificacoes }}>
+      Receber notificações por e-mail sobre o processo e a fila atual dos pedidos
+    </label>
     <label>Perfil de acesso
       <select name="perfil">
         {% for k, v in PERFIS.items() %}

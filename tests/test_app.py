@@ -547,6 +547,190 @@ class TestEstoque(Base):
         self.assertIn("Botina Nobuck Marrom", html_lista)
         self.assertIn("Nº 40", html_lista)
 
+    def test_mascarar_email_duas_iniciais_e_duas_finais(self):
+        from app.email_service import mascarar_email
+        masc = mascarar_email("ruan.alves@abecker.com.br")
+        self.assertTrue(masc.startswith("ru"))
+        self.assertTrue(masc.endswith("br"))
+        self.assertIn("@", masc)
+        # Tudo entre as 2 primeiras e 2 últimas (exceto @) deve ser '*'
+        for i, ch in enumerate(masc):
+            if i < 2 or i >= len(masc) - 2 or ch == "@":
+                continue
+            self.assertEqual(ch, "*")
+
+    def test_esqueci_senha_e_redefinicao_por_codigo_e_token(self):
+        import re
+        # Cadastra usuário com e-mail na aba Usuários
+        r_novo = self.post("/usuarios/novo", {
+            "nome": "Ruan Alves",
+            "login": "ruan.alves",
+            "email": "ruan.alves@abecker.com.br",
+            "receber_notificacoes": "1",
+            "perfil": "almoxarifado",
+            "senha": "senha_antiga_123",
+            "confirmacao": "senha_antiga_123",
+        }, follow_redirects=True)
+        self.assertEqual(r_novo.status_code, 200)
+        self.assertIn("ruan.alves@abecker.com.br", r_novo.get_data(as_text=True))
+
+        # Faz logout para testar tela de login e "Esqueceu a senha?"
+        self.post("/sair")
+        html_login = self.c.get("/login").get_data(as_text=True)
+        self.assertIn("Esqueceu a senha?", html_login)
+
+        # Solicita recuperação de senha informando o login
+        self.app.config["EMAILS_ENVIADOS"] = []
+        r_esq = self.post("/esqueci-senha", {"login": "ruan.alves"}, follow_redirects=True)
+        self.assertEqual(r_esq.status_code, 200)
+        html_red = r_esq.get_data(as_text=True)
+
+        # Verifica se o e-mail mascarado (2 letras iniciais e 2 letras finais) aparece na tela
+        self.assertIn("ru********@************br", html_red)
+        self.assertEqual(len(self.app.config["EMAILS_ENVIADOS"]), 1)
+        email_rec = self.app.config["EMAILS_ENVIADOS"][0]
+        self.assertEqual(email_rec["para"], ["ruan.alves@abecker.com.br"])
+        self.assertEqual(email_rec["tipo"], "recuperacao_senha")
+
+        # Extrai o código de 6 dígitos enviado no e-mail e redefine a senha
+        m_cod = re.search(r"\b(\d{6})\b", email_rec["html"])
+        self.assertIsNotNone(m_cod)
+        codigo = m_cod.group(1)
+
+        r_reset = self.post("/redefinir-senha", {
+            "login": "ruan.alves",
+            "codigo": codigo,
+            "senha": "nova_senha_forte_99",
+            "confirmacao": "nova_senha_forte_99",
+        }, follow_redirects=True)
+        self.assertEqual(r_reset.status_code, 200)
+        self.assertIn("redefinida com sucesso", r_reset.get_data(as_text=True))
+
+        # Faz login com a nova senha
+        r_log = self.post("/login", {"login": "ruan.alves", "senha": "nova_senha_forte_99"}, follow_redirects=True)
+        self.assertEqual(r_log.status_code, 200)
+        self.assertIn("Ruan Alves", r_log.get_data(as_text=True))
+
+    def test_notificacoes_email_andamento_listas_pedidos(self):
+        # Configura e-mail no admin logado
+        self.post("/usuarios/1/editar", {
+            "nome": "Admin",
+            "login": "admin",
+            "email": "admin@abecker.com.br",
+            "receber_notificacoes": "1",
+            "perfil": "admin",
+            "ativo": "1",
+        })
+        # Cria colaborador, EPI e saldo
+        self.post("/colaboradores/novo", {"nome": "Carlos Obra", "matricula": "901", "setor": "Obras", "funcao": "Pedreiro"})
+        self.post("/epis/novo", {"nome": "Capacete Branco", "categoria": "Cabeça", "unidade": "un", "estoque_minimo": "5", "prazo_reposicao_dias": "10"})
+        with self.app.app_context():
+            from app.db import get_db
+            epi_id = get_db().execute("SELECT id FROM epis WHERE nome = 'Capacete Branco'").fetchone()["id"]
+        self.mov("entrada", epi_id, 6)
+
+        self.app.config["EMAILS_ENVIADOS"] = []
+
+        # 1. Criação do pedido -> Lista: Novos pedidos
+        r_sim = self.post("/pedidos/simular", {
+            "nome": "Carlos Obra",
+            "local": "Acordes",
+            "motivo": "Desgaste",
+            "epi": "Capacete Branco",
+        }, follow_redirects=True)
+        self.assertEqual(r_sim.status_code, 200)
+        self.assertEqual(len(self.app.config["EMAILS_ENVIADOS"]), 1)
+        self.assertIn("Novos pedidos", self.app.config["EMAILS_ENVIADOS"][-1]["assunto"])
+
+        with self.app.app_context():
+            from app.db import get_db
+            ped_id = get_db().execute("SELECT id FROM pedidos ORDER BY id DESC LIMIT 1").fetchone()["id"]
+            item_id = get_db().execute("SELECT id FROM pedido_itens WHERE pedido_id = ?", (ped_id,)).fetchone()["id"]
+
+        # 2. Deixar para mais tarde -> Lista: Pendentes (deixados para mais tarde)
+        self.post(f"/pedidos/{ped_id}/mais-tarde")
+        self.assertIn("Pendentes (deixados para mais tarde)", self.app.config["EMAILS_ENVIADOS"][-1]["assunto"])
+
+        # 3. Iniciar separação -> Lista: Em separação
+        self.post(f"/pedidos/{ped_id}/iniciar")
+        self.assertIn("Em separação", self.app.config["EMAILS_ENVIADOS"][-1]["assunto"])
+
+        # 4. Marcar item e finalizar -> Lista: Prontos para retirada + Alerta de Reposição (saldo cai de 6 para 5 <= estoque_minimo 5)
+        self.post(f"/pedidos/{ped_id}/itens/{item_id}/separar", {"separado": "1"})
+        self.post(f"/pedidos/{ped_id}/finalizar")
+        ultimo = self.app.config["EMAILS_ENVIADOS"][-1]
+        self.assertIn("Prontos para retirada", ultimo["assunto"])
+        self.assertIn("Alerta de Reposição de Estoque", ultimo["html"])
+
+        # 5. Registrar retirada -> Lista: Retirados
+        self.post(f"/pedidos/{ped_id}/retirar", {"retirado_por_nome": "Carlos Obra", "retirado_descricao": "Entregue em mãos"})
+        ultimo_ret = self.app.config["EMAILS_ENVIADOS"][-1]
+        self.assertIn("Retirados", ultimo_ret["assunto"])
+        self.assertIn("Entregue em mãos", ultimo_ret["html"])
+
+    def test_cadastro_em_massa_multiplos_tamanhos_e_aviso_zerado_numeracao(self):
+        # 1. Tenta cadastrar 100 unidades de Botina em 36, 37 e 42 mas com soma errada (30 + 30 + 20 = 80 != 100)
+        r_erro = self.post("/epis/novo", {
+            "nome": "Botina Segurança Premier",
+            "categoria": "Calçados",
+            "unidade": "par",
+            "quantidade_inicial": "100",
+            "tamanho": "36, 37, 42",
+            "qtd_tam_36": "30",
+            "qtd_tam_37": "30",
+            "qtd_tam_42": "20",
+            "estoque_minimo": "5",
+            "prazo_reposicao_dias": "15",
+        }, follow_redirects=True)
+        self.assertEqual(r_erro.status_code, 200)
+        self.assertIn("precisa bater exatamente com o total de unidades informado (100)", r_erro.get_data(as_text=True))
+
+        # 2. Cadastra batendo o total (30 + 30 + 40 = 100)
+        r_ok = self.post("/epis/novo", {
+            "nome": "Botina Segurança Premier",
+            "categoria": "Calçados",
+            "unidade": "par",
+            "quantidade_inicial": "100",
+            "tamanho": "36, 37, 42",
+            "qtd_tam_36": "30",
+            "qtd_tam_37": "30",
+            "qtd_tam_42": "40",
+            "estoque_minimo": "5",
+            "prazo_reposicao_dias": "15",
+        }, follow_redirects=True)
+        self.assertEqual(r_ok.status_code, 200)
+        html_ok = r_ok.get_data(as_text=True)
+        self.assertIn("3 numerações/tamanhos", html_ok)
+        self.assertIn("total de 100 par lançado(s) no estoque", html_ok)
+
+        # Verifica saldos criados automaticamente para 36, 37 e 42
+        with self.app.app_context():
+            from app.db import get_db
+            db = get_db()
+            rows = db.execute(
+                "SELECT id, tamanho FROM epis WHERE nome = 'Botina Segurança Premier' ORDER BY tamanho"
+            ).fetchall()
+            self.assertEqual([r["tamanho"] for r in rows], ["36", "37", "42"])
+            saldos_map = {r["tamanho"]: self.saldo(r["id"]) for r in rows}
+            self.assertEqual(saldos_map, {"36": 30, "37": 30, "42": 40})
+
+        # 3. Pedido pedindo tamanho 40 (que não tem estoque, enquanto 36, 37 e 42 têm)
+        self.post("/pedidos/simular", {
+            "nome": "João",
+            "local": "Acordes",
+            "motivo": "Desgaste",
+            "epi": "Botina Segurança Premier",
+            "sapatao": "40",
+        }, follow_redirects=True)
+        with self.app.app_context():
+            from app.db import get_db
+            ped_id = get_db().execute("SELECT id FROM pedidos ORDER BY id DESC LIMIT 1").fetchone()["id"]
+        html_ped = self.c.get(f"/pedidos/{ped_id}").get_data(as_text=True)
+        self.assertIn("Zerado por conta da numeração", html_ped)
+        self.assertIn("zerado no nº/tam. 40", html_ped)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

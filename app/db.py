@@ -14,6 +14,8 @@ _TABELAS_COM_ID = (
     "pedido_itens",
     "colaborador_epis_solicitados",
     "obras",
+    "recuperacao_senha",
+    "emails_enviados",
 )
 
 
@@ -329,6 +331,10 @@ def _migrar(conn):
         conn.execute("ALTER TABLE pedidos ADD COLUMN ressalva_observacao TEXT")
     if "pedido_origem_id" not in colunas_pedidos:
         conn.execute("ALTER TABLE pedidos ADD COLUMN pedido_origem_id INTEGER REFERENCES pedidos (id)")
+    if "solicitante_usuario_id" not in colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN solicitante_usuario_id INTEGER REFERENCES usuarios (id)")
+    if "solicitante_email" not in colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN solicitante_email TEXT")
 
     # Remove o CHECK fixo da coluna perfil em bancos SQLite antigos para permitir perfis personalizados
     info_usu = conn.execute(
@@ -338,13 +344,15 @@ def _migrar(conn):
         conn.executescript("""
             PRAGMA foreign_keys = OFF;
             CREATE TABLE usuarios_novo (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome        TEXT NOT NULL,
-                login       TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                senha_hash  TEXT NOT NULL,
-                perfil      TEXT NOT NULL,
-                ativo       INTEGER NOT NULL DEFAULT 1,
-                criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome                  TEXT NOT NULL,
+                login                 TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                email                 TEXT,
+                receber_notificacoes  INTEGER NOT NULL DEFAULT 1,
+                senha_hash            TEXT NOT NULL,
+                perfil                TEXT NOT NULL,
+                ativo                 INTEGER NOT NULL DEFAULT 1,
+                criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             );
             INSERT INTO usuarios_novo (id, nome, login, senha_hash, perfil, ativo, criado_em)
             SELECT id, nome, login, senha_hash, perfil, ativo, criado_em FROM usuarios;
@@ -352,6 +360,12 @@ def _migrar(conn):
             ALTER TABLE usuarios_novo RENAME TO usuarios;
             PRAGMA foreign_keys = ON;
         """)
+
+    colunas_usu = {r["name"] for r in conn.execute("PRAGMA table_info(usuarios)")}
+    if "email" not in colunas_usu:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN email TEXT")
+    if "receber_notificacoes" not in colunas_usu:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN receber_notificacoes INTEGER NOT NULL DEFAULT 1")
 
 
 def init_app(app):

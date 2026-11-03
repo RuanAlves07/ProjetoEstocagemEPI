@@ -105,7 +105,10 @@
         </td>
         <td class="num">
           {% if i.saldo is not none %}
-            <span class="{{ 'erro-texto' if i.falta }}">{{ i.saldo }} {{ i.unidade }}</span>{% if i.falta %}<br><small class="erro-texto">insuficiente</small>{% endif %}
+            <span class="{{ 'erro-texto' if i.falta }}">{{ i.saldo }} {{ i.unidade }}</span>
+            {% if i.falta %}
+              <br><small class="erro-texto">{{ ('⚠️ zerado no nº/tam. ' ~ i.tamanho) if i.zerado_por_numeracao and i.tamanho else 'insuficiente' }}</small>
+            {% endif %}
           {% else %}
             <span class="suave">—</span>
           {% endif %}
