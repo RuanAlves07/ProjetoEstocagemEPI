@@ -72,18 +72,10 @@
     <div class="bloco-tamanho-epi" style="padding:1rem;background:#fbfdff;border:1px solid #bfdbfe;border-left:4px solid #0284c7;border-radius:8px;display:flex;flex-direction:column;gap:.75rem">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
         <strong style="color:#0369a1;font-size:.98rem">
-          📏 Grade de Tamanho / Numeração {% if novo %}(Seleção Múltipla — Cadastro em Massa){% endif %}
+         Seletor de númeração {% if novo %}{% endif %}
         </strong>
-        <span class="nota" style="margin:0">Botas/Botinas/Sapatões: <strong>Número</strong> · Camisetas/Calças: <strong>Letra</strong></span>
       </div>
-      <p class="nota" style="margin:0">
-        {% if novo %}
-          Você pode clicar em <strong>vários tamanhos/numerações ao mesmo tempo</strong> (ex.: <strong>36, 37 e 42</strong> ou <strong>M, G e GG</strong>). Ao lado direito do card aparecerá o campo <em>“Quantas unidades do número/tamanho XX?”</em> para cada um, e a soma deve bater com a quantidade total informada acima.
-        {% else %}
-          Cada numeração/tamanho possui saldo próprio no estoque. Selecione abaixo ou deixe sem tamanho para item de tamanho único:
-        {% endif %}
-      </p>
-
+    
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;align-items:start">
         <!-- COLUNA ESQUERDA: Seleção de Tamanhos / Numerações -->
         <div style="display:flex;flex-direction:column;gap:.65rem">
