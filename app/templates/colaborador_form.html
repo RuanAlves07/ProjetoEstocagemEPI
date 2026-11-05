@@ -6,13 +6,14 @@
   <h1>{{ 'Novo colaborador' if novo else 'Editar colaborador' }}</h1>
   <form method="post" class="formulario">
     {{ csrf() }}
-    <label>Nome <input name="nome" required autofocus value="{{ colab.nome or '' }}"></label>
+    <label>Nome <input name="nome" required autofocus value="{{ colab.nome or '' }}" placeholder="Nome completo do colaborador"></label>
     <div class="linha">
-      <label>Matrícula (ID do colaborador)
-        <input name="matricula" value="{{ colab.matricula or '' }}" placeholder="Gerado automaticamente">
-        <span class="nota">Chave principal puxada automaticamente por colaborador.</span>
+      <label style="flex:1">Setor <input name="setor" list="setores" value="{{ colab.setor or '' }}" placeholder="Ex.: Oficina, Mecânica, Manutenção..."></label>
+      {% if not novo %}
+      <label style="max-width:180px">Matrícula (ID)
+        <input name="matricula" value="{{ colab.matricula or colab.id }}" readonly style="background:#f1f5f9;cursor:not-allowed">
       </label>
-      <label>Setor <input name="setor" list="setores" value="{{ colab.setor or '' }}"></label>
+      {% endif %}
     </div>
     <datalist id="setores">{% for s in setores %}<option value="{{ s }}">{% endfor %}</datalist>
     <label>Cargo / Função
