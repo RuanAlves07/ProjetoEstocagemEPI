@@ -396,8 +396,8 @@ def _migrar(conn):
 
 
 def _sincronizar_catalogo_formulario_oficial(conn):
-    """Garante a sincronização dos 22 EPIs e 3 Uniformes oficiais no formulário público (/solicitar),
-    vinculando os modelos reais do estoque ao seu nome_formulario generalizado."""
+    """Remove da tabela epis quaisquer itens genéricos que tenham sido inseridos automaticamente sem estoque,
+    e vincula automaticamente o nome_formulario nos EPIs reais já cadastrados."""
     try:
         colunas = {r["name"] for r in conn.execute("PRAGMA table_info(epis)")}
         if "categoria" not in colunas or "nome_formulario" not in colunas:
@@ -408,58 +408,64 @@ def _sincronizar_catalogo_formulario_oficial(conn):
     if tem_epis == 0:
         return
 
-    itens_form_oficial = [
-        ("ABAFADOR TIPO CONCHA 18DB", ["ABAFADOR TIPO CONCHA 18DB"], "Auditivo", "un"),
-        ("ABAFADOR TIPO CONCHA 26DB", ["ABAFADOR TIPO CONCHA 26DB"], "Auditivo", "un"),
-        ("AVENTAL DE RASPA SEM EMENDA 1X0,6", ["AVENTAL DE RASPA"], "Outros / EPI", "un"),
-        ("BONE BRIM AZUL COM PROTETOR DE NUCA", ["BONE BRIM AZUL COM PROTETOR DE NUCA"], "Cabeça", "un"),
-        ("BONE BRIM COM PROTETOR TELA", ["BONE BRIM COM PROTETOR TELA"], "Cabeça", "un"),
-        ("BOTA DE PVC CANO EXTRA LONGO", ["BOTA DE PVC PRETA CANO EXTRA LONGO", "BOTA DE PVC"], "Calçados", "par"),
-        ("CAPA DE CHUVA TREVIRA FORRADA AMARELA", ["CAPA DE CHUVA TREVIRA FORRADA AMARELA", "CAPA DE CHUVA"], "Outros / EPI", "un"),
-        ("CAPACETE DE SEGURANÇA C/ SUSPENSÃO", ["CAPACETE DE SEGURANÇA C/ SUSPENSÃO"], "Cabeça", "un"),
-        ("CARNEIRA SUSPENSÃO PLÁSTICA", ["CARNEIRA SUSPENSÃO PLÁSTICA"], "Cabeça", "un"),
-        ("LUVA DE ALGODAO MESCLA 6 FIOS", ["LUVA DE ALGODAO MESCLA 6 FIOS"], "Mãos", "par"),
-        ("LUVA MULTIUSO AMARELA DE LATEX", ["LUVA MULTIUSO AMARELA DE LATEX"], "Mãos", "par"),
-        ("LUVAS VAQUETA PETROLEIRA", ["LUVAS VAQUETA PETROLEIRA"], "Mãos", "par"),
-        ("OCULOS LEOPARDO INCOLOR", ["OCULOS LEOPARDO INCOLOR"], "Olhos e Face", "un"),
-        ("OCULOS PANDA INCOLOR", ["OCULOS PANDA INCOLOR"], "Olhos e Face", "un"),
-        ("OCULOS SUMMER CINZA", ["OCULOS SUMMER CINZA"], "Olhos e Face", "un"),
-        ("PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS", ["PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS"], "Outros / EPI", "par"),
-        ("PROTETOR AURICULAR PLUG DE SILICONE 15DB", ["PROTETOR AURICULAR PLUG DE SILICONE 15DB"], "Auditivo", "un"),
-        ("PROTETOR SOLAR FPS 30 COM REPELENTE 120ML", ["PROTETOR SOLAR FPS 30 120ML", "PROTETOR SOLAR"], "Outros / EPI", "un"),
-        ("RESPIRADOR PFF2 COM VALVULA", ["RESPIRADOR PFF2 COM VALVULA"], "Respiratório", "un"),
-        ("SAPATÃO BIDENSIDADE NOBUCK", ["SAPATÃO BIDENSIDADE NOBUCK"], "Calçados", "par"),
-        ("SAPATÃO CANO BAIXO C/ ELASTICO BICO PVC", ["SAPATÃO CANO BAIXO C/ ELASTICO BICO PVC"], "Calçados", "par"),
-        ("BOTINA CANO MÉDIO BIDENSIDADE C/ BICO PVC", ["BOTINA BIDENSIDADE C/ BICO PVC", "BOTINA CANO MÉDIO"], "Calçados", "par"),
-        ("CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA", ["CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA"], "Vestimenta", "un"),
-        ("CAMISETA MANGA CURTA", ["CAMISETA MANGA CURTA"], "Vestimenta", "un"),
-        ("CAMISETA MANGA LONGA", ["CAMISETA MANGA LONGA"], "Vestimenta", "un"),
-    ]
+    from .pedidos import TODOS_ITENS_GENERICOS_FORMULARIO, normalizar
 
-    from .pedidos import normalizar, gerar_svg_ilustrativo_epi
-    nomes_vinculados = set()
-    for nome_form, termos, cat, un in itens_form_oficial:
-        nomes_vinculados.add(nome_form.strip().upper())
-        encontrou = False
+    # 1. Remove linhas genéricas inseridas automaticamente na versão anterior (sem CA, sem tamanho, estoque_minimo=0 e sem movimentações/pedidos)
+    nomes_gen_upper = {n.strip().upper() for n in TODOS_ITENS_GENERICOS_FORMULARIO}
+    for r in conn.execute(
+        "SELECT id, nome, ca, tamanho, estoque_minimo FROM epis WHERE ca IS NULL AND tamanho IS NULL AND COALESCE(estoque_minimo, 0) = 0"
+    ).fetchall():
+        if (r["nome"] or "").strip().upper() in nomes_gen_upper:
+            eid = r["id"]
+            em_uso = (
+                conn.execute("SELECT 1 FROM movimentacoes WHERE epi_id = ? LIMIT 1", (eid,)).fetchone()
+                or conn.execute("SELECT 1 FROM pedido_itens WHERE epi_id = ? LIMIT 1", (eid,)).fetchone()
+                or conn.execute("SELECT 1 FROM cargo_epis_padrao WHERE epi_id = ? LIMIT 1", (eid,)).fetchone()
+                or conn.execute("SELECT 1 FROM colaborador_epis_padrao WHERE epi_id = ? LIMIT 1", (eid,)).fetchone()
+                or conn.execute("SELECT 1 FROM colaborador_epis_solicitados WHERE epi_id = ? LIMIT 1", (eid,)).fetchone()
+            )
+            if not em_uso:
+                conn.execute("DELETE FROM epis WHERE id = ?", (eid,))
+
+    # 2. Se houver EPIs reais cujo nome bata com um item genérico e ainda estejam sem nome_formulario, preenche o vínculo
+    mapa_termos = [
+        ("ABAFADOR TIPO CONCHA 18DB", ["ABAFADOR TIPO CONCHA 18DB"]),
+        ("ABAFADOR TIPO CONCHA 26DB", ["ABAFADOR TIPO CONCHA 26DB"]),
+        ("AVENTAL DE RASPA SEM EMENDA 1X0,6", ["AVENTAL DE RASPA"]),
+        ("BONE BRIM AZUL COM PROTETOR DE NUCA", ["BONE BRIM AZUL COM PROTETOR DE NUCA"]),
+        ("BONE BRIM COM PROTETOR TELA", ["BONE BRIM COM PROTETOR TELA"]),
+        ("BOTA DE PVC CANO EXTRA LONGO", ["BOTA DE PVC PRETA CANO EXTRA LONGO", "BOTA DE PVC"]),
+        ("CAPA DE CHUVA TREVIRA FORRADA AMARELA", ["CAPA DE CHUVA TREVIRA FORRADA AMARELA", "CAPA DE CHUVA"]),
+        ("CAPACETE DE SEGURANÇA C/ SUSPENSÃO", ["CAPACETE DE SEGURANÇA C/ SUSPENSÃO"]),
+        ("CARNEIRA SUSPENSÃO PLÁSTICA", ["CARNEIRA SUSPENSÃO PLÁSTICA"]),
+        ("LUVA DE ALGODAO MESCLA 6 FIOS", ["LUVA DE ALGODAO MESCLA 6 FIOS"]),
+        ("LUVA MULTIUSO AMARELA DE LATEX", ["LUVA MULTIUSO AMARELA DE LATEX"]),
+        ("LUVAS VAQUETA PETROLEIRA", ["LUVAS VAQUETA PETROLEIRA"]),
+        ("OCULOS LEOPARDO INCOLOR", ["OCULOS LEOPARDO INCOLOR"]),
+        ("OCULOS PANDA INCOLOR", ["OCULOS PANDA INCOLOR"]),
+        ("OCULOS SUMMER CINZA", ["OCULOS SUMMER CINZA"]),
+        ("PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS", ["PERNEIRA DE PROTECAO BIDIN/COURO COM 3 TALAS SOLDADAS"]),
+        ("PROTETOR AURICULAR PLUG DE SILICONE 15DB", ["PROTETOR AURICULAR PLUG DE SILICONE 15DB"]),
+        ("PROTETOR SOLAR FPS 30 COM REPELENTE 120ML", ["PROTETOR SOLAR FPS 30 120ML", "PROTETOR SOLAR"]),
+        ("RESPIRADOR PFF2 COM VALVULA", ["RESPIRADOR PFF2 COM VALVULA"]),
+        ("SAPATÃO BIDENSIDADE NOBUCK", ["SAPATÃO BIDENSIDADE NOBUCK"]),
+        ("SAPATÃO CANO BAIXO C/ ELASTICO BICO PVC", ["SAPATÃO CANO BAIXO C/ ELASTICO BICO PVC"]),
+        ("BOTINA CANO MÉDIO BIDENSIDADE C/ BICO PVC", ["BOTINA BIDENSIDADE C/ BICO PVC", "BOTINA CANO MÉDIO"]),
+        ("CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA", ["CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA"]),
+        ("CAMISETA MANGA CURTA", ["CAMISETA MANGA CURTA"]),
+        ("CAMISETA MANGA LONGA", ["CAMISETA MANGA LONGA"]),
+    ]
+    for nome_form, termos in mapa_termos:
         for termo in termos:
             t_norm = normalizar(termo)
-            for r in conn.execute("SELECT id, nome FROM epis").fetchall():
-                if t_norm in normalizar(r["nome"]):
-                    conn.execute("UPDATE epis SET nome_formulario = ?, exibir_no_forms = 1 WHERE id = ?", (nome_form, r["id"]))
-                    encontrou = True
-        if not encontrou:
-            img = gerar_svg_ilustrativo_epi(nome_form)
-            conn.execute(
-                """INSERT INTO epis (nome, nome_formulario, categoria, unidade, imagem_url, exibir_no_forms, estoque_minimo, prazo_reposicao_dias, ativo)
-                   VALUES (?, ?, ?, ?, ?, 1, 0, 15, 1)""",
-                (nome_form, nome_form, cat, un, img)
-            )
+            for r in conn.execute("SELECT id, nome, nome_formulario FROM epis").fetchall():
+                if not (r["nome_formulario"] or "").strip() and t_norm in normalizar(r["nome"]):
+                    conn.execute("UPDATE epis SET nome_formulario = ? WHERE id = ?", (nome_form, r["id"]))
 
-    for r in conn.execute("SELECT id, nome, nome_formulario FROM epis").fetchall():
-        nf = (r["nome_formulario"] or "").strip().upper()
-        nm = (r["nome"] or "").strip().upper()
-        if nf not in nomes_vinculados and nm not in nomes_vinculados:
-            conn.execute("UPDATE epis SET exibir_no_forms = 0 WHERE id = ?", (r["id"],))
+    # 3. Apenas EPIs vinculados a um nome_formulario ficam marcados com exibir_no_forms = 1
+    for r in conn.execute("SELECT id, nome_formulario FROM epis").fetchall():
+        nf = (r["nome_formulario"] or "").strip()
+        conn.execute("UPDATE epis SET exibir_no_forms = ? WHERE id = ?", (1 if nf else 0, r["id"]))
 
 
 def init_app(app):

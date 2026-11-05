@@ -131,15 +131,19 @@ def _validar_duplicidade_epi(db, nome, tamanho, ca=None, epi_id=None):
 
 
 def _nomes_formulario_existentes(db=None):
-    """Lista de nomes genéricos do formulário (nome_formulario) já cadastrados para sugestão."""
+    """Lista de nomes genéricos do formulário (nome_formulario) disponíveis para vínculo."""
     db = db or get_db()
+    oficiais = list(pedidos.TODOS_ITENS_GENERICOS_FORMULARIO)
+    vistos = {x.casefold() for x in oficiais}
     linhas = db.execute(
         """SELECT DISTINCT trim(nome_formulario) AS nf FROM epis WHERE nome_formulario IS NOT NULL AND trim(nome_formulario) != ''
-           UNION
-           SELECT DISTINCT trim(nome) AS nf FROM epis WHERE nome IS NOT NULL AND trim(nome) != ''
            ORDER BY 1 COLLATE NOCASE"""
     ).fetchall()
-    return [r[0] for r in linhas if r[0]]
+    for r in linhas:
+        if r[0] and r[0].casefold() not in vistos:
+            vistos.add(r[0].casefold())
+            oficiais.append(r[0])
+    return oficiais
 
 
 CATEGORIAS_PADRAO = (
@@ -222,7 +226,10 @@ def _ler_epi(form, files=None, imagem_atual=None):
         "unidade": unidade_form or "un",
         "estoque_minimo": to_int(form.get("estoque_minimo"), 0),
         "prazo_reposicao_dias": to_int(form.get("prazo_reposicao_dias"), 15),
-        "exibir_no_forms": 0 if form.get("exibir_no_forms") == "0" else (1 if form.get("exibir_no_forms") or "presenca_forms" not in form else 0),
+        "exibir_no_forms": (
+            0 if form.get("exibir_no_forms") == "0"
+            else (1 if (nome_formulario or form.get("exibir_no_forms") == "1" or "presenca_forms" not in form) else 0)
+        ),
     }
     if validade_form and not parse_data(validade_form):
         erros.append("Validade do CA inválida.")
@@ -378,7 +385,9 @@ def epi_novo():
         for e in erros:
             flash(e, "erro")
     return render_template("epi_form.html", epi=dados, novo=True, qtds_por_tam=qtds_por_tam,
-                           categorias_padrao=CATEGORIAS_PADRAO, nomes_forms=_nomes_formulario_existentes(db))
+                           categorias_padrao=CATEGORIAS_PADRAO, nomes_forms=_nomes_formulario_existentes(db),
+                           itens_form_epi=pedidos.ITENS_GENERICOS_EPI_FORMULARIO,
+                           itens_form_uniforme=pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO)
 
 
 @bp.route("/epis/<int:epi_id>/editar", methods=["GET", "POST"])
@@ -413,7 +422,9 @@ def epi_editar(epi_id):
             flash(e, "erro")
         epi = dados
     return render_template("epi_form.html", epi=epi, novo=False, epi_id=epi_id,
-                           categorias_padrao=CATEGORIAS_PADRAO, nomes_forms=_nomes_formulario_existentes(db))
+                           categorias_padrao=CATEGORIAS_PADRAO, nomes_forms=_nomes_formulario_existentes(db),
+                           itens_form_epi=pedidos.ITENS_GENERICOS_EPI_FORMULARIO,
+                           itens_form_uniforme=pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO)
 
 
 @bp.get("/epis/<int:epi_id>")

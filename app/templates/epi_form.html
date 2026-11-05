@@ -42,10 +42,29 @@
       </label>
       <label style="flex:1">
         <span class="rotulo-campo">Nome genérico no Formulário (Vínculo de demanda)</span>
-        <input name="nome_formulario" id="campo-nome-form-epi" list="lista-nomes-forms" value="{{ epi.nome_formulario or '' }}" placeholder="Ex.: Botina (mecânica) ou Sapatão (mecânica)">
-        <datalist id="lista-nomes-forms">
-          {% for nf in (nomes_forms or []) %}<option value="{{ nf }}">{% endfor %}
-        </datalist>
+        {% set nf_atual = (epi.nome_formulario or '')|trim %}
+        {% set lista_epis_gen = itens_form_epi or [] %}
+        {% set lista_unif_gen = itens_form_uniforme or [] %}
+        <select name="nome_formulario" id="campo-nome-form-epi">
+          <option value="">— Selecione o item genérico do formulário —</option>
+          {% if lista_epis_gen %}
+          <optgroup label="EPIs (Formulário)">
+            {% for nf in lista_epis_gen %}
+            <option value="{{ nf }}" {{ 'selected' if nf_atual.lower() == nf.lower() }}>{{ nf }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if lista_unif_gen %}
+          <optgroup label="Uniformes (Formulário)">
+            {% for nf in lista_unif_gen %}
+            <option value="{{ nf }}" {{ 'selected' if nf_atual.lower() == nf.lower() }}>{{ nf }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if nf_atual and nf_atual.upper() not in (lista_epis_gen + lista_unif_gen) %}
+          <option value="{{ nf_atual }}" selected>{{ nf_atual }}</option>
+          {% endif %}
+        </select>
       </label>
     </div>
 
@@ -174,7 +193,6 @@
         <input type="text" name="imagem_url" value="{{ epi.imagem_url if epi.imagem_url and not epi.imagem_url.startswith('data:') else '' }}" placeholder="https://...">
       </label>
     </div>
-    <label class="check"><input type="checkbox" name="exibir_no_forms" value="1" {{ 'checked' if epi.exibir_no_forms is not defined or epi.exibir_no_forms }}> Exibir este item como opção no Formulário de Solicitação (/solicitar)</label>
     {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if epi.ativo }}> EPI ativo (inativos não aparecem para movimentar)</label>{% endif %}
     <div class="acoes">
       <button class="btn primario" id="btn-salvar-epi">Salvar</button>

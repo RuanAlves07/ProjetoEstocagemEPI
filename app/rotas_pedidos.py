@@ -109,10 +109,12 @@ def importar_csv():
 
 # ------------------------------------------------------------ formulário público (/solicitar)
 
-def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False):
+def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_oficiais=False):
     """Separa os itens ativos do estoque em (epis_protecao, vestimentas) como no formulário oficial.
     Quando agrupar_por_nome=True, usa o nome generalizado do formulário (nome_formulario se preenchido)
     e evita repetir o mesmo produto várias vezes quando cadastrado em múltiplos tamanhos/modelos/CAs.
+    Quando incluir_genericos_oficiais=True, garante que os 22 EPIs e 3 Uniformes genéricos oficiais
+    estejam presentes no formulário mesmo sem precisarem existir como linhas avulsas na aba EPIs.
     """
     termos_epi_protecao = ("capa de chuva", "avental", "perneira", "jardineira", "colete")
     termos_vest = ("camis", "calca", "bermud")
@@ -135,6 +137,33 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False):
             vestimentas.append(e)
         else:
             epis_protecao.append(e)
+
+    if incluir_genericos_oficiais:
+        for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_EPI_FORMULARIO):
+            nome_norm = pedidos.normalizar(nome_gen)
+            if nome_norm not in vistos_nome:
+                vistos_nome.add(nome_norm)
+                epis_protecao.append({
+                    "id": 90000 + idx,
+                    "nome": nome_gen,
+                    "nome_formulario": nome_gen,
+                    "categoria": "EPI",
+                    "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
+                    "exibir_no_forms": 1,
+                })
+        for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
+            nome_norm = pedidos.normalizar(nome_gen)
+            if nome_norm not in vistos_nome:
+                vistos_nome.add(nome_norm)
+                vestimentas.append({
+                    "id": 91000 + idx,
+                    "nome": nome_gen,
+                    "nome_formulario": nome_gen,
+                    "categoria": "Vestimenta",
+                    "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
+                    "exibir_no_forms": 1,
+                })
+
     return epis_protecao, vestimentas
 
 
@@ -154,6 +183,10 @@ def _padrao_por_colaborador(db, colaboradores):
         for ch in chaves:
             if ch:
                 ids_por_chave.setdefault(ch, set()).add(r["id"])
+    for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_EPI_FORMULARIO):
+        ids_por_chave.setdefault(pedidos.normalizar(nome_gen), set()).add(90000 + idx)
+    for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
+        ids_por_chave.setdefault(pedidos.normalizar(nome_gen), set()).add(91000 + idx)
 
     def _expandir_tamanhos(conj_ids):
         expandido = set(conj_ids)
@@ -208,7 +241,9 @@ def _formulario_solicitacao(modo_gestor):
         "SELECT id, nome, nome_formulario, categoria, imagem_url, COALESCE(exibir_no_forms, 1) AS exibir_no_forms "
         "FROM epis WHERE ativo = 1 AND COALESCE(exibir_no_forms, 1) = 1 ORDER BY id"
     ).fetchall()
-    epis_protecao, vestimentas = _separar_epis_e_vestimentas(epis_ativos, agrupar_por_nome=True)
+    epis_protecao, vestimentas = _separar_epis_e_vestimentas(
+        epis_ativos, agrupar_por_nome=True, incluir_genericos_oficiais=True
+    )
     id_vest_por_nome = {}
     for v in vestimentas:
         id_vest_por_nome.setdefault(v["nome"], v["id"])
@@ -220,6 +255,8 @@ def _formulario_solicitacao(modo_gestor):
         nome_exib = pedidos.nome_exibicao_forms(e)
         if nome_exib:
             ids_por_nome.setdefault(nome_exib, set()).add(e["id"])
+    for item_op in epis_protecao + vestimentas:
+        ids_por_nome.setdefault(item_op["nome"], set()).add(item_op["id"])
 
     padrao_colab = _padrao_por_colaborador(db, colaboradores)
 
