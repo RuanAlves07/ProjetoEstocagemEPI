@@ -18,11 +18,9 @@
     <datalist id="setores">{% for s in setores %}<option value="{{ s }}">{% endfor %}</datalist>
     <label>Cargo / Função
       <input name="funcao" list="lista-cargos" value="{{ colab.funcao or '' }}" placeholder="Selecione ou digite o cargo (ex.: Pedreiro, Motorista…)">
-      <span class="nota">Ao alocar o cargo, o perfil do colaborador já puxa automaticamente os equipamentos utilizados por padrão naquele cargo.</span>
     </label>
     <datalist id="lista-cargos">{% for cg in cargos %}<option value="{{ cg }}">{% endfor %}</datalist>
-    {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if colab.ativo }}> Colaborador ativo</label>
-    <p class="nota">Se o setor mudar, entregas antigas continuam registradas no setor da época.</p>{% endif %}
+    {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if colab.ativo }}> Colaborador ativo</label>{% endif %}
     <div class="acoes">
       <button class="btn primario">Salvar</button>
       <a class="btn" href="{{ url_for('cadastros.colaborador_ficha', colab_id=colab_id) if not novo else url_for('cadastros.colaboradores_lista') }}">Cancelar</a>

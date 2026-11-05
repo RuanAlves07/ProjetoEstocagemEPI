@@ -32,7 +32,6 @@
   {% endif %}
 
   <div class="cartao">
-    <p class="nota" style="margin-top:0">Clique em cima do nome do cargo abaixo para abrir e editar a lista dos equipamentos definidos por padrão para aquela função.</p>
     <div class="tabela-rolavel">
       <table>
         <thead>
@@ -92,14 +91,11 @@
       <li><strong>{{ e.nome }}</strong> {% if e.categoria %}<span class="suave">({{ e.categoria }})</span>{% endif %}</li>
       {% endfor %}
     </ul>
-    {% else %}
-    <p class="nota" style="margin:.6rem 0 0">Ainda não há equipamentos marcados como padrão para este cargo. Marque os itens na lista do inventário abaixo.</p>
     {% endif %}
   </section>
 
   <section class="cartao">
     <h2>Selecionar / alterar equipamentos padrão no inventário</h2>
-    <p class="nota">Marque ou desmarque abaixo os equipamentos que todo colaborador do cargo <strong>{{ cargo_atual }}</strong> utiliza por padrão. Qualquer item solicitado fora desta seleção aparecerá automaticamente na aba <strong>Equipamentos solicitados</strong> do colaborador.</p>
 
     <form method="post" action="{{ url_for('cadastros.cargos_padrao', cargo=cargo_atual) }}" id="form-padrao-colab"
           data-ajax-url="{{ url_for('cadastros.cargos_padrao', cargo=cargo_atual) }}">

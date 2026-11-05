@@ -81,13 +81,6 @@
     <h2>Itens {% if em_aberto %}<small class="suave" id="progresso">{{ p.separados }}/{{ p.total_itens }} separados</small>{% endif %}</h2>
   </div>
 
-  {% if em_aberto and p.total_analise > 0 %}
-  <div class="aviso alerta-analise" style="margin-bottom:.85rem">
-    <strong>🔎 Atenção na separação ({{ p.total_analise }} {{ 'item requer' if p.total_analise == 1 else 'itens requerem' }} análise):</strong>
-    Confira os itens destacados com a etiqueta <strong>🔍 Analisar</strong> abaixo (item fora do kit padrão do cargo do colaborador, divergência de tamanho com a ficha ou falta de saldo). Se algum item não puder ser entregue, deixe-o desmarcado e utilize o botão <strong>⚠️ Finalizar com ressalva</strong>.
-  </div>
-  {% endif %}
-
   <div class="tabela-rolavel"><table class="checklist">
     <thead><tr><th></th><th>Item solicitado</th><th class="num">Saldo em estoque</th></tr></thead>
     <tbody>
@@ -232,11 +225,6 @@
             onclick="const p=document.getElementById('painel-ressalva');p.hidden=!p.hidden;if(!p.hidden){document.getElementById('campo-ressalva-obs').focus();}">
       ⚠️ Finalizar com ressalva
     </button>
-
-    <span class="nota" id="dica-finalizar">
-      Para finalizar normalmente, marque todos os itens como separados{% if not p.colaborador_id %} e vincule o colaborador{% endif %}.
-      Se algum item não puder ser entregue (sem estoque, fora do cargo etc.), deixe-o desmarcado e clique em <strong>Finalizar com ressalva</strong>.
-    </span>
   </div>
 
   <div id="painel-ressalva" class="painel-ressalva" hidden>
@@ -247,9 +235,6 @@
         <strong style="color:#9a3412;font-size:1rem">⚠️ Finalizar separação com ressalva</strong>
         <span class="badge amarelo" id="resumo-ressalva">{{ p.separados }} separado(s) · {{ p.nao_separados }} não atendido(s)</span>
       </div>
-      <p class="nota" style="margin:0">
-        Apenas os itens marcados com check (✓) terão baixa no estoque. Os itens desmarcados ficarão registrados como não atendidos.
-      </p>
       <label class="check">
         <input type="checkbox" name="gerar_pendencia" value="1" checked>
         Criar pendência com os itens que faltaram (fica em <strong>Pedidos → Aguardando estoque</strong> até chegar estoque)

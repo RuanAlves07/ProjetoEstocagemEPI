@@ -119,9 +119,6 @@
   {% if chave != 'aguardando' or lista %}
   <section class="grupo-pedidos">
     <h2>{{ rotulo }} <span class="contador {{ 'alerta' if chave == 'novo' and lista }}">{{ lista|length }}</span></h2>
-    {% if chave == 'aguardando' %}
-    <p class="nota" style="margin-top:-.4rem">Itens que não puderam ser entregues num “Finalizar com ressalva”. Quando chegar estoque, o card fica verde (“✅ Estoque disponível”) — é só iniciar a separação. O SLA fica pausado até lá.</p>
-    {% endif %}
     {% if lista %}
       <div class="grade-cards">{% for p in lista %}{% include '_pedido_card.html' %}{% endfor %}</div>
     {% else %}<p class="vazio">Nenhum pedido aqui.</p>{% endif %}

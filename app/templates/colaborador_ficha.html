@@ -76,11 +76,6 @@
       {% endif %}
     </div>
   </div>
-  {% if colab.funcao %}
-  <p class="nota">Abaixo estão listados <strong>somente os equipamentos utilizados por padrão</strong> no cargo <strong>{{ colab.funcao }}</strong> (a inclusão ou remoção de produtos é feita exclusivamente na aba de <a href="{{ url_for('cadastros.cargos_padrao', cargo=colab.funcao) }}">Padrão de EPIs por Cargo</a>). Nesta tela você define o <strong>Tamanho / Numeração</strong> individual deste colaborador para calçados e uniformes.</p>
-  {% else %}
-  <p class="nota">Aloque um <strong>Cargo / Função</strong> acima para visualizar automaticamente os equipamentos utilizados por padrão na função deste colaborador.</p>
-  {% endif %}
 
   {% if epis_padrao %}
   <form method="post" action="{{ url_for('cadastros.colaborador_tamanhos', colab_id=colab.id) }}" id="form-tamanhos-colab"
@@ -138,7 +133,6 @@
     {% if pode_editar %}
     <div class="acoes" style="margin-top:1rem">
       <button class="btn primario">Salvar tamanhos do colaborador</button>
-      <span class="nota" id="status-tamanhos-colab">Ao selecionar o número do calçado ou o tamanho do uniforme, a alteração também é salva automaticamente.</span>
     </div>
     {% endif %}
   </form>
@@ -157,7 +151,6 @@
 {% elif aba == 'solicitados' %}
 <section class="cartao">
   <h2>Equipamentos solicitados (fora do padrão do cargo)</h2>
-  <p class="nota">Aqui ficam os equipamentos que <strong>{{ colab.nome }}</strong> já pediu ou recebeu mas que <strong>não fazem parte do padrão do cargo ({{ colab.funcao or 'atual' }})</strong> (por exemplo: teste em outro cargo para possível promoção ou necessidade específica de alguma atividade), junto com a <strong>observação</strong> explicando o motivo.</p>
 
   {% if pode_editar %}
   <details class="editar-item" style="margin-bottom:1rem">
