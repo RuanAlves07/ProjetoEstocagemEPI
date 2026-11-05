@@ -118,6 +118,9 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
     """
     termos_epi_protecao = ("capa de chuva", "avental", "perneira", "jardineira", "colete")
     termos_vest = ("camis", "calca", "bermud")
+    nomes_genericos_norm = {
+        pedidos.normalizar(n) for n in pedidos.TODOS_ITENS_GENERICOS_FORMULARIO
+    }
     vestimentas = []
     epis_protecao = []
     vistos_nome = set()
@@ -126,6 +129,7 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
         if agrupar_por_nome:
             e["nome"] = pedidos.nome_exibicao_forms(orig)
         nome_norm = pedidos.normalizar(e["nome"] or "")
+        e["eh_generico_oficial"] = 1 if nome_norm in nomes_genericos_norm else 0
         if agrupar_por_nome:
             if nome_norm in vistos_nome:
                 continue
@@ -150,6 +154,7 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
                     "categoria": "EPI",
                     "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
                     "exibir_no_forms": 1,
+                    "eh_generico_oficial": 1,
                 })
         for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
             nome_norm = pedidos.normalizar(nome_gen)
@@ -162,6 +167,7 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
                     "categoria": "Vestimenta",
                     "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
                     "exibir_no_forms": 1,
+                    "eh_generico_oficial": 1,
                 })
 
     return epis_protecao, vestimentas
@@ -312,8 +318,16 @@ def _formulario_solicitacao(modo_gestor):
                 unidades_vest.append({"nome": nome_v, "tamanho": tam})
 
         permitidos = padrao_colab.get(colab["id"], set()) if colab else set()
+        nomes_genericos_norm = {
+            pedidos.normalizar(n) for n in pedidos.TODOS_ITENS_GENERICOS_FORMULARIO
+        }
         nao_disponiveis = [x for x in todos_marcados if x not in ids_por_nome]
-        fora_funcao = [x for x in todos_marcados if x in ids_por_nome and not (ids_por_nome[x] & permitidos)]
+        fora_funcao = [
+            x for x in todos_marcados
+            if x in ids_por_nome
+            and not (ids_por_nome[x] & permitidos)
+            and pedidos.normalizar(x) not in nomes_genericos_norm
+        ]
 
         # Só considera tamanhos dos produtos efetivamente selecionados
         tam_sapatao = (limpar(request.form.get("tam_sapatao")) or limpar(request.form.get("sapatao")) or "") if "sapatao" in calcados_sel else ""
@@ -573,10 +587,12 @@ def personalizar_formulario():
 
     cfg_form = pedidos.obter_config_formulario(db)
     todos_epis = db.execute(
-        "SELECT id, nome, categoria, ca, unidade, imagem_url, COALESCE(exibir_no_forms, 1) AS exibir_no_forms "
+        "SELECT id, nome, nome_formulario, categoria, ca, unidade, imagem_url, COALESCE(exibir_no_forms, 1) AS exibir_no_forms "
         "FROM epis WHERE ativo = 1 ORDER BY id"
     ).fetchall()
-    epis_protecao, vestimentas = _separar_epis_e_vestimentas(todos_epis)
+    epis_protecao, vestimentas = _separar_epis_e_vestimentas(
+        todos_epis, agrupar_por_nome=True, incluir_genericos_oficiais=True
+    )
     return render_template(
         "solicitar_personalizar.html",
         cfg_form=cfg_form,
