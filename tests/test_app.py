@@ -396,7 +396,7 @@ class TestEstoque(Base):
         j_33135 = r_33135.get_json()
         self.assertTrue(j_33135["ok"])
         self.assertEqual(j_33135["dados"]["ca"], "33135")
-        self.assertEqual(j_33135["dados"]["categoria"], "Auditivo")
+        self.assertEqual(j_33135["dados"]["categoria"], "Proteção Auditiva")
         self.assertEqual(j_33135["dados"]["validade_ca"], "2028-07-12")
 
         r_40362 = self.c.get("/api/caepi/40362")
@@ -404,7 +404,7 @@ class TestEstoque(Base):
         j_40362 = r_40362.get_json()
         self.assertTrue(j_40362["ok"])
         self.assertEqual(j_40362["dados"]["ca"], "40362")
-        self.assertEqual(j_40362["dados"]["categoria"], "Calçados")
+        self.assertEqual(j_40362["dados"]["categoria"], "Calçados de Segurança")
         self.assertEqual(j_40362["dados"]["validade_ca"], "2027-03-30")
 
         r_api = self.c.get("/api/caepi/39840")
@@ -412,7 +412,7 @@ class TestEstoque(Base):
         j = r_api.get_json()
         self.assertTrue(j["ok"])
         self.assertEqual(j["dados"]["ca"], "39840")
-        self.assertEqual(j["dados"]["categoria"], "Mãos")
+        self.assertEqual(j["dados"]["categoria"], "Proteção das Mãos")
         self.assertEqual(j["dados"]["unidade"], "par")
         self.assertTrue(j["dados"]["validade_ca"].startswith("20"))
 
@@ -433,7 +433,7 @@ class TestEstoque(Base):
         self.assertEqual(r_novo.status_code, 200)
         html_det = r_novo.get_data(as_text=True)
         self.assertIn("BOTINA", html_det)
-        self.assertIn("Calçados", html_det)
+        self.assertIn("Calçados de Segurança", html_det)
         self.assertIn("40362", html_det)
 
         # 3. Importa arquivo no layout oficial tgg_export_caepi.txt (pipe-delimited) atualizando a validade do CA 40362

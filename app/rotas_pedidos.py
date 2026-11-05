@@ -137,7 +137,7 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
         cat_norm = pedidos.normalizar(e.get("categoria") or "")
         if any(t in nome_norm for t in termos_epi_protecao):
             epis_protecao.append(e)
-        elif any(t in nome_norm for t in termos_vest) or cat_norm in ("vestimenta", "vestimento", "uniforme"):
+        elif any(t in nome_norm for t in termos_vest) or any(t in cat_norm for t in ("vestiment", "uniform")):
             vestimentas.append(e)
         else:
             epis_protecao.append(e)
@@ -151,7 +151,7 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
                     "id": 90000 + idx,
                     "nome": nome_gen,
                     "nome_formulario": nome_gen,
-                    "categoria": "EPI",
+                    "categoria": "Outros / Diversos",
                     "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
                     "exibir_no_forms": 1,
                     "eh_generico_oficial": 1,
@@ -164,7 +164,7 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
                     "id": 91000 + idx,
                     "nome": nome_gen,
                     "nome_formulario": nome_gen,
-                    "categoria": "Vestimenta",
+                    "categoria": "Vestimentas e Uniformes",
                     "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
                     "exibir_no_forms": 1,
                     "eh_generico_oficial": 1,

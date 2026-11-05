@@ -394,6 +394,9 @@ def _migrar(conn):
     # Sincroniza os 22 EPIs e 3 Uniformes oficiais do formulário público se houver catálogo carregado
     _sincronizar_catalogo_formulario_oficial(conn)
 
+    # Migra categorias existentes para os novos nomes formais e padronizados
+    _migrar_categorias_oficiais(conn)
+
 
 def _sincronizar_catalogo_formulario_oficial(conn):
     """Remove da tabela epis quaisquer itens genéricos que tenham sido inseridos automaticamente sem estoque,
@@ -466,6 +469,51 @@ def _sincronizar_catalogo_formulario_oficial(conn):
     for r in conn.execute("SELECT id, nome_formulario FROM epis").fetchall():
         nf = (r["nome_formulario"] or "").strip()
         conn.execute("UPDATE epis SET exibir_no_forms = ? WHERE id = ?", (1 if nf else 0, r["id"]))
+
+
+def _migrar_categorias_oficiais(conn):
+    """Atualiza as categorias de EPIs cadastrados e da base_caepi para os novos nomes formais padronizados."""
+    try:
+        colunas_epis = {r["name"] for r in conn.execute("PRAGMA table_info(epis)")}
+        if "categoria" not in colunas_epis:
+            return
+    except Exception:
+        return
+
+    mapa = {
+        "CALÇADOS": "Calçados de Segurança",
+        "CALCADOS": "Calçados de Segurança",
+        "VESTIMENTA": "Vestimentas e Uniformes",
+        "VESTIMENTAS": "Vestimentas e Uniformes",
+        "UNIFORME": "Vestimentas e Uniformes",
+        "UNIFORMES": "Vestimentas e Uniformes",
+        "MÃOS": "Proteção das Mãos",
+        "MAOS": "Proteção das Mãos",
+        "CABEÇA": "Proteção da Cabeça",
+        "CABECA": "Proteção da Cabeça",
+        "OLHOS E FACE": "Proteção dos Olhos e Face",
+        "AUDITIVO": "Proteção Auditiva",
+        "RESPIRATÓRIO": "Proteção Respiratória",
+        "RESPIRATORIO": "Proteção Respiratória",
+        "TRABALHO EM ALTURA": "Trabalho em Altura e Cintos",
+        "OUTROS / EPI": "Outros / Diversos",
+        "OUTROS": "Outros / Diversos",
+        "EPI": "Outros / Diversos",
+    }
+    for cat_antiga, cat_nova in mapa.items():
+        conn.execute("UPDATE epis SET categoria = ? WHERE UPPER(TRIM(categoria)) = ?", (cat_nova, cat_antiga))
+        try:
+            conn.execute("UPDATE base_caepi SET categoria = ? WHERE UPPER(TRIM(categoria)) = ?", (cat_nova, cat_antiga))
+        except Exception:
+            pass
+
+    # Perneiras e itens de pele / protetor solar que estivessem em categorias genéricas
+    conn.execute(
+        "UPDATE epis SET categoria = 'Perneiras de Proteção' WHERE LOWER(nome) LIKE '%perneira%' AND (categoria IS NULL OR categoria IN ('Vestimentas e Uniformes', 'Outros / Diversos'))"
+    )
+    conn.execute(
+        "UPDATE epis SET categoria = 'Proteção da Pele e Dermatológicos' WHERE (LOWER(nome) LIKE '%protetor solar%' OR LOWER(nome) LIKE '%repelente%') AND (categoria IS NULL OR categoria IN ('Outros / Diversos', 'Proteção das Mãos'))"
+    )
 
 
 def init_app(app):

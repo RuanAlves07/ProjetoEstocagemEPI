@@ -5,7 +5,7 @@
 {% set tams_atuais = epi.get('tamanhos_lista') if epi is mapping and epi.get('tamanhos_lista') is not none else ([epi.tamanho] if epi.tamanho else []) %}
 {% set cat_atual = (epi.categoria or '')|trim %}
 {% set categorias_disponiveis = categorias_padrao or [
-  'Calçados', 'Vestimenta', 'Mãos', 'Cabeça', 'Olhos e Face', 'Auditivo', 'Respiratório', 'Trabalho em Altura', 'Outros / EPI'
+  'Proteção da Pele e Dermatológicos', 'Proteção da Cabeça', 'Proteção dos Olhos e Face', 'Proteção Auditiva', 'Proteção Respiratória', 'Proteção das Mãos', 'Vestimentas e Uniformes', 'Perneiras de Proteção', 'Calçados de Segurança', 'Trabalho em Altura e Cintos', 'Outros / Diversos'
 ] %}
 <div class="cartao" style="max-width:920px;margin:0 auto">
   <h1>{{ 'Novo EPI' if novo else 'Editar EPI' }}</h1>
@@ -462,7 +462,24 @@ function selecionarCategoriaPorTexto(catTexto) {
   const t = catTexto.trim().toLowerCase();
   for (let i = 0; i < sel.options.length; i++) {
     const optVal = sel.options[i].value.trim().toLowerCase();
-    if (optVal === t || (t.includes("calcado") && optVal.includes("calcado")) || (t.includes("vestimenta") && optVal.includes("vestimenta"))) {
+    if (optVal === t) {
+      sel.selectedIndex = i;
+      return;
+    }
+    // Casamentos parciais inteligentes para bases externas (ex: CAEPI / MTE)
+    if (
+      (t.includes("calcado") && optVal.includes("calcado")) ||
+      ((t.includes("vestimenta") || t.includes("uniforme")) && (optVal.includes("vestimenta") || optVal.includes("uniforme"))) ||
+      (t.includes("perneira") && optVal.includes("perneira")) ||
+      ((t.includes("mao") || t.includes("mão") || t.includes("luva")) && optVal.includes("mãos")) ||
+      ((t.includes("cabeca") || t.includes("cabeça")) && optVal.includes("cabeça")) ||
+      ((t.includes("olho") || t.includes("face") || t.includes("ocular")) && optVal.includes("olhos")) ||
+      ((t.includes("auditiv") || t.includes("auricular") || t.includes("ouvido")) && optVal.includes("auditiva")) ||
+      ((t.includes("respirat") || t.includes("mascara") || t.includes("máscara")) && optVal.includes("respiratória")) ||
+      ((t.includes("pele") || t.includes("dermat") || t.includes("solar") || t.includes("repelente")) && optVal.includes("pele")) ||
+      ((t.includes("altura") || t.includes("cinto") || t.includes("talabarte")) && optVal.includes("altura")) ||
+      (t.includes("outro") && optVal.includes("outros"))
+    ) {
       sel.selectedIndex = i;
       return;
     }

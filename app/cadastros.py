@@ -147,15 +147,17 @@ def _nomes_formulario_existentes(db=None):
 
 
 CATEGORIAS_PADRAO = (
-    "Calçados",
-    "Vestimenta",
-    "Mãos",
-    "Cabeça",
-    "Olhos e Face",
-    "Auditivo",
-    "Respiratório",
-    "Trabalho em Altura",
-    "Outros / EPI",
+    "Proteção da Pele e Dermatológicos",
+    "Proteção da Cabeça",
+    "Proteção dos Olhos e Face",
+    "Proteção Auditiva",
+    "Proteção Respiratória",
+    "Proteção das Mãos",
+    "Vestimentas e Uniformes",
+    "Perneiras de Proteção",
+    "Calçados de Segurança",
+    "Trabalho em Altura e Cintos",
+    "Outros / Diversos",
 )
 
 

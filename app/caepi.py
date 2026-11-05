@@ -72,7 +72,7 @@ _trava_sincronizacao = threading.Lock()
 # Garante disponibilidade instantânea mesmo offline ou antes da primeira sincronização.
 CATALOGO_CA_SEMENTE = {
     "33135": {
-        "categoria": "Auditivo",
+        "categoria": "Proteção Auditiva",
         "cnpj_fabricante": "14117593000185",
         "descricao": "Protetor auditivo tipo concha, constituído por dois abafadores, apresentando almofadas de vedação e espuma no seu interior. Possui duas hastes em plástico que se encaixam no arco e na concha.",
         "fabricante": "CAMPER EQUIPAMENTOS DE PROTECAO LTDA",
@@ -83,7 +83,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2028-07-12",
     },
     "40362": {
-        "categoria": "Calçados",
+        "categoria": "Calçados de Segurança",
         "cnpj_fabricante": "12503608000118",
         "descricao": "Calçado ocupacional de uso profissional, tipo botina, confeccionado em couro vaqueta, fechamento em atacadores (cadarços), com biqueira plástica estrutural, palmilha de montagem em não tecido montada pelo sistema strobel, solado de poliuretano bidensidade injetado direto no cabedal, resistente à óle",
         "fabricante": "FHIORUK INDUSTRIA DE CALCADOS LTDA - EM RECUPERACAO JUDICIAL",
@@ -94,7 +94,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2027-03-30",
     },
     "39840": {
-        "categoria": "Mãos",
+        "categoria": "Proteção das Mãos",
         "cnpj_fabricante": "10268780000109",
         "descricao": "Luva cirúrgica, tipo I, confeccionada em borracha natural, estéril, com pó, texturizada, anatômica. Marca: Medix Brasil. ESTE EQUIPAMENTO DEVERÁ APRESENTAR O SELO DE MARCAÇÃO DO INMETRO.",
         "fabricante": "MEDIX BRASIL LTDA",
@@ -105,7 +105,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2019-08-29",
     },
     "43105": {
-        "categoria": "Vestimenta",
+        "categoria": "Vestimentas e Uniformes",
         "cnpj_fabricante": "27608037000153",
         "descricao": "Avental de segurança confeccionado em não tecido de polipropileno e laminado na face direita com polietileno, manga longa, gola em formato redondo com acabamento em viés, tiras no pescoço e na cintura para ajustes, e acabamento em overloque.",
         "fabricante": "DEJAMARO INDUSTRIA E COMERCIO DE PRODUTOS MEDICOS-HOSPITALARES LTDA",
@@ -116,7 +116,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2029-05-12",
     },
     "36712": {
-        "categoria": "Mãos",
+        "categoria": "Proteção das Mãos",
         "cnpj_fabricante": "02062009000152",
         "descricao": "Luva de segurança, confeccionada em raspa na palma e face palmar dos dedos; dorso, face dorsal dos dedos e punho em sarja, forro em não tecido; elástico no dorso; punho 7 cm.",
         "fabricante": "NESI INDUSTRIA E COMERCIO DE COUROS LTDA",
@@ -127,7 +127,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2018-04-04",
     },
     "31205": {
-        "categoria": "Calçados",
+        "categoria": "Calçados de Segurança",
         "cnpj_fabricante": "10472968000255",
         "descricao": "Calçado de segurança de uso profissional tipo botina,fechamento em atacador,confeccionado em couro hidrofugado curtido ao cromo na cor preta,palmilha de montagem em material reciclável montada pelo sistema strobel,bico de aço, solado de poliuretano e borracha injetado diretamente ao cabedal, resiste",
         "fabricante": "BSB PRODUTORA DE EQUIPAMENTOS DE PROTECAO INDIVIDUAL S.A.",
@@ -138,7 +138,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2017-09-20",
     },
     "34890": {
-        "categoria": "Mãos",
+        "categoria": "Proteção das Mãos",
         "cnpj_fabricante": "08187664000113",
         "descricao": "Luva de segurança confeccionada em malha de aço, cinco dedos, confeccionada em elos de aço inox, braceletes ajustáveis através de molas metálicas no punho e dorso.",
         "fabricante": "SEGSUL EQUIPAMENTOS DE PROTECAO INDIVIDUAL LTDA",
@@ -149,7 +149,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2019-06-25",
     },
     "29110": {
-        "categoria": "Vestimenta",
+        "categoria": "Vestimentas e Uniformes",
         "cnpj_fabricante": "00740930000181",
         "descricao": "Avental de segurança confeccionado em PVC com forro de poliéster, tiras costuradas do mesmo material do avental.",
         "fabricante": "CORASEG ARTIGOS PARA PROTECAO INDIVIDUAL - EIRELI",
@@ -160,7 +160,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2022-05-03",
     },
     "29115": {
-        "categoria": "Vestimenta",
+        "categoria": "Vestimentas e Uniformes",
         "cnpj_fabricante": "00740930000181",
         "descricao": "Calça de segurança confeccionada em PVC forrado, modelo pijama, cordão de algodão na cintura.",
         "fabricante": "CORASEG ARTIGOS PARA PROTECAO INDIVIDUAL - EIRELI",
@@ -171,7 +171,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2021-12-21",
     },
     "19578": {
-        "categoria": "Auditivo",
+        "categoria": "Proteção Auditiva",
         "cnpj_fabricante": "69315927000117",
         "descricao": "Protetor auditivo, confeccionado em silicone grau farmacêutico, tipo inserção, composto de um eixo com três flanges, onde a primeira, a segunda e a terceira, são flanges maciças ecônicas, todas de dimensões variáveis, contendo um orifício no seu interior, protetor tamanho único, moldável a diferente",
         "fabricante": "VEAJ CACCHERO PLASTICOS LTDA",
@@ -182,7 +182,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2027-12-13",
     },
     "11268": {
-        "categoria": "Olhos e Face",
+        "categoria": "Proteção dos Olhos e Face",
         "cnpj_fabricante": "00204589000140",
         "descricao": "Óculos de segurança com armação e visor confeccionados em uma única peça de policarbonato disponível nas cores incolor, incolor com tratamento, amarelo, amarelo com tratamento, verde, incolor com revestimento externo de filme prateado, cinza, cinza com tratamento, cinza com revestimento externo de f",
         "fabricante": "KALIPSO EQUIPAMENTOS INDIVIDUAIS DE PROTECAO LTDA",
@@ -193,7 +193,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2029-12-20",
     },
     "11269": {
-        "categoria": "Mãos",
+        "categoria": "Proteção das Mãos",
         "cnpj_fabricante": "03906523000190",
         "descricao": "Luva para proteção contra agentes abrasivos e escoriantes.",
         "fabricante": "DEPARELI CONFIAVEIS EQUIPAMENTOS DE PROTECAO INDIVIDUAL LTDA",
@@ -204,7 +204,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2006-01-10",
     },
     "18420": {
-        "categoria": "Calçados",
+        "categoria": "Calçados de Segurança",
         "cnpj_fabricante": "05358567000158",
         "descricao": "Calçado tipo bota em borracha vulcanizada.",
         "fabricante": "REAL CAMP COMERCIO DE ABRASIVOS LTDA",
@@ -215,7 +215,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2012-10-26",
     },
     "32901": {
-        "categoria": "Cabeça",
+        "categoria": "Proteção da Cabeça",
         "cnpj_fabricante": "01797921000165",
         "descricao": "Capacete de segurança tipo aba frontal com nervura central e fenda lateral.",
         "fabricante": "PLASTCOR DO BRASIL LTDA",
@@ -226,7 +226,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2028-04-18",
     },
     "38504": {
-        "categoria": "Mãos",
+        "categoria": "Proteção das Mãos",
         "cnpj_fabricante": "01797921000165",
         "descricao": "Luva de segurança confeccionada em suporte têxtil com banho em nitrila.",
         "fabricante": "VOLK DO BRASIL LTDA",
@@ -237,7 +237,7 @@ CATALOGO_CA_SEMENTE = {
         "validade_ca": "2028-08-10",
     },
     "40988": {
-        "categoria": "Vestimenta",
+        "categoria": "Vestimentas e Uniformes",
         "cnpj_fabricante": "03084401000165",
         "descricao": "Macacão de segurança confeccionado em polietileno, sem componentes metálicos, com elástico no punho e tornozelo, cordão de nylon na cintura e capuz com fechamento de velcro.",
         "fabricante": "PREVEMAX INDUSTRIA E COMERCIO DE EPI S LTDA",
@@ -282,28 +282,31 @@ def agora_brasilia():
 
 
 def inferir_categoria_e_unidade(equipamento, descricao=""):
-    """Deduz Categoria e Unidade a partir do nome do equipamento (nomenclatura da NR-6)."""
+    """Deduz Categoria e Unidade a partir do nome do equipamento (nomenclatura da NR-6 e padrões formais)."""
     t = _sem_acento(f"{equipamento or ''} {descricao or ''}")
     eq = _sem_acento(equipamento or "")
     regras = (
-        ("Trabalho em Altura", ("cinturao", "talabarte", "trava-queda", "trava queda"), "un"),
-        ("Cabeça", ("capacete", "capuz", "balaclava", "touca", "bone"), "un"),
-        ("Mãos", ("luva", "dedeira", "creme protetor"), "par"),
-        ("Calçados", ("calcado", "botina", "bota", "sapato"), "par"),
-        ("Auditivo", ("auditivo", "auricular", "abafador"), "un"),
-        ("Olhos e Face", ("oculos", "protetor facial", "solda", "visor"), "un"),
-        ("Respiratório", ("respirador", "pff", "filtro", "semifacial", "facial inteira", "mascara"), "un"),
-        ("Vestimenta", ("vestimenta", "avental", "perneira", "capa", "jardineira", "macacao",
-                        "calca", "camisa", "colete", "manga", "japona", "jaqueta"), "un"),
+        ("Trabalho em Altura e Cintos", ("cinturao", "talabarte", "trava-queda", "trava queda"), "un"),
+        ("Proteção da Cabeça", ("capacete", "capuz", "balaclava", "touca", "bone"), "un"),
+        ("Perneiras de Proteção", ("perneira", "polaina"), "par"),
+        ("Proteção da Pele e Dermatológicos", ("protetor solar", "repelente", "creme protetor", "protetor pele", "filtro solar"), "un"),
+        ("Proteção das Mãos", ("luva", "dedeira"), "par"),
+        ("Calçados de Segurança", ("calcado", "botina", "bota", "sapato"), "par"),
+        ("Proteção Auditiva", ("auditivo", "auricular", "abafador"), "un"),
+        ("Proteção dos Olhos e Face", ("oculos", "protetor facial", "solda", "visor"), "un"),
+        ("Proteção Respiratória", ("respirador", "pff", "filtro", "semifacial", "facial inteira", "mascara"), "un"),
+        ("Vestimentas e Uniformes", ("vestimenta", "avental", "capa", "jardineira", "macacao",
+                        "calca", "camisa", "camiseta", "colete", "manga", "japona", "jaqueta"), "un"),
     )
     for categoria, termos, unidade in regras:
         if any(p in eq for p in termos) or (not eq and any(p in t for p in termos)):
-            if categoria == "Mãos" and "luva" not in eq:
+            if categoria == "Proteção das Mãos" and "luva" not in eq:
                 unidade = "un"
-            if categoria == "Vestimenta" and "perneira" in eq:
+            if categoria == "Vestimentas e Uniformes" and "perneira" in eq:
+                categoria = "Perneiras de Proteção"
                 unidade = "par"
             return categoria, unidade
-    return "EPI", "un"
+    return "Outros / Diversos", "un"
 
 
 def _nome_sugerido(equipamento, referencia, ca):
