@@ -114,7 +114,8 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False):
     Quando agrupar_por_nome=True, usa o nome generalizado do formulário (nome_formulario se preenchido)
     e evita repetir o mesmo produto várias vezes quando cadastrado em múltiplos tamanhos/modelos/CAs.
     """
-    termos_vest = ("vestim", "uniforme", "camis", "calca", "bermud", "capa de chuva", "avental", "perneira", "jardineira", "colete")
+    termos_epi_protecao = ("capa de chuva", "avental", "perneira", "jardineira", "colete")
+    termos_vest = ("camis", "calca", "bermud")
     vestimentas = []
     epis_protecao = []
     vistos_nome = set()
@@ -128,7 +129,9 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False):
                 continue
             vistos_nome.add(nome_norm)
         cat_norm = pedidos.normalizar(e.get("categoria") or "")
-        if cat_norm in ("vestimenta", "vestimento", "uniforme") or any(t in nome_norm for t in termos_vest):
+        if any(t in nome_norm for t in termos_epi_protecao):
+            epis_protecao.append(e)
+        elif any(t in nome_norm for t in termos_vest) or cat_norm in ("vestimenta", "vestimento", "uniforme"):
             vestimentas.append(e)
         else:
             epis_protecao.append(e)
