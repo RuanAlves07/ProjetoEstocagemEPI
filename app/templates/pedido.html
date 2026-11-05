@@ -12,7 +12,16 @@
     {% if p.aguardando_estoque %}<span class="badge sla-pausado">⏳ Aguardando estoque</span>{% endif %}
     {% if em_aberto and p.total_analise > 0 %}<span class="badge badge-analisar">🔍 {{ p.total_analise }} para analisar</span>{% endif %}
   </h1>
-  <div class="acoes"><a class="btn" href="{{ url_for('pedidos.lista') }}">← Pedidos</a></div>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('pedidos.lista') }}">← Pedidos</a>
+    {% if pode_editar %}
+    <form method="post" action="{{ url_for('pedidos.excluir', pedido_id=p.id) }}" style="display:inline"
+          onsubmit="return confirm('Tem certeza que deseja EXCLUIR permanentemente o Pedido #{{ p.id }}?');">
+      {{ csrf() }}
+      <button type="submit" class="btn perigo">🗑️ Excluir pedido</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
 <section class="cartao pedido-cabecalho">
@@ -90,7 +99,14 @@
                  data-url="{{ url_for('pedidos.separar', pedido_id=p.id, item_id=i.id) }}" title="Marcar como separado">
         </td>
         <td>
-          <span class="item-nome">{{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}{% if i.tamanho %} <span class="badge">Tam. {{ i.tamanho }}</span>{% endif %}</span>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:.35rem">
+            <span class="item-nome">{{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}</span>
+            {% if i.tamanho %}<span class="badge">{{ 'Nº ' ~ i.tamanho if i.tamanho.isdigit() else 'Tam. ' ~ i.tamanho }}</span>{% endif %}
+            {% if i.epi_ca %}<span class="badge azul" title="Certificado de Aprovação selecionado">CA {{ i.epi_ca }}</span>{% elif i.epi_id %}<span class="badge">Sem CA</span>{% endif %}
+            {% if i.epi_nome and i.texto_solicitado_base and i.epi_nome|lower != i.texto_solicitado_base|lower %}
+              <small class="suave">(Solicitado no form: <strong>{{ i.texto_solicitado_base }}</strong>)</small>
+            {% endif %}
+          </div>
           {% if i.epi_ativo == false %}<span class="badge vermelho">EPI inativo</span>{% endif %}
           {% if p.status in ('pronto', 'retirado') and not i.separado %}
             <span class="badge amarelo">⚠️ não atendido (ressalva){% if p.complementos %} → pendência #{{ p.complementos[0].id }}{% endif %}</span>
@@ -102,10 +118,66 @@
             {% endfor %}
           </div>
           {% endif %}
+
+          {% if em_aberto and pode_editar %}
+          <div class="faixa-possibilidades-pedido" style="margin-top:.45rem;padding:.5rem .65rem;background:#f8fafc;border:1px solid #cbd5e1;border-left:3px solid #0284c7;border-radius:6px">
+            <form method="post" action="{{ url_for('pedidos.editar_item', pedido_id=p.id, item_id=i.id) }}" style="display:flex;align-items:center;flex-wrap:wrap;gap:.45rem;margin:0">
+              {{ csrf() }}
+              <input type="hidden" name="quantidade" value="{{ i.quantidade }}">
+              <span style="font-size:.82rem;font-weight:600;color:#0f172a">
+                📦 Modelo / CA para envio{% if i.possibilidades %} ({{ i.possibilidades|length }} {{ 'opção compatível' if i.possibilidades|length == 1 else 'opções compatíveis' }}){% endif %}:
+              </span>
+              <select name="epi_id" onchange="this.form.submit()" style="flex:1;min-width:240px;font-size:.86rem;padding:.28rem .5rem">
+                <option value="">— Selecione o modelo e CA físico —</option>
+                {% if i.possibilidades %}
+                <optgroup label="Possibilidades que atendem: {{ i.texto_solicitado_base }}">
+                  {% for op in i.possibilidades %}
+                  <option value="{{ op.id }}" {{ 'selected' if op.id == i.epi_id }}>
+                    {{ op.nome }}{% if op.tamanho %} ({{ 'Nº ' ~ op.tamanho if op.tamanho.isdigit() else 'Tam. ' ~ op.tamanho }}){% endif %} — CA: {{ op.ca or 'S/ CA' }} · Saldo: {{ op.saldo }} {{ op.unidade }}
+                  </option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
+                <optgroup label="Todos os EPIs do estoque">
+                  {% for e in epis %}
+                  <option value="{{ e.id }}" {{ 'selected' if (not i.possibilidades and e.id == i.epi_id) }}>
+                    {{ e.nome }}{% if e.tamanho %} ({{ 'Nº ' ~ e.tamanho if e.tamanho.isdigit() else 'Tam. ' ~ e.tamanho }}){% endif %} — CA: {{ e.ca or 'S/ CA' }} · Saldo: {{ e.saldo }} {{ e.unidade }}
+                  </option>
+                  {% endfor %}
+                </optgroup>
+              </select>
+              <button type="submit" class="btn pequeno">Confirmar CA</button>
+            </form>
+
+            {% if i.possibilidades and i.possibilidades|length > 1 %}
+            <details style="margin-top:.35rem;font-size:.83rem">
+              <summary style="cursor:pointer;color:#0369a1;font-weight:600">
+                🔎 Conferir lista de modelos e CAs compatíveis ({{ i.possibilidades|length }})
+              </summary>
+              <ul style="margin:.35rem 0 0;padding-left:1.1rem;display:flex;flex-direction:column;gap:.25rem">
+                {% for op in i.possibilidades %}
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">
+                  <span>
+                    • <strong>{{ op.nome }}</strong>
+                    {% if op.tamanho %}<span class="badge">{{ 'Nº ' ~ op.tamanho if op.tamanho.isdigit() else 'Tam. ' ~ op.tamanho }}</span>{% endif %}
+                    — <span class="badge azul">CA {{ op.ca or 'S/ CA' }}</span>
+                    · <span class="{{ 'ok-texto' if op.saldo > 0 else 'erro-texto' }}">Saldo: <strong>{{ op.saldo }} {{ op.unidade }}</strong></span>
+                    {% if op.id == i.epi_id %}<span class="badge verde">✓ Selecionado</span>{% endif %}
+                  </span>
+                </li>
+                {% endfor %}
+              </ul>
+            </details>
+            {% endif %}
+          </div>
+          {% endif %}
         </td>
         <td class="num">
           {% if i.saldo is not none %}
-            <span class="{{ 'erro-texto' if i.falta }}">{{ i.saldo }} {{ i.unidade }}</span>{% if i.falta %}<br><small class="erro-texto">insuficiente</small>{% endif %}
+            <span class="{{ 'erro-texto' if i.falta }}">{{ i.saldo }} {{ i.unidade }}</span>
+            {% if i.falta %}
+              <br><small class="erro-texto">{{ ('⚠️ zerado no nº/tam. ' ~ i.tamanho) if i.zerado_por_numeracao and i.tamanho else 'insuficiente' }}</small>
+            {% endif %}
           {% else %}
             <span class="suave">—</span>
           {% endif %}

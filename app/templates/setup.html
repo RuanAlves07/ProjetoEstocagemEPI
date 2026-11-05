@@ -9,6 +9,9 @@
     {{ csrf() }}
     <label>Nome <input name="nome" required autofocus value="{{ request.form.nome }}"></label>
     <label>Login <input name="login" required autocomplete="username" value="{{ request.form.login }}"></label>
+    <label>E-mail (para recuperação de senha e alertas de pedidos)
+      <input name="email" type="email" autocomplete="email" value="{{ request.form.email }}" placeholder="nome@abecker.com.br">
+    </label>
     <label>Senha (mín. 8 caracteres) <input name="senha" type="password" required minlength="8" autocomplete="new-password"></label>
     <label>Confirmar senha <input name="confirmacao" type="password" required minlength="8" autocomplete="new-password"></label>
     <button class="btn primario">Criar administrador</button>

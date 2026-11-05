@@ -27,13 +27,13 @@
 </form>
 
 <div class="cartao"><div class="tabela-rolavel"><table>
-  <thead><tr><th>Nome</th><th>Matrícula</th><th>Setor / Obra</th><th>Cargo / Função</th><th>Padrão do cargo</th><th></th></tr></thead>
+  <thead><tr><th>Nome</th><th>Matrícula</th><th>Setor</th><th>Cargo / Função</th><th>Padrão do cargo</th><th></th></tr></thead>
   <tbody>
   {% for c in colaboradores %}
     {% set qtd_pad = contagem_padrao.get((c.funcao or '').casefold(), 0) %}
     <tr class="{{ 'inativo' if not c.ativo }}">
       <td><a href="{{ url_for('cadastros.colaborador_ficha', colab_id=c.id) }}">{{ c.nome }}</a>{% if not c.ativo %} <span class="badge">inativo</span>{% endif %}</td>
-      <td>{{ c.matricula or '—' }}</td>
+      <td>{{ c.matricula or c.id }}</td>
       <td>{{ c.setor or '—' }}</td>
       <td>
         {% if c.funcao %}

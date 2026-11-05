@@ -8,8 +8,11 @@
     {{ csrf() }}
     <label>Nome <input name="nome" required autofocus value="{{ colab.nome or '' }}"></label>
     <div class="linha">
-      <label>Matrícula <input name="matricula" value="{{ colab.matricula or '' }}"></label>
-      <label>Setor / Obra <input name="setor" list="setores" value="{{ colab.setor or '' }}"></label>
+      <label>Matrícula (ID do colaborador)
+        <input name="matricula" value="{{ colab.matricula or '' }}" placeholder="Gerado automaticamente">
+        <span class="nota">Chave principal puxada automaticamente por colaborador.</span>
+      </label>
+      <label>Setor <input name="setor" list="setores" value="{{ colab.setor or '' }}"></label>
     </div>
     <datalist id="setores">{% for s in setores %}<option value="{{ s }}">{% endfor %}</datalist>
     <label>Cargo / Função

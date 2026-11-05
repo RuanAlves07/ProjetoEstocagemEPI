@@ -131,7 +131,8 @@
 {% else %}
   <div class="cartao"><div class="tabela-rolavel"><table>
     <thead><tr><th>Pedido</th><th>Solicitante</th><th>Local</th><th>Itens</th>
-      {% if aba == 'retirados' %}<th>Retirado por</th><th>Quando</th>{% else %}<th>Motivo do cancelamento</th>{% endif %}</tr></thead>
+      {% if aba == 'retirados' %}<th>Retirado por</th><th>Quando</th>{% else %}<th>Motivo do cancelamento</th>{% endif %}
+      {% if pode_editar %}<th></th>{% endif %}</tr></thead>
     <tbody>
     {% for p in historico %}
       <tr>
@@ -142,8 +143,18 @@
           <td>{{ p.retirado_por_nome }}{% if p.retirado_descricao %}<br><small class="suave">{{ p.retirado_descricao }}</small>{% endif %}</td>
           <td>{{ p.retirado_em|hora_br }}</td>
         {% else %}<td>{{ p.cancelado_motivo }}</td>{% endif %}
+        {% if pode_editar %}
+        <td class="acoes">
+          <form method="post" action="{{ url_for('pedidos.excluir', pedido_id=p.id) }}"
+                onsubmit="return confirm('Tem certeza que deseja excluir o pedido #{{ p.id }}?');">
+            {{ csrf() }}
+            <input type="hidden" name="voltar" value="{{ request.full_path }}">
+            <button type="submit" class="btn perigo pequeno">🗑️ Excluir</button>
+          </form>
+        </td>
+        {% endif %}
       </tr>
-    {% else %}<tr><td colspan="6" class="vazio">Nada por aqui.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="7" class="vazio">Nada por aqui.</td></tr>{% endfor %}
     </tbody>
   </table></div>
   <p class="nota">Mostrando os 200 mais recentes. O CSV traz todos.</p></div>

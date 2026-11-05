@@ -333,6 +333,19 @@
       <textarea id="campo-obs" name="observacao" rows="3" placeholder="Insira sua resposta">{{ form_dados.get('observacao', '') }}</textarea>
     </section>
 
+    <!-- 7. E-mail para acompanhamento (opcional) -->
+    <section class="cartao bloco-pergunta">
+      <label class="titulo-pergunta" for="campo-email-sol">
+        📧 E-mail para acompanhar o andamento do pedido <span class="suave" style="font-weight:400;font-size:.85rem">(opcional)</span>
+      </label>
+      <p class="subtitulo-pergunta">
+        Informe seu e-mail caso queira receber notificações automáticas quando o pedido entrar em separação, ficar pronto para retirada ou for entregue.
+      </p>
+      <input id="campo-email-sol" type="email" name="email_solicitante"
+             value="{{ form_dados.get('email_solicitante') or (usuario.email if usuario and usuario.email else '') }}"
+             placeholder="Ex.: seu.nome@abecker.com.br">
+    </section>
+
     <div class="acoes" style="margin-bottom:2.5rem">
       <button type="submit" class="btn primario grande">Enviar solicitação</button>
     </div>

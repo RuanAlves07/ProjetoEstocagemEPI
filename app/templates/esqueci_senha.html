@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Esqueceu a senha?{% endblock %}
+{% block conteudo %}
+<div class="cartao estreito-card">
+  <h1 style="margin-top:0">🔑 Esqueceu a senha?</h1>
+  <p class="nota" style="margin:.25rem 0 1rem">
+    Informe o seu <strong>login de usuário</strong>. Enviaremos um código de verificação e um link de redefinição diretamente para o e-mail cadastrado na sua conta.
+  </p>
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <input type="hidden" name="origem" value="{{ origem or '' }}">
+    <label>Seu login de acesso
+      <input name="login" required autofocus autocomplete="username" value="{{ login or '' }}" placeholder="Ex.: admin, almoxarifado, nome.sobrenome">
+    </label>
+    <button class="btn primario">Enviar código para meu e-mail</button>
+  </form>
+</div>
+
+<p style="text-align:center;margin-top:.75rem">
+  <a href="{{ url_for('auth.login_gestor' if origem == 'gestor' else 'auth.login') }}">← Voltar para o login</a>
+</p>
+{% endblock %}

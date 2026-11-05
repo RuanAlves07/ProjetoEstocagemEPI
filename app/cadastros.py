@@ -1,3 +1,4 @@
+import re
 """Cadastros: EPIs, colaboradores e usuários."""
 import csv
 import io
@@ -7,7 +8,7 @@ from flask import (Blueprint, Response, abort, flash, g, jsonify, redirect, rend
                    request, url_for)
 from werkzeug.security import generate_password_hash
 
-from . import caepi, estoque, pedidos
+from . import caepi, email_service, estoque, pedidos
 from .auth import (
     CATALOGO_PERMISSOES,
     SENHA_MIN,
@@ -43,7 +44,9 @@ def epis_lista():
     )
 
     if busca:
-        epis = [e for e in epis if busca in e["nome"].lower() or busca in (e["categoria"] or "").lower()
+        epis = [e for e in epis if busca in e["nome"].lower()
+                or busca in (e.get("nome_formulario") or "").lower()
+                or busca in (e["categoria"] or "").lower()
                 or busca in (e["ca"] or "").lower() or busca in (e.get("tamanho") or "").lower()]
     if filtro_tam:
         epis = [e for e in epis if (e.get("tamanho") or "").strip().lower() == filtro_tam]
@@ -113,13 +116,62 @@ def _csv_response(buffer, nome):
                     headers={"Content-Disposition": f"attachment; filename={nome}"})
 
 
-def _validar_duplicidade_epi(db, nome, tamanho, epi_id=None):
-    sql = "SELECT id FROM epis WHERE LOWER(nome) = LOWER(?) AND LOWER(COALESCE(tamanho, '')) = LOWER(?) "
-    params = [nome, tamanho or ""]
+def _validar_duplicidade_epi(db, nome, tamanho, ca=None, epi_id=None):
+    sql = (
+        "SELECT id FROM epis "
+        "WHERE LOWER(nome) = LOWER(?) "
+        "AND LOWER(COALESCE(tamanho, '')) = LOWER(?) "
+        "AND LOWER(COALESCE(ca, '')) = LOWER(?) "
+    )
+    params = [nome, tamanho or "", ca or ""]
     if epi_id:
         sql += "AND id != ? "
         params.append(epi_id)
     return db.execute(sql, params).fetchone()
+
+
+def _nomes_formulario_existentes(db=None):
+    """Lista de nomes genéricos do formulário (nome_formulario) já cadastrados para sugestão."""
+    db = db or get_db()
+    linhas = db.execute(
+        """SELECT DISTINCT trim(nome_formulario) AS nf FROM epis WHERE nome_formulario IS NOT NULL AND trim(nome_formulario) != ''
+           UNION
+           SELECT DISTINCT trim(nome) AS nf FROM epis WHERE nome IS NOT NULL AND trim(nome) != ''
+           ORDER BY 1 COLLATE NOCASE"""
+    ).fetchall()
+    return [r[0] for r in linhas if r[0]]
+
+
+CATEGORIAS_PADRAO = (
+    "Calçados",
+    "Vestimenta",
+    "Mãos",
+    "Cabeça",
+    "Olhos e Face",
+    "Auditivo",
+    "Respiratório",
+    "Trabalho em Altura",
+    "Outros / EPI",
+)
+
+
+def _extrair_tamanhos_form(form):
+    """Extrai lista ordenada e sem duplicatas de tamanhos/numerações selecionados no formulário."""
+    brutos = []
+    for v in form.getlist("tamanhos"):
+        if v and str(v).strip():
+            brutos.extend(re.split(r"[,;/\s]+", str(v).strip()))
+    campo_tam = limpar(form.get("tamanho")) or ""
+    if campo_tam:
+        brutos.extend(re.split(r"[,;/]+", campo_tam))
+    vistos = set()
+    tamanhos = []
+    for item in brutos:
+        t = item.strip().upper()
+        if t and t not in vistos:
+            vistos.add(t)
+            tamanhos.append(t)
+    return tamanhos
 
 
 def _ler_epi(form, files=None, imagem_atual=None):
@@ -129,13 +181,24 @@ def _ler_epi(form, files=None, imagem_atual=None):
     info_ca = caepi.consultar_ca(get_db(), ca_norm) if ca_norm else None
 
     nome_form = limpar(form.get("nome"))
-    tamanho_form = limpar(form.get("tamanho"))
-    if tamanho_form:
-        tamanho_form = tamanho_form.upper()
+    nome_formulario = limpar(form.get("nome_formulario"))
+    tamanhos_lista = _extrair_tamanhos_form(form)
+    tamanho_form = tamanhos_lista[0] if len(tamanhos_lista) == 1 else (", ".join(tamanhos_lista) if tamanhos_lista else None)
 
     categoria_form = limpar(form.get("categoria"))
     unidade_form = limpar(form.get("unidade"))
     validade_form = limpar(form.get("validade_ca"))
+
+    # Caso o usuário tenha digitado um número no campo 'unidade' (ex.: '100' achando que era a quantidade de unidades)
+    qtd_inicial_raw = limpar(form.get("quantidade_inicial"))
+    qtd_inicial = to_int(qtd_inicial_raw, 0) if qtd_inicial_raw else 0
+    if unidade_form and unidade_form.isdigit():
+        if not qtd_inicial_raw:
+            qtd_inicial = int(unidade_form)
+        unidade_form = "par" if any(
+            k in ( f"{nome_form or ''} {categoria_form or ''}" ).lower()
+            for k in ("luva", "bota", "botina", "sapat", "calcad", "calçad")
+        ) else "un"
 
     # Se o usuário informou apenas o Nº do CA, puxa automaticamente Nome, Categoria, Unidade e Validade da Base CAEPI
     if info_ca:
@@ -150,7 +213,10 @@ def _ler_epi(form, files=None, imagem_atual=None):
 
     dados = {
         "nome": nome_form,
+        "nome_formulario": nome_formulario or None,
         "tamanho": tamanho_form or None,
+        "tamanhos_lista": tamanhos_lista,
+        "quantidade_inicial": qtd_inicial,
         "categoria": categoria_form,
         "ca": ca_norm,
         "unidade": unidade_form or "un",
@@ -165,6 +231,8 @@ def _ler_epi(form, files=None, imagem_atual=None):
         erros.append("Informe o nome do EPI (ou digite um Nº de CA válido para preencher automaticamente).")
     if dados["estoque_minimo"] < 0 or dados["prazo_reposicao_dias"] < 0:
         erros.append("Estoque mínimo e prazo de reposição não podem ser negativos.")
+    if qtd_inicial < 0:
+        erros.append("A quantidade de unidades não pode ser negativa.")
 
     arq_img = files.get("imagem") if files else None
     url_img = form.get("imagem_url")
@@ -184,38 +252,133 @@ def _ler_epi(form, files=None, imagem_atual=None):
 @bp.route("/epis/novo", methods=["GET", "POST"])
 @escrita_required
 def epi_novo():
+    db = get_db()
     dados = {
+        "nome_formulario": None,
         "tamanho": None,
+        "tamanhos_lista": [],
+        "quantidade_inicial": None,
         "unidade": "un",
         "estoque_minimo": 0,
         "prazo_reposicao_dias": 15,
         "exibir_no_forms": 1,
         "imagem_url": None,
     }
+    qtds_por_tam = {}
     if request.method == "POST":
         dados, erros = _ler_epi(request.form, request.files)
-        db = get_db()
-        if not erros and _validar_duplicidade_epi(db, dados["nome"], dados.get("tamanho")):
-            msg = f"Já existe um EPI cadastrado com o nome “{dados['nome']}”"
-            msg += f" no tamanho {dados['tamanho']}." if dados.get("tamanho") else "."
-            erros.append(msg)
+        tamanhos_lista = dados.get("tamanhos_lista") or []
+        qtd_total = dados.get("quantidade_inicial") or 0
+
+        # Lê as quantidades individuais de cada numeração/tamanho selecionado
+        tem_campo_qtd_tam = False
+        for t in tamanhos_lista:
+            ch_form = f"qtd_tam_{t}"
+            if ch_form in request.form and (request.form.get(ch_form) or "").strip() != "":
+                tem_campo_qtd_tam = True
+            qtds_por_tam[t] = to_int(request.form.get(ch_form), 0)
+
+        # Se selecionou apenas 1 tamanho, preencheu quantidade_inicial e não preencheu o campo individual, assume o total nele
+        if len(tamanhos_lista) == 1 and qtd_total > 0 and not tem_campo_qtd_tam:
+            qtds_por_tam[tamanhos_lista[0]] = qtd_total
+            tem_campo_qtd_tam = True
+
+        # Validação do rateio de unidades quando há múltiplos tamanhos ou quantidades por tamanho
+        if len(tamanhos_lista) > 1 or (len(tamanhos_lista) == 1 and (qtd_total > 0 or tem_campo_qtd_tam)):
+            soma_tamanhos = sum(qtds_por_tam.values())
+            if any(v < 0 for v in qtds_por_tam.values()):
+                erros.append("A quantidade de unidades de cada numeração/tamanho não pode ser negativa.")
+            elif qtd_total > 0 or soma_tamanhos > 0:
+                if qtd_total <= 0 and soma_tamanhos > 0:
+                    erros.append(
+                        f"Você distribuiu {soma_tamanhos} unidade(s) nos tamanhos ({', '.join(tamanhos_lista)}), "
+                        "mas não informou o total no campo “Quantidade de unidades”."
+                    )
+                elif soma_tamanhos != qtd_total:
+                    erros.append(
+                        f"A soma das unidades por numeração/tamanho ({soma_tamanhos}) precisa bater exatamente "
+                        f"com o total de unidades informado ({qtd_total})."
+                    )
+                elif len(tamanhos_lista) > 1:
+                    zerados = [t for t in tamanhos_lista if qtds_por_tam.get(t, 0) <= 0]
+                    if zerados:
+                        erros.append(
+                            f"Informe uma quantidade maior que zero para cada numeração/tamanho selecionado "
+                            f"(sem quantidade: {', '.join(zerados)})."
+                        )
+
+        alvos_tamanhos = tamanhos_lista if tamanhos_lista else [None]
+        if not erros:
+            for tam_alvo in alvos_tamanhos:
+                if _validar_duplicidade_epi(db, dados["nome"], tam_alvo, ca=dados.get("ca")):
+                    msg = f"Já existe um EPI cadastrado com o nome “{dados['nome']}”"
+                    if tam_alvo:
+                        msg += f" no tamanho {tam_alvo}"
+                    if dados.get("ca"):
+                        msg += f" e CA {dados['ca']}"
+                    msg += "."
+                    erros.append(msg)
 
         if not erros:
             try:
-                cur = db.execute(
-                    """INSERT INTO epis (nome, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo,
-                                         prazo_reposicao_dias, imagem_url, exibir_no_forms)
-                       VALUES (:nome, :tamanho, :categoria, :ca, :validade_ca, :unidade,
-                               :estoque_minimo, :prazo_reposicao_dias, :imagem_url, :exibir_no_forms)""",
-                    dados,
-                )
-                flash("EPI cadastrado com sucesso. Para lançar o saldo inicial, use Movimentar → Entrada ou Ajuste (+).", "ok")
-                return redirect(url_for("cadastros.epi_detalhe", epi_id=cur.lastrowid))
+                criados_ids = []
+                itens_entrada = []
+                for tam_alvo in alvos_tamanhos:
+                    registro = dict(dados)
+                    registro["tamanho"] = tam_alvo
+                    cur = db.execute(
+                        """INSERT INTO epis (nome, nome_formulario, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo,
+                                             prazo_reposicao_dias, imagem_url, exibir_no_forms)
+                           VALUES (:nome, :nome_formulario, :tamanho, :categoria, :ca, :validade_ca, :unidade,
+                                   :estoque_minimo, :prazo_reposicao_dias, :imagem_url, :exibir_no_forms)""",
+                        registro,
+                    )
+                    novo_id = cur.lastrowid
+                    criados_ids.append((tam_alvo, novo_id))
+                    qtd_item = qtds_por_tam.get(tam_alvo, 0) if tam_alvo else qtd_total
+                    if qtd_item and qtd_item > 0:
+                        itens_entrada.append({"epi_id": novo_id, "quantidade": int(qtd_item)})
+
+                if itens_entrada:
+                    estoque.registrar(
+                        db,
+                        "entrada",
+                        itens_entrada,
+                        hoje(),
+                        g.usuario["id"],
+                        motivo="Estoque inicial no cadastro de EPI",
+                        observacao=(
+                            f"Cadastro inicial ({len(criados_ids)} tamanho(s): {', '.join(t for t, _ in criados_ids if t)})"
+                            if len(criados_ids) > 1
+                            else "Saldo inicial lançado no cadastro do EPI"
+                        ),
+                    )
+
+                total_lancado = sum(x["quantidade"] for x in itens_entrada)
+                if len(criados_ids) > 1:
+                    resumo_tams = ", ".join(
+                        f"{t} ({qtds_por_tam.get(t, 0)} {dados['unidade']})" for t, _ in criados_ids
+                    )
+                    flash(
+                        f"{len(criados_ids)} numerações/tamanhos de “{dados['nome']}” cadastrados com sucesso "
+                        f"[{resumo_tams}] — total de {total_lancado} {dados['unidade']} lançado(s) no estoque!",
+                        "ok",
+                    )
+                    return redirect(url_for("cadastros.epis_lista", q=dados["nome"]))
+                if total_lancado > 0:
+                    flash(
+                        f"EPI cadastrado com sucesso com saldo inicial de {total_lancado} {dados['unidade']} já disponível no estoque!",
+                        "ok",
+                    )
+                else:
+                    flash("EPI cadastrado com sucesso. Para lançar o saldo inicial, use Movimentar → Entrada ou Ajuste (+).", "ok")
+                return redirect(url_for("cadastros.epi_detalhe", epi_id=criados_ids[0][1]))
             except sqlite3.IntegrityError:
-                erros.append("Já existe um EPI cadastrado com esse nome e tamanho.")
+                erros.append("Já existe um EPI cadastrado com esse nome, tamanho e CA.")
         for e in erros:
             flash(e, "erro")
-    return render_template("epi_form.html", epi=dados, novo=True)
+    return render_template("epi_form.html", epi=dados, novo=True, qtds_por_tam=qtds_por_tam,
+                           categorias_padrao=CATEGORIAS_PADRAO, nomes_forms=_nomes_formulario_existentes(db))
 
 
 @bp.route("/epis/<int:epi_id>/editar", methods=["GET", "POST"])
@@ -227,25 +390,30 @@ def epi_editar(epi_id):
         dados, erros = _ler_epi(request.form, request.files, imagem_atual=epi["imagem_url"])
         dados["ativo"] = 1 if request.form.get("ativo") else 0
         dados["id"] = epi_id
-        if not erros and _validar_duplicidade_epi(db, dados["nome"], dados.get("tamanho"), epi_id=epi_id):
+        if not erros and _validar_duplicidade_epi(db, dados["nome"], dados.get("tamanho"), ca=dados.get("ca"), epi_id=epi_id):
             msg = f"Já existe outro EPI cadastrado com o nome “{dados['nome']}”"
-            msg += f" no tamanho {dados['tamanho']}." if dados.get("tamanho") else "."
+            if dados.get("tamanho"):
+                msg += f" no tamanho {dados['tamanho']}"
+            if dados.get("ca"):
+                msg += f" e CA {dados['ca']}"
+            msg += "."
             erros.append(msg)
         if not erros:
             try:
                 db.execute(
-                    """UPDATE epis SET nome=:nome, tamanho=:tamanho, categoria=:categoria, ca=:ca, validade_ca=:validade_ca,
-                       unidade=:unidade, estoque_minimo=:estoque_minimo,
+                    """UPDATE epis SET nome=:nome, nome_formulario=:nome_formulario, tamanho=:tamanho, categoria=:categoria,
+                       ca=:ca, validade_ca=:validade_ca, unidade=:unidade, estoque_minimo=:estoque_minimo,
                        prazo_reposicao_dias=:prazo_reposicao_dias, imagem_url=:imagem_url,
                        exibir_no_forms=:exibir_no_forms, ativo=:ativo WHERE id=:id""", dados)
                 flash("EPI atualizado com sucesso.", "ok")
                 return redirect(url_for("cadastros.epi_detalhe", epi_id=epi_id))
             except sqlite3.IntegrityError:
-                erros.append("Já existe outro EPI cadastrado com esse nome e tamanho.")
+                erros.append("Já existe outro EPI cadastrado com esse nome, tamanho e CA.")
         for e in erros:
             flash(e, "erro")
         epi = dados
-    return render_template("epi_form.html", epi=epi, novo=False, epi_id=epi_id)
+    return render_template("epi_form.html", epi=epi, novo=False, epi_id=epi_id,
+                           categorias_padrao=CATEGORIAS_PADRAO, nomes_forms=_nomes_formulario_existentes(db))
 
 
 @bp.get("/epis/<int:epi_id>")
@@ -258,9 +426,14 @@ def epi_detalhe(epi_id):
     epi = next((e for e in todos if e["id"] == epi_id), None) or abort(404)
     from .movimentos import consultar_movimentos
     movs = consultar_movimentos(db, {"epi_id": epi_id}, limite=100)
+    nf_atual = (epi.get("nome_formulario") or epi["nome"] or "").strip().casefold()
     outros_tamanhos = [
         e for e in todos
-        if e["nome"].strip().casefold() == epi["nome"].strip().casefold() and e["id"] != epi_id
+        if (
+            e["nome"].strip().casefold() == epi["nome"].strip().casefold()
+            or (nf_atual and (e.get("nome_formulario") or e["nome"] or "").strip().casefold() == nf_atual)
+        )
+        and e["id"] != epi_id
     ]
     return render_template("epi_detalhe.html", epi=epi, movs=movs, outros_tamanhos=outros_tamanhos)
 
@@ -573,6 +746,25 @@ def cargos_padrao():
     )
 
 
+def gerar_proxima_matricula(db=None):
+    """Gera automaticamente a próxima matrícula sequencial (ID principal do colaborador)."""
+    db = db or get_db()
+    max_id_row = db.execute("SELECT COALESCE(MAX(id), 0) FROM colaboradores").fetchone()
+    maior = int(max_id_row[0] or 0)
+    usadas = set()
+    for r in db.execute("SELECT matricula FROM colaboradores WHERE matricula IS NOT NULL AND trim(matricula) != ''"):
+        m = str(r[0]).strip()
+        usadas.add(m)
+        if m.isdigit():
+            maior = max(maior, int(m))
+    n = maior + 1
+    cand = str(n)
+    while cand in usadas:
+        n += 1
+        cand = str(n)
+    return cand
+
+
 def _ler_colaborador(form):
     dados = {k: limpar(form.get(k)) for k in ("nome", "matricula", "setor", "funcao")}
     erros = [] if dados["nome"] else ["Informe o nome do colaborador."]
@@ -582,22 +774,28 @@ def _ler_colaborador(form):
 @bp.route("/colaboradores/novo", methods=["GET", "POST"])
 @escrita_required
 def colaborador_novo():
-    dados = {}
+    db = get_db()
+    dados = {"matricula": gerar_proxima_matricula(db)}
     if request.method == "POST":
         dados, erros = _ler_colaborador(request.form)
+        if not dados.get("matricula"):
+            dados["matricula"] = gerar_proxima_matricula(db)
         if not erros:
             try:
-                cur = get_db().execute(
+                cur = db.execute(
                     "INSERT INTO colaboradores (nome, matricula, setor, funcao) "
                     "VALUES (:nome, :matricula, :setor, :funcao)", dados)
+                novo_id = cur.lastrowid
+                if not dados.get("matricula") and novo_id:
+                    db.execute("UPDATE colaboradores SET matricula = ? WHERE id = ?", (str(novo_id), novo_id))
                 flash("Colaborador cadastrado.", "ok")
-                return redirect(url_for("cadastros.colaborador_ficha", colab_id=cur.lastrowid))
+                return redirect(url_for("cadastros.colaborador_ficha", colab_id=novo_id))
             except sqlite3.IntegrityError:
                 erros.append("Já existe um colaborador com essa matrícula.")
         for e in erros:
             flash(e, "erro")
     return render_template("colaborador_form.html", colab=dados, novo=True,
-                           setores=_setores(), cargos=_cargos())
+                           setores=_setores(), cargos=_cargos(db))
 
 
 @bp.route("/colaboradores/<int:colab_id>/editar", methods=["GET", "POST"])
@@ -605,8 +803,13 @@ def colaborador_novo():
 def colaborador_editar(colab_id):
     db = get_db()
     colab = db.execute("SELECT * FROM colaboradores WHERE id = ?", (colab_id,)).fetchone() or abort(404)
+    if not colab["matricula"]:
+        colab = dict(colab)
+        colab["matricula"] = str(colab_id)
     if request.method == "POST":
         dados, erros = _ler_colaborador(request.form)
+        if not dados.get("matricula"):
+            dados["matricula"] = colab["matricula"] or str(colab_id)
         dados["ativo"] = 1 if request.form.get("ativo") else 0
         dados["id"] = colab_id
         if not erros:
@@ -1103,6 +1306,9 @@ def usuarios_lista():
             (p for p in perfis_detalhados if p["chave"].casefold() == perfil_chave.casefold()),
             None,
         )
+    emails_recentes = db.execute(
+        "SELECT * FROM emails_enviados ORDER BY id DESC LIMIT 15"
+    ).fetchall()
     return render_template(
         "usuarios_lista.html",
         usuarios=usuarios,
@@ -1112,7 +1318,25 @@ def usuarios_lista():
         aba=aba,
         perfil_aberto=perfil_aberto,
         novo_perfil=novo_perfil,
+        status_email=email_service.descricao_configuracao(),
+        email_configurado=email_service.configurado(),
+        emails_recentes=emails_recentes,
     )
+
+
+@bp.post("/usuarios/testar-email")
+@admin_required
+def usuario_testar_email():
+    destinatario = (limpar(request.form.get("email_teste")) or (g.usuario["email"] or "")).strip().lower()
+    if not email_service.email_valido(destinatario):
+        flash("Informe um endereço de e-mail válido para enviar o teste.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista"))
+    ok, erro = email_service.enviar_email_teste(destinatario, nome_solicitante=g.usuario["nome"])
+    if ok:
+        flash(f"E-mail de teste enviado com sucesso para {destinatario}!", "ok")
+    else:
+        flash(f"Falha ao enviar e-mail de teste para {destinatario}: {erro}", "erro")
+    return redirect(url_for("cadastros.usuarios_lista"))
 
 
 @bp.post("/usuarios/perfis/novo")
@@ -1185,23 +1409,40 @@ def perfil_remover(chave):
 def usuario_novo():
     db = get_db()
     perfis_dict = obter_perfis_dict(db)
-    dados = {"perfil": "almoxarifado"}
+    dados = {"perfil": "almoxarifado", "email": "", "receber_notificacoes": 1}
     if request.method == "POST":
-        dados = {"nome": limpar(request.form.get("nome")), "login": limpar(request.form.get("login")),
-                 "perfil": request.form.get("perfil")}
+        email = (limpar(request.form.get("email")) or "").lower() or None
+        receber_notif = 1 if request.form.get("receber_notificacoes") else 0
+        dados = {
+            "nome": limpar(request.form.get("nome")),
+            "login": limpar(request.form.get("login")),
+            "email": email,
+            "receber_notificacoes": receber_notif,
+            "perfil": request.form.get("perfil"),
+        }
         senha = request.form.get("senha", "")
         erro = _senha_valida(senha, request.form.get("confirmacao", ""))
         if not dados["nome"] or not dados["login"]:
             erro = "Informe nome e login."
         elif dados["perfil"] not in perfis_dict:
             erro = "Perfil inválido."
+        elif email and not email_service.email_valido(email):
+            erro = "Informe um endereço de e-mail válido."
         if erro:
             flash(erro, "erro")
         else:
             try:
                 db.execute(
-                    "INSERT INTO usuarios (nome, login, senha_hash, perfil) VALUES (?, ?, ?, ?)",
-                    (dados["nome"], dados["login"], generate_password_hash(senha), dados["perfil"]))
+                    "INSERT INTO usuarios (nome, login, email, receber_notificacoes, senha_hash, perfil) VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        dados["nome"],
+                        dados["login"],
+                        dados["email"],
+                        dados["receber_notificacoes"],
+                        generate_password_hash(senha),
+                        dados["perfil"],
+                    ),
+                )
                 flash("Usuário criado.", "ok")
                 return redirect(url_for("cadastros.usuarios_lista"))
             except sqlite3.IntegrityError:
@@ -1220,27 +1461,51 @@ def usuario_editar(uid):
         ativo = 1 if request.form.get("ativo") else 0
         nome = limpar(request.form.get("nome"))
         novo_login = limpar(request.form.get("login")) or u["login"]
+        email = (limpar(request.form.get("email")) or "").lower() or None
+        receber_notif = 1 if request.form.get("receber_notificacoes") else 0
         senha = request.form.get("senha", "")
         erro = None
         if not nome or not novo_login or perfil not in perfis_dict:
             erro = "Informe o nome, o login e um perfil válido."
+        elif email and not email_service.email_valido(email):
+            erro = "Informe um endereço de e-mail válido."
         elif uid == g.usuario["id"] and (perfil != "admin" or not ativo):
             erro = "Você não pode remover seu próprio acesso de administrador."
         elif senha:
             erro = _senha_valida(senha, request.form.get("confirmacao", ""))
         if erro:
             flash(erro, "erro")
-            u = {"id": uid, "nome": nome, "login": novo_login, "perfil": perfil, "ativo": ativo}
+            u = {
+                "id": uid,
+                "nome": nome,
+                "login": novo_login,
+                "email": email,
+                "receber_notificacoes": receber_notif,
+                "perfil": perfil,
+                "ativo": ativo,
+            }
         else:
             try:
-                db.execute("UPDATE usuarios SET nome = ?, login = ?, perfil = ?, ativo = ? WHERE id = ?",
-                           (nome, novo_login, perfil, ativo, uid))
+                db.execute(
+                    "UPDATE usuarios SET nome = ?, login = ?, email = ?, receber_notificacoes = ?, perfil = ?, ativo = ? WHERE id = ?",
+                    (nome, novo_login, email, receber_notif, perfil, ativo, uid),
+                )
                 if senha:
-                    db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
-                               (generate_password_hash(senha), uid))
+                    db.execute(
+                        "UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+                        (generate_password_hash(senha), uid),
+                    )
                 flash("Usuário atualizado com sucesso.", "ok")
                 return redirect(url_for("cadastros.usuarios_lista"))
             except sqlite3.IntegrityError:
                 flash("Esse login já está em uso por outro usuário.", "erro")
-                u = {"id": uid, "nome": nome, "login": novo_login, "perfil": perfil, "ativo": ativo}
+                u = {
+                    "id": uid,
+                    "nome": nome,
+                    "login": novo_login,
+                    "email": email,
+                    "receber_notificacoes": receber_notif,
+                    "perfil": perfil,
+                    "ativo": ativo,
+                }
     return render_template("usuario_form.html", u=u, novo=False, PERFIS=perfis_dict, SENHA_MIN=SENHA_MIN)

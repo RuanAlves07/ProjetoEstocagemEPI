@@ -8,7 +8,13 @@
   <form method="post" class="formulario">
     {{ csrf() }}
     <label>Login do gestor <input name="login" autofocus required autocomplete="username"></label>
-    <label>Senha <input name="senha" type="password" required autocomplete="current-password"></label>
+    <label>
+      <span style="display:flex;justify-content:space-between;align-items:baseline;gap:.5rem">
+        <span>Senha</span>
+        <a href="{{ url_for('auth.esqueci_senha', origem='gestor') }}" style="font-size:.84rem;font-weight:600">Esqueceu a senha?</a>
+      </span>
+      <input name="senha" type="password" required autocomplete="current-password">
+    </label>
     <button class="btn primario">Entrar no Formulário do Gestor</button>
   </form>
 </div>

@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Redefinir senha{% endblock %}
+{% block conteudo %}
+<div class="cartao estreito-card">
+  <h1 style="margin-top:0">🔐 Redefinir senha</h1>
+
+  {% if email_mascarado %}
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.75rem 1rem;margin:.5rem 0 1rem;font-size:.92rem;color:#1e3a8a">
+    <div><strong>E-mail de destino confirmado:</strong></div>
+    <div style="font-family:monospace;font-size:1.05rem;font-weight:700;margin-top:.2rem;letter-spacing:.5px">{{ email_mascarado }}</div>
+    <small style="display:block;margin-top:.25rem;color:#475569">
+      Por segurança, exibimos apenas as 2 letras iniciais e as 2 letras finais do endereço cadastrado.
+    </small>
+  </div>
+  {% endif %}
+
+  <form method="post" class="formulario">
+    {{ csrf() }}
+    <input type="hidden" name="origem" value="{{ origem or '' }}">
+    {% if token %}
+      <input type="hidden" name="token" value="{{ token }}">
+      <input type="hidden" name="login" value="{{ login or '' }}">
+    {% else %}
+      <label>Login do usuário
+        <input name="login" required autocomplete="username" value="{{ login or '' }}">
+      </label>
+      <label>Código de 6 dígitos enviado por e-mail
+        <input name="codigo" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+               placeholder="000000" autofocus
+               style="font-family:monospace;font-size:1.2rem;letter-spacing:4px;font-weight:700">
+        <small class="suave">Verifique sua caixa de entrada (ou clique diretamente no botão recebido no e-mail).</small>
+      </label>
+    {% endif %}
+
+    <label>Nova senha (mín. {{ SENHA_MIN }} caracteres)
+      <input name="senha" type="password" required minlength="{{ SENHA_MIN }}" autocomplete="new-password" {{ 'autofocus' if token }}>
+    </label>
+    <label>Confirmar nova senha
+      <input name="confirmacao" type="password" required minlength="{{ SENHA_MIN }}" autocomplete="new-password">
+    </label>
+
+    <div class="acoes">
+      <button class="btn primario">Salvar nova senha</button>
+      <a class="btn" href="{{ url_for('auth.esqueci_senha', login=login, origem=origem) }}">Reenviar código</a>
+    </div>
+  </form>
+</div>
+
+<p style="text-align:center;margin-top:.75rem">
+  <a href="{{ url_for('auth.login_gestor' if origem == 'gestor' else 'auth.login') }}">← Voltar para o login</a>
+</p>
+{% endblock %}

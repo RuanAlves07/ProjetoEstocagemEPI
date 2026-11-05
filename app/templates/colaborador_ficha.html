@@ -14,8 +14,8 @@
 
 <section class="cartao pedido-cabecalho" style="margin-bottom:1rem">
   <div class="dados-pedido">
-    <div><span class="suave">Matrícula</span><strong>{{ colab.matricula or '—' }}</strong></div>
-    <div><span class="suave">Setor / Obra</span><strong>{{ colab.setor or '—' }}</strong></div>
+    <div><span class="suave">Matrícula</span><strong>{{ colab.matricula or colab.id }}</strong></div>
+    <div><span class="suave">Setor</span><strong>{{ colab.setor or '—' }}</strong></div>
     <div>
       <span class="suave">Cargo / Função</span>
       <strong>

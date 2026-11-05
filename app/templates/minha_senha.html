@@ -3,16 +3,23 @@
 {% block titulo %}Meu acesso{% endblock %}
 {% block conteudo %}
 <div class="cartao estreito-card">
-  <h1>Alterar meu login ou senha</h1>
+  <h1>Alterar meu login, e-mail ou senha</h1>
   <form method="post" class="formulario">
     {{ csrf() }}
     <label>Meu login de acesso
       <input name="login" required autocomplete="username" value="{{ usuario.login }}">
     </label>
+    <label>Meu e-mail (para "Esqueceu a senha?" e notificações de pedidos)
+      <input name="email" type="email" autocomplete="email" value="{{ usuario.email or '' }}" placeholder="nome@abecker.com.br">
+    </label>
+    <label class="check">
+      <input type="checkbox" name="receber_notificacoes" value="1" {{ 'checked' if usuario.receber_notificacoes is none or usuario.receber_notificacoes }}>
+      Receber notificações por e-mail sobre o andamento e listas dos pedidos
+    </label>
     <label>Senha atual (obrigatória para confirmar alterações)
       <input name="atual" type="password" required autocomplete="current-password">
     </label>
-    <label>Nova senha (mín. 8 caracteres — deixe em branco se quiser alterar apenas o login)
+    <label>Nova senha (mín. 8 caracteres — deixe em branco se não quiser trocar a senha)
       <input name="senha" type="password" minlength="8" autocomplete="new-password">
     </label>
     <label>Confirmar nova senha

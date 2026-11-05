@@ -1,11 +1,13 @@
 CREATE TABLE IF NOT EXISTS usuarios (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome        TEXT NOT NULL,
-    login       TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    senha_hash  TEXT NOT NULL,
-    perfil      TEXT NOT NULL,
-    ativo       INTEGER NOT NULL DEFAULT 1,
-    criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome                  TEXT NOT NULL,
+    login                 TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    email                 TEXT,
+    receber_notificacoes  INTEGER NOT NULL DEFAULT 1,
+    senha_hash            TEXT NOT NULL,
+    perfil                TEXT NOT NULL,
+    ativo                 INTEGER NOT NULL DEFAULT 1,
+    criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS perfis_acesso (
@@ -20,6 +22,7 @@ CREATE TABLE IF NOT EXISTS perfis_acesso (
 CREATE TABLE IF NOT EXISTS epis (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     nome                  TEXT NOT NULL COLLATE NOCASE,
+    nome_formulario       TEXT COLLATE NOCASE,
     tamanho               TEXT,
     categoria             TEXT,
     ca                    TEXT,
@@ -103,31 +106,33 @@ CREATE TABLE IF NOT EXISTS configuracoes (
 -- Pedidos de EPI vindos do Microsoft Forms (ou lançados à mão).
 -- Fluxo: novo -> (pendente) -> em_separacao -> pronto -> retirado   |   cancelado
 CREATE TABLE IF NOT EXISTS pedidos (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    origem_id           TEXT UNIQUE,     -- id da resposta no Forms (evita duplicar pedidos)
-    solicitante         TEXT NOT NULL,   -- "Nome" do formulário
-    local_destino       TEXT,
-    motivo              TEXT,
-    observacao          TEXT,
-    colaborador_id      INTEGER REFERENCES colaboradores (id),
-    status              TEXT NOT NULL DEFAULT 'novo'
-                        CHECK (status IN ('novo', 'pendente', 'em_separacao', 'pronto', 'retirado', 'cancelado')),
-    dados_brutos        TEXT,            -- JSON recebido, para auditoria
-    recebido_em         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-    iniciado_por        INTEGER REFERENCES usuarios (id),
-    iniciado_em         TEXT,
-    finalizado_por      INTEGER REFERENCES usuarios (id),
-    finalizado_em       TEXT,
-    ressalva_observacao TEXT,            -- justificativa quando finalizado com ressalva (itens não atendidos)
-    pedido_origem_id    INTEGER REFERENCES pedidos (id),  -- complemento: itens que faltaram no pedido de origem
-    grupo               TEXT,            -- grupo das movimentações geradas na finalização
-    retirado_por_nome   TEXT,
-    retirado_descricao  TEXT,
-    retirado_em         TEXT,
-    entregue_por        INTEGER REFERENCES usuarios (id),
-    cancelado_motivo    TEXT,
-    cancelado_por       INTEGER REFERENCES usuarios (id),
-    cancelado_em        TEXT
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    origem_id              TEXT UNIQUE,     -- id da resposta no Forms (evita duplicar pedidos)
+    solicitante            TEXT NOT NULL,   -- "Nome" do formulário
+    local_destino          TEXT,
+    motivo                 TEXT,
+    observacao             TEXT,
+    colaborador_id         INTEGER REFERENCES colaboradores (id),
+    status                 TEXT NOT NULL DEFAULT 'novo'
+                           CHECK (status IN ('novo', 'pendente', 'em_separacao', 'pronto', 'retirado', 'cancelado')),
+    dados_brutos           TEXT,            -- JSON recebido, para auditoria
+    recebido_em            TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    iniciado_por           INTEGER REFERENCES usuarios (id),
+    iniciado_em            TEXT,
+    finalizado_por         INTEGER REFERENCES usuarios (id),
+    finalizado_em          TEXT,
+    ressalva_observacao    TEXT,            -- justificativa quando finalizado com ressalva (itens não atendidos)
+    pedido_origem_id       INTEGER REFERENCES pedidos (id),  -- complemento: itens que faltaram no pedido de origem
+    grupo                  TEXT,            -- grupo das movimentações geradas na finalização
+    retirado_por_nome      TEXT,
+    retirado_descricao     TEXT,
+    retirado_em            TEXT,
+    entregue_por           INTEGER REFERENCES usuarios (id),
+    cancelado_motivo       TEXT,
+    cancelado_por          INTEGER REFERENCES usuarios (id),
+    cancelado_em           TEXT,
+    solicitante_usuario_id INTEGER REFERENCES usuarios (id),
+    solicitante_email      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pedido_itens (
@@ -215,4 +220,29 @@ CREATE TABLE IF NOT EXISTS obras (
     observacao  TEXT,
     ativo       INTEGER NOT NULL DEFAULT 1,
     criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Tokens/códigos temporários de recuperação de senha ("Esqueceu a senha?")
+CREATE TABLE IF NOT EXISTS recuperacao_senha (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id      INTEGER NOT NULL REFERENCES usuarios (id),
+    token_hash      TEXT NOT NULL UNIQUE,
+    codigo_hash     TEXT NOT NULL,
+    expira_em       TEXT NOT NULL,
+    usado_em        TEXT,
+    ip_solicitante  TEXT,
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rec_senha_usuario ON recuperacao_senha (usuario_id);
+
+-- Histórico/auditoria de disparos de e-mail
+CREATE TABLE IF NOT EXISTS emails_enviados (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    destinatarios  TEXT NOT NULL,
+    assunto        TEXT NOT NULL,
+    tipo           TEXT NOT NULL DEFAULT 'geral',
+    status         TEXT NOT NULL DEFAULT 'enviado',
+    erro           TEXT,
+    criado_em      TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );

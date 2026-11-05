@@ -14,6 +14,8 @@ _TABELAS_COM_ID = (
     "pedido_itens",
     "colaborador_epis_solicitados",
     "obras",
+    "recuperacao_senha",
+    "emails_enviados",
 )
 
 
@@ -285,14 +287,18 @@ def _migrar(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mov_pedido ON movimentacoes (pedido_id)")
 
     colunas_epis = {r["name"] for r in conn.execute("PRAGMA table_info(epis)")}
+    if "nome_formulario" not in colunas_epis:
+        conn.execute("ALTER TABLE epis ADD COLUMN nome_formulario TEXT COLLATE NOCASE")
     if "tamanho" not in colunas_epis:
         conn.execute("ALTER TABLE epis ADD COLUMN tamanho TEXT")
+    if "ca" not in colunas_epis:
+        conn.execute("ALTER TABLE epis ADD COLUMN ca TEXT")
     if "imagem_url" not in colunas_epis:
         conn.execute("ALTER TABLE epis ADD COLUMN imagem_url TEXT")
     if "exibir_no_forms" not in colunas_epis:
         conn.execute("ALTER TABLE epis ADD COLUMN exibir_no_forms INTEGER NOT NULL DEFAULT 1")
 
-    # Garante que a tabela epis permita o mesmo nome com tamanhos diferentes (ex.: Botina 40 e Botina 41)
+    # Garante que a tabela epis permita o mesmo nome com tamanhos ou CAs diferentes
     info_epis = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'epis'"
     ).fetchone()
@@ -302,6 +308,7 @@ def _migrar(conn):
             CREATE TABLE epis_novo (
                 id                    INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome                  TEXT NOT NULL COLLATE NOCASE,
+                nome_formulario       TEXT COLLATE NOCASE,
                 tamanho               TEXT,
                 categoria             TEXT,
                 ca                    TEXT,
@@ -314,21 +321,44 @@ def _migrar(conn):
                 ativo                 INTEGER NOT NULL DEFAULT 1,
                 criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             );
-            INSERT INTO epis_novo (id, nome, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo, prazo_reposicao_dias, imagem_url, exibir_no_forms, ativo, criado_em)
-            SELECT id, nome, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo, prazo_reposicao_dias, imagem_url, exibir_no_forms, ativo, criado_em FROM epis;
+            INSERT INTO epis_novo (id, nome, nome_formulario, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo, prazo_reposicao_dias, imagem_url, exibir_no_forms, ativo, criado_em)
+            SELECT id, nome, nome_formulario, tamanho, categoria, ca, validade_ca, unidade, estoque_minimo, prazo_reposicao_dias, imagem_url, exibir_no_forms, ativo, criado_em FROM epis;
             DROP TABLE epis;
             ALTER TABLE epis_novo RENAME TO epis;
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_tamanho ON epis(nome, COALESCE(tamanho, ''));
+            DROP INDEX IF EXISTS idx_epis_nome_tamanho;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_tam_ca ON epis(nome, COALESCE(tamanho, ''), COALESCE(ca, ''));
             PRAGMA foreign_keys = ON;
         """)
     else:
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_tamanho ON epis(nome, COALESCE(tamanho, ''))")
+        conn.execute("DROP INDEX IF EXISTS idx_epis_nome_tamanho")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_epis_nome_tam_ca ON epis(nome, COALESCE(tamanho, ''), COALESCE(ca, ''))")
+
+    # Garante que todo colaborador possua matrícula vinculada automaticamente como seu ID principal
+    usadas_mat = {
+        str(r["matricula"]).strip()
+        for r in conn.execute("SELECT matricula FROM colaboradores WHERE matricula IS NOT NULL AND trim(matricula) != ''")
+    }
+    sem_mat = conn.execute(
+        "SELECT id FROM colaboradores WHERE matricula IS NULL OR trim(matricula) = '' ORDER BY id"
+    ).fetchall()
+    for r in sem_mat:
+        cand = str(r["id"])
+        n = r["id"]
+        while cand in usadas_mat:
+            n += 1
+            cand = str(n)
+        conn.execute("UPDATE colaboradores SET matricula = ? WHERE id = ?", (cand, r["id"]))
+        usadas_mat.add(cand)
 
     colunas_pedidos = {r["name"] for r in conn.execute("PRAGMA table_info(pedidos)")}
     if "ressalva_observacao" not in colunas_pedidos:
         conn.execute("ALTER TABLE pedidos ADD COLUMN ressalva_observacao TEXT")
     if "pedido_origem_id" not in colunas_pedidos:
         conn.execute("ALTER TABLE pedidos ADD COLUMN pedido_origem_id INTEGER REFERENCES pedidos (id)")
+    if "solicitante_usuario_id" not in colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN solicitante_usuario_id INTEGER REFERENCES usuarios (id)")
+    if "solicitante_email" not in colunas_pedidos:
+        conn.execute("ALTER TABLE pedidos ADD COLUMN solicitante_email TEXT")
 
     # Remove o CHECK fixo da coluna perfil em bancos SQLite antigos para permitir perfis personalizados
     info_usu = conn.execute(
@@ -338,13 +368,15 @@ def _migrar(conn):
         conn.executescript("""
             PRAGMA foreign_keys = OFF;
             CREATE TABLE usuarios_novo (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome        TEXT NOT NULL,
-                login       TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                senha_hash  TEXT NOT NULL,
-                perfil      TEXT NOT NULL,
-                ativo       INTEGER NOT NULL DEFAULT 1,
-                criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome                  TEXT NOT NULL,
+                login                 TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                email                 TEXT,
+                receber_notificacoes  INTEGER NOT NULL DEFAULT 1,
+                senha_hash            TEXT NOT NULL,
+                perfil                TEXT NOT NULL,
+                ativo                 INTEGER NOT NULL DEFAULT 1,
+                criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             );
             INSERT INTO usuarios_novo (id, nome, login, senha_hash, perfil, ativo, criado_em)
             SELECT id, nome, login, senha_hash, perfil, ativo, criado_em FROM usuarios;
@@ -352,6 +384,12 @@ def _migrar(conn):
             ALTER TABLE usuarios_novo RENAME TO usuarios;
             PRAGMA foreign_keys = ON;
         """)
+
+    colunas_usu = {r["name"] for r in conn.execute("PRAGMA table_info(usuarios)")}
+    if "email" not in colunas_usu:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN email TEXT")
+    if "receber_notificacoes" not in colunas_usu:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN receber_notificacoes INTEGER NOT NULL DEFAULT 1")
 
 
 def init_app(app):
