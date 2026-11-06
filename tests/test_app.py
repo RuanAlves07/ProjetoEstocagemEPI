@@ -859,7 +859,7 @@ class TestEstoque(Base):
         html = r_perfil.get_data(as_text=True)
         self.assertIn("Meu Perfil", html)
         self.assertIn("Foto do Perfil", html)
-        self.assertIn("Notificações Instantâneas (Web Push)", html)
+        self.assertIn("Notificações de navegador", html)
         self.assertIn("Ativar Notificações neste Aparelho", html)
 
         # No header não deve haver o botão solto "🔔 Notificações"
