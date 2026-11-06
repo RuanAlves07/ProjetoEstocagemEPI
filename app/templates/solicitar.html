@@ -227,7 +227,7 @@
       {% if cfg_form.pergunta_5_subtitulo %}
       <p class="subtitulo-pergunta">{{ cfg_form.pergunta_5_subtitulo }}</p>
       {% endif %}
-      <p class="subtitulo-pergunta">Marque a peça e escolha a quantidade (até {{ max_unidades }}). Camisetas, calças e bermudas têm um tamanho para cada unidade.</p>
+      <p class="subtitulo-pergunta">Marque a peça e escolha a quantidade (até {{ max_unidades }}). O tamanho selecionado se aplica a todas as unidades da peça.</p>
       {% set vest_marcadas = form_dados.get('vestimento', ()) %}
       {% set tem_img_vest = vestimentas|selectattr('imagem_url')|list|length > 0 %}
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_vest else 'lista-opcoes' }}">
@@ -250,8 +250,9 @@
             <span class="tag-recomendado" {{ '' if eh_rec else 'hidden' }}>(recomendado pelo cargo)</span>
             {% if modo_gestor %}<span class="tag-fora-funcao" {{ '' if colab_sel_id and not eh_rec else 'hidden' }}>(fora da função)</span>{% endif %}
           </span>
-          {# Quantidade (1 a 3) e, para peças com tamanho, um tamanho por unidade #}
+          {# Quantidade (1 a 3) e um único tamanho para as unidades solicitadas #}
           {% set qtd_sel = form_dados.get('vest_qtd', {}).get(v.id, 1) %}
+          {% set tam_sel = form_dados.get('vest_tam', {}).get(v.id) or form_dados.get('vest_tam', {}).get(v.id ~ '_1') or '' %}
           <span class="unidades-vest" data-vid="{{ v.id }}" hidden onclick="event.preventDefault()">
             <span class="campo-unid">Quantidade
               <select name="qtd_vest_{{ v.id }}" class="sel-qtd-vest" disabled>
@@ -259,14 +260,12 @@
               </select>
             </span>
             {% if tipo_uniforme(v.nome) %}
-            {% for n in range(1, max_unidades + 1) %}
-            <span class="campo-unid tam-unid" data-n="{{ n }}">Tamanho{% if max_unidades > 1 %} da {{ n }}ª{% endif %}
-              <select name="tam_vest_{{ v.id }}_{{ n }}" disabled>
+            <span class="campo-unid tam-unid">Tamanho
+              <select name="tam_vest_{{ v.id }}" class="sel-tam-vest" disabled>
                 <option value="">—</option>
-                {% for t in tamanhos %}<option value="{{ t }}" {{ 'selected' if form_dados.get('vest_tam', {}).get(v.id ~ '_' ~ n) == t }}>{{ t }}</option>{% endfor %}
+                {% for t in tamanhos %}<option value="{{ t }}" {{ 'selected' if tam_sel == t }}>{{ t }}</option>{% endfor %}
               </select>
             </span>
-            {% endfor %}
             {% endif %}
           </span>
         </label>
@@ -521,14 +520,12 @@ function ampliarImagemEpi(src, nome) {
     const ativo = chk.checked;
     painel.hidden = !ativo;
     const selQtd = painel.querySelector(".sel-qtd-vest");
-    selQtd.disabled = !ativo;
-    const qtd = Number(selQtd.value) || 1;
-    for (const campo of painel.querySelectorAll(".tam-unid")) {
-      const usado = ativo && Number(campo.dataset.n) <= qtd;
-      campo.hidden = !usado;
-      const sel = campo.querySelector("select");
-      sel.disabled = !usado;
-      sel.required = usado;
+    if (selQtd) selQtd.disabled = !ativo;
+    const selTam = painel.querySelector(".sel-tam-vest");
+    if (selTam) {
+      selTam.disabled = !ativo;
+      selTam.required = ativo;
+      if (!ativo) selTam.value = "";
     }
   }
   const paineisVest = Array.from(form.querySelectorAll(".unidades-vest"));

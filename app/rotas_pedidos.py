@@ -321,8 +321,8 @@ def _formulario_solicitacao(modo_gestor):
         todos_marcados = lista_epi + lista_vest
         calcados_sel = {pedidos.tipo_calcado(x) for x in todos_marcados if pedidos.tipo_calcado(x)}
 
-        # Vestimentas: de 1 a 3 unidades por peça; peças com tamanho (camiseta, calça, bermuda) têm
-        # um tamanho para cada unidade, e cada unidade vira uma linha separada no pedido
+        # Vestimentas: de 1 a 3 unidades por peça; um único tamanho selecionado para a peça,
+        # que se aplica a todas as unidades solicitadas
         unidades_vest, vest_qtd, vest_tam, erro_vest = [], {}, {}, None
         for nome_v in lista_vest:
             vid = id_vest_por_nome.get(nome_v)
@@ -335,12 +335,18 @@ def _formulario_solicitacao(modo_gestor):
                 qtd = 1
             vest_qtd[vid] = qtd
             com_tamanho = pedidos.tipo_uniforme(nome_v) is not None
+            tam = ""
+            if com_tamanho:
+                tam = (
+                    limpar(request.form.get(f"tam_vest_{vid}"))
+                    or limpar(request.form.get(f"tam_vest_{vid}_1"))
+                    or ""
+                )
+                vest_tam[vid] = tam
+                vest_tam[f"{vid}_1"] = tam
+                if tam not in tamanhos:
+                    erro_vest = erro_vest or f"Selecione o tamanho de {nome_v}."
             for n in range(1, qtd + 1):
-                tam = (limpar(request.form.get(f"tam_vest_{vid}_{n}")) or "") if com_tamanho else ""
-                vest_tam[f"{vid}_{n}"] = tam
-                if com_tamanho and tam not in tamanhos:
-                    erro_vest = erro_vest or (
-                        f"Selecione o tamanho de {nome_v}" + (f" (unidade {n})." if qtd > 1 else "."))
                 unidades_vest.append({"nome": nome_v, "tamanho": tam})
 
         permitidos = padrao_colab.get(colab["id"], set()) if colab else set()

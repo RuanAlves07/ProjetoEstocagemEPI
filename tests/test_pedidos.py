@@ -860,26 +860,28 @@ class TestCalcadosEVestimentas(BasePedidos):
     def test_ate_tres_unidades_cada_uma_separada(self):
         r = self.enviar(vestimento=["Camiseta M", "Calça Brim", "Bermuda Brim"], **{
             f"qtd_vest_{self.camiseta}": "3",
-            f"tam_vest_{self.camiseta}_1": "G", f"tam_vest_{self.camiseta}_2": "GG", f"tam_vest_{self.camiseta}_3": "M",
-            f"qtd_vest_{self.calca}": "1", f"tam_vest_{self.calca}_1": "G1",
-            f"qtd_vest_{self.bermuda}": "2", f"tam_vest_{self.bermuda}_1": "G", f"tam_vest_{self.bermuda}_2": "G",
+            f"tam_vest_{self.camiseta}": "G",
+            f"qtd_vest_{self.calca}": "1",
+            f"tam_vest_{self.calca}": "G1",
+            f"qtd_vest_{self.bermuda}": "2",
+            f"tam_vest_{self.bermuda}": "G",
         })
         self.assertIn("enviada com sucesso", r.get_data(as_text=True))
         with self.app.app_context():
             p = pedidos.carregar(get_db(), status=("novo",))[0]
         linhas = sorted((i["epi_id"], i["quantidade"], i["tamanho"]) for i in p["itens"])
         self.assertEqual(linhas, sorted([
-            (self.camiseta, 1, "G"), (self.camiseta, 1, "GG"), (self.camiseta, 1, "M"),
+            (self.camiseta, 1, "G"), (self.camiseta, 1, "G"), (self.camiseta, 1, "G"),
             (self.calca, 1, "G1"), (self.bermuda, 1, "G"), (self.bermuda, 1, "G"),
         ]))
 
     def test_valida_quantidade_e_tamanho_de_cada_unidade(self):
         r = self.enviar(vestimento=["Camiseta M"], **{f"qtd_vest_{self.camiseta}": "4",
-                                                      f"tam_vest_{self.camiseta}_1": "G"})
+                                                      f"tam_vest_{self.camiseta}": "G"})
         self.assertIn("deve ser de 1 a 3", r.get_data(as_text=True))
         r = self.enviar(vestimento=["Camiseta M"], **{f"qtd_vest_{self.camiseta}": "2",
-                                                      f"tam_vest_{self.camiseta}_1": "G"})
-        self.assertIn("Selecione o tamanho de Camiseta M (unidade 2)", r.get_data(as_text=True))
+                                                      f"tam_vest_{self.camiseta}": ""})
+        self.assertIn("Selecione o tamanho de Camiseta M.", r.get_data(as_text=True))
         # Ao voltar com erro, o que foi escolhido continua marcado
         html = r.get_data(as_text=True)
         self.assertIn(f'name="qtd_vest_{self.camiseta}"', html)
