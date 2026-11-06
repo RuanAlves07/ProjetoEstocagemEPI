@@ -410,8 +410,8 @@ tr.linha-analisar { background: #fffdf5; }
   .opcao-item input[type=checkbox], .opcao-item input[type=radio], .matriz-tamanhos input[type=radio] { width: 1.3rem; height: 1.3rem; }
   .matriz-tamanhos th, .matriz-tamanhos td { padding: .45rem .28rem; font-size: .85rem; }
 
-  /* Dock de novos pedidos posicionado acima da barra mobile inferior */
-  #dock-pedidos { right: .6rem; left: .6rem; bottom: 4.3rem; width: auto; max-width: none; max-height: 62vh; }
+  /* Notificação interna de novos pedidos (dock/comanda flutuante) desativada no mobile */
+  #dock-pedidos { display: none !important; }
   .assinaturas { flex-direction: column; gap: 2rem; }
 }
 

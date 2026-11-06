@@ -104,7 +104,12 @@ document.addEventListener('submit', function (ev) {
   const tituloOriginal = document.title;
   let anterior = null;
 
+  function ehMobile() {
+    return window.matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  }
+
   function bip() {
+    if (ehMobile()) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       [880, 1175].forEach(function (freq, i) {
@@ -124,9 +129,13 @@ document.addEventListener('submit', function (ev) {
         const badgeMob = document.getElementById('badge-pedidos-mob');
         if (badgeMob) { badgeMob.textContent = d.a_atender; badgeMob.hidden = d.a_atender === 0; }
         if (dock) {
-          dock.hidden = d.novos === 0;
-          if (d.novos > 0) { corpo.innerHTML = d.html; qtd.textContent = d.novos; }
-          if (anterior !== null && d.novos > anterior) { bip(); dock.classList.remove('minimizado'); }
+          if (ehMobile()) {
+            dock.hidden = true;
+          } else {
+            dock.hidden = d.novos === 0;
+            if (d.novos > 0) { corpo.innerHTML = d.html; qtd.textContent = d.novos; }
+            if (anterior !== null && d.novos > anterior) { bip(); dock.classList.remove('minimizado'); }
+          }
         }
         document.title = d.novos > 0 ? '(' + d.novos + ') ' + tituloOriginal : tituloOriginal;
         anterior = d.novos;
@@ -136,6 +145,9 @@ document.addEventListener('submit', function (ev) {
 
   const minimizar = document.getElementById('dock-min');
   if (minimizar) minimizar.addEventListener('click', function () { dock.classList.toggle('minimizado'); });
+  window.addEventListener('resize', function () {
+    if (dock && ehMobile()) dock.hidden = true;
+  });
   atualizar();
   setInterval(atualizar, 15000);
 })();
