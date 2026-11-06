@@ -851,6 +851,53 @@ class TestEstoque(Base):
             from app.db import get_db
             self.assertIsNone(get_db().execute("SELECT id FROM pedidos WHERE id = ?", (ped_id,)).fetchone())
 
+    def test_meu_perfil_foto_e_notificacoes(self):
+        import io
+        # 1. Acessa /meu-perfil e /minha-senha
+        r_perfil = self.c.get("/meu-perfil")
+        self.assertEqual(r_perfil.status_code, 200)
+        html = r_perfil.get_data(as_text=True)
+        self.assertIn("Meu Perfil", html)
+        self.assertIn("Foto do Perfil", html)
+        self.assertIn("Notificações Instantâneas (Web Push)", html)
+        self.assertIn("Ativar Notificações neste Aparelho", html)
+
+        # No header não deve haver o botão solto "🔔 Notificações"
+        self.assertNotIn('class="btn-push-toggle btn pequeno nao-imprimir"', html)
+
+        # 2. Faz upload de uma foto de perfil válida (PNG)
+        png_1x1 = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+            b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        r_post = self.post("/meu-perfil", {
+            "login": "admin",
+            "email": "admin@empresa.com",
+            "receber_notificacoes": "1",
+            "atual": "senha1234",
+            "foto_perfil": (io.BytesIO(png_1x1), "foto.png"),
+        }, follow_redirects=True, content_type="multipart/form-data")
+        self.assertEqual(r_post.status_code, 200)
+        html_salvo = r_post.get_data(as_text=True)
+        self.assertIn("Perfil atualizado com sucesso", html_salvo)
+        self.assertIn("avatar-header", html_salvo)
+        self.assertIn("data:image/png;base64,", html_salvo)
+
+        # 3. Remover foto de perfil
+        r_rem = self.post("/meu-perfil", {
+            "login": "admin",
+            "email": "admin@empresa.com",
+            "receber_notificacoes": "1",
+            "atual": "senha1234",
+            "remover_foto": "1",
+        }, follow_redirects=True)
+        self.assertEqual(r_rem.status_code, 200)
+        with self.app.app_context():
+            from app.db import get_db
+            u = get_db().execute("SELECT foto_perfil FROM usuarios WHERE login = 'admin'").fetchone()
+            self.assertIsNone(u["foto_perfil"])
+
 
 if __name__ == "__main__":
     unittest.main()

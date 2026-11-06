@@ -52,8 +52,14 @@
       </div>
     </details>
     {% endif %}
-    <button type="button" class="btn-push-toggle btn pequeno nao-imprimir" title="Notificações no celular" style="display:inline-flex;align-items:center;gap:.25rem">🔔 Notificações</button>
-    <a href="{{ url_for('auth.minha_senha') }}" title="Alterar login ou senha">{{ usuario['nome'] }}</a>
+    <a href="{{ url_for('auth.meu_perfil') }}" class="link-perfil-header" title="Meu Perfil">
+      {% if usuario.foto_perfil %}
+      <img src="{{ usuario.foto_perfil }}" alt="{{ usuario['nome'] }}" class="avatar-header">
+      {% else %}
+      <span class="avatar-header avatar-padrao">{{ (usuario['nome'] or 'U')[:1]|upper }}</span>
+      {% endif %}
+      <span class="nome-usuario-header">{{ usuario['nome'] }}</span>
+    </a>
     <form method="post" action="{{ url_for('auth.sair') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn link">Sair</button>

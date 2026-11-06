@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     login                 TEXT NOT NULL UNIQUE COLLATE NOCASE,
     email                 TEXT,
     receber_notificacoes  INTEGER NOT NULL DEFAULT 1,
+    foto_perfil           TEXT,
     senha_hash            TEXT NOT NULL,
     perfil                TEXT NOT NULL,
     ativo                 INTEGER NOT NULL DEFAULT 1,

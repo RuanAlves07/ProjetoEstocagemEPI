@@ -420,3 +420,105 @@ tr.linha-analisar { background: #fffdf5; }
   .indicadores { grid-template-columns: repeat(2, 1fr); }
   .tag-recomendado { display: inline-block; margin-top: .2rem; }
 }
+
+/* ==========================================================================
+   Avatar de Perfil no Header e Página Meu Perfil
+   ========================================================================== */
+.link-perfil-header {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+  padding: .2rem .55rem .2rem .25rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  transition: all .2s ease;
+}
+.link-perfil-header:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+.avatar-header {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  border: 2px solid #fff;
+}
+.avatar-header.avatar-padrao {
+  background: var(--cor-primaria, #0284c7);
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.nome-usuario-header {
+  font-size: .92rem;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perfil-card-container {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.perfil-cabecalho-bloco {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--cor-borda, #e2e8f0);
+  margin-bottom: 1.5rem;
+}
+.avatar-perfil-grande {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--cor-primaria, #0284c7);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #f1f5f9;
+}
+.avatar-perfil-grande.avatar-padrao {
+  background: var(--cor-primaria, #0284c7);
+  color: #fff;
+  font-size: 2.1rem;
+  font-weight: 700;
+}
+.perfil-secao {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--cor-borda, #e2e8f0);
+}
+.perfil-secao-titulo {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--cor-texto, #1e293b);
+  margin-bottom: .6rem;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.card-push-banner {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid var(--cor-primaria, #0284c7);
+  border-radius: 8px;
+  padding: .9rem 1.1rem;
+}
+

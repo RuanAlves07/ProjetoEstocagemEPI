@@ -391,6 +391,8 @@ def _migrar(conn):
         conn.execute("ALTER TABLE usuarios ADD COLUMN email TEXT")
     if "receber_notificacoes" not in colunas_usu:
         conn.execute("ALTER TABLE usuarios ADD COLUMN receber_notificacoes INTEGER NOT NULL DEFAULT 1")
+    if "foto_perfil" not in colunas_usu:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN foto_perfil TEXT")
 
     # Tabela de inscrições de notificações Web Push mobile
     conn.execute("""

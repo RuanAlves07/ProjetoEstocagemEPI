@@ -14,6 +14,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import email_service
 from .db import get_db
+from .estoque import ErroValidacao
+from . import pedidos
 from .util import limpar
 
 bp = Blueprint("auth", __name__)
@@ -585,14 +587,16 @@ def sair():
     return redirect(url_for("auth.login_gestor" if so_gestor else "auth.login"))
 
 
+@bp.route("/meu-perfil", methods=["GET", "POST"])
 @bp.route("/minha-senha", methods=["GET", "POST"])
-def minha_senha():
+def meu_perfil():
     db = get_db()
     if request.method == "POST":
         novo_login = limpar(request.form.get("login")) or g.usuario["login"]
         novo_email = (limpar(request.form.get("email")) or "").lower() or None
         receber_notif = 1 if request.form.get("receber_notificacoes") else 0
         senha_nova = request.form.get("senha", "")
+        remover_foto = request.form.get("remover_foto") == "1"
 
         if not check_password_hash(g.usuario["senha_hash"], request.form.get("atual", "")):
             flash("Senha atual incorreta.", "erro")
@@ -606,18 +610,33 @@ def minha_senha():
                 flash(erro, "erro")
             else:
                 try:
+                    foto_final = g.usuario["foto_perfil"] if "foto_perfil" in g.usuario.keys() else None
+                    if remover_foto:
+                        foto_final = None
+                    else:
+                        arq_foto = request.files.get("foto_perfil")
+                        b64_foto = request.form.get("foto_perfil_b64")
+                        if (arq_foto and getattr(arq_foto, "filename", "")) or (b64_foto and b64_foto.strip()):
+                            foto_final = pedidos.processar_imagem_epi(arq_foto, b64_foto)
+
                     db.execute(
-                        "UPDATE usuarios SET login = ?, email = ?, receber_notificacoes = ? WHERE id = ?",
-                        (novo_login, novo_email, receber_notif, g.usuario["id"]),
+                        "UPDATE usuarios SET login = ?, email = ?, receber_notificacoes = ?, foto_perfil = ? WHERE id = ?",
+                        (novo_login, novo_email, receber_notif, foto_final, g.usuario["id"]),
                     )
                     if senha_nova:
                         db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
                                    (generate_password_hash(senha_nova), g.usuario["id"]))
-                    flash("Dados de acesso e preferências de e-mail atualizados com sucesso.", "ok")
-                    return redirect(primeira_rota_permitida())
+                    g.usuario = db.execute("SELECT * FROM usuarios WHERE id = ?", (g.usuario["id"],)).fetchone()
+                    flash("Perfil atualizado com sucesso!", "ok")
+                    return redirect(url_for("auth.meu_perfil"))
                 except sqlite3.IntegrityError:
                     flash("Esse login já está em uso por outro usuário.", "erro")
-    return render_template("minha_senha.html")
+                except ErroValidacao as e:
+                    flash(str(e), "erro")
+    return render_template("meu_perfil.html")
+
+
+minha_senha = meu_perfil
 
 
 @bp.app_context_processor

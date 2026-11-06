@@ -149,9 +149,20 @@
         reg.pushManager.getSubscription().then(sub => {
           atualizarBotoesPush(Boolean(sub));
         });
+      } else {
+        atualizarBotoesPush(false);
       }
     }).catch(err => {
       console.warn("ServiceWorker não pôde ser registrado:", err);
+      atualizarBotoesPush(false);
+    });
+  } else {
+    document.querySelectorAll('.card-push-banner').forEach(b => {
+      const tag = b.querySelector('.status-push-tag');
+      if (tag) {
+        tag.textContent = '⚠️ Navegador não compatível com Web Push';
+        tag.className = 'status-push-tag badge vermelho';
+      }
     });
   }
 })();

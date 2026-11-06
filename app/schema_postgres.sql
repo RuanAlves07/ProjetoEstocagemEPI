@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     login                 TEXT NOT NULL UNIQUE,
     email                 TEXT,
     receber_notificacoes  INTEGER NOT NULL DEFAULT 1,
+    foto_perfil           TEXT,
     senha_hash            TEXT NOT NULL,
     perfil                TEXT NOT NULL,
     ativo                 INTEGER NOT NULL DEFAULT 1,
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS receber_notificacoes INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto_perfil TEXT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_login_lower ON usuarios (LOWER(login));
 
