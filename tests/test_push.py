@@ -53,6 +53,20 @@ class TestPushEndpoints(Base):
         self.assertTrue(dados.get('ok'))
         self.assertTrue(mock_enviar.called)
 
+    def test_chave_privada_pem_gera_assinatura_vapid(self):
+        """Regressão: a chave PEM salva precisa ser aceita pelo pywebpush."""
+        from app import push_service
+        with self.app.app_context():
+            chaves = push_service.obter_ou_criar_chaves_vapid(get_db())
+        with patch('app.push_service.webpush') as mock_wp:
+            ok, _ = push_service.enviar_push_dispositivo(
+                {'endpoint': 'https://fcm.fake/x', 'keys': {'p256dh': 'a', 'auth': 'b'}},
+                {'title': 't'}, chaves)
+            self.assertTrue(ok)
+            vapid = mock_wp.call_args.kwargs['vapid_private_key']
+        cab = vapid.sign({'sub': 'mailto:a@b.c', 'aud': 'https://fcm.fake'})
+        self.assertIn('Authorization', cab)
+
     def test_manifest_e_sw_routes(self):
         resp_manifest = self.c.get('/manifest.json')
         self.assertEqual(resp_manifest.status_code, 200)

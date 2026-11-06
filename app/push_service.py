@@ -72,19 +72,41 @@ def remover_inscricao(db, endpoint):
     db.execute("DELETE FROM push_inscricoes WHERE endpoint = ?", (endpoint,))
 
 
+_cache_vapid = {}
+
+
+def _objeto_vapid(chaves_vapid):
+    """Carrega a chave privada (PEM) em um objeto Vapid.
+
+    O pywebpush interpreta strings como DER em base64; passar o PEM direto gera
+    "Could not deserialize key data". Entregamos o objeto já carregado.
+    """
+    pem = chaves_vapid["private_key"]
+    obj = _cache_vapid.get(pem)
+    if obj is None:
+        if "-----BEGIN" in pem:
+            obj = Vapid.from_pem(pem.encode("ascii"))
+        else:
+            obj = Vapid.from_string(private_key=pem)
+        _cache_vapid.clear()
+        _cache_vapid[pem] = obj
+    return obj
+
+
 def enviar_push_dispositivo(subscription_info, payload_dict, chaves_vapid):
     """Envia um push para um dispositivo específico."""
     try:
         webpush(
             subscription_info=subscription_info,
             data=json.dumps(payload_dict, ensure_ascii=False),
-            vapid_private_key=chaves_vapid["private_key"],
+            vapid_private_key=_objeto_vapid(chaves_vapid),
             vapid_claims={"sub": chaves_vapid.get("subject", VAPID_SUBJECT)},
             timeout=10,
         )
         return True, None
     except WebPushException as ex:
         status_code = getattr(getattr(ex, "response", None), "status_code", None)
+        logger.warning("Web push recusado (HTTP %s): %s", status_code, ex)
         return False, status_code
     except Exception as e:
         logger.warning("Falha ao enviar web push: %s", e)
