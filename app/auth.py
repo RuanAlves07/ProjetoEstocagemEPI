@@ -61,9 +61,21 @@ ROTAS_PUBLICAS = {
     "pedidos.api_criar",
     "pedidos.solicitar",
     "favicon",
+    "pwa_manifest",
+    "service_worker",
+    "push.chave_publica",
+    "push.inscrever",
+    "push.desinscrever",
+    "push.testar",
 }
 # A API usa chave própria (X-API-Key) e o formulário público pode ser enviado sem sessão prévia
-CSRF_ISENTAS = {"pedidos.api_criar", "pedidos.solicitar"}
+CSRF_ISENTAS = {
+    "pedidos.api_criar",
+    "pedidos.solicitar",
+    "push.inscrever",
+    "push.desinscrever",
+    "push.testar",
+}
 SENHA_MIN = 8
 EXPIRACAO_RECUPERACAO_MIN = 30
 

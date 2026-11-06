@@ -263,3 +263,17 @@ CREATE TABLE IF NOT EXISTS emails_enviados (
     erro           TEXT,
     criado_em      TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
+
+
+-- Inscrições de notificações Web Push Mobile
+CREATE TABLE IF NOT EXISTS push_inscricoes (
+    id          SERIAL PRIMARY KEY,
+    usuario_id  INTEGER REFERENCES usuarios (id) ON DELETE CASCADE,
+    endpoint    TEXT NOT NULL UNIQUE,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    user_agent  TEXT,
+    criado_em   TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_inscricoes (usuario_id);

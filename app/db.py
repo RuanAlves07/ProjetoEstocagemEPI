@@ -16,6 +16,7 @@ _TABELAS_COM_ID = (
     "obras",
     "recuperacao_senha",
     "emails_enviados",
+    "push_inscricoes",
 )
 
 
@@ -390,6 +391,19 @@ def _migrar(conn):
         conn.execute("ALTER TABLE usuarios ADD COLUMN email TEXT")
     if "receber_notificacoes" not in colunas_usu:
         conn.execute("ALTER TABLE usuarios ADD COLUMN receber_notificacoes INTEGER NOT NULL DEFAULT 1")
+
+    # Tabela de inscrições de notificações Web Push mobile
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS push_inscricoes (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id            INTEGER REFERENCES usuarios (id) ON DELETE CASCADE,
+            endpoint              TEXT NOT NULL UNIQUE,
+            p256dh                TEXT NOT NULL,
+            auth                  TEXT NOT NULL,
+            user_agent            TEXT,
+            criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )
+    """)
 
     # Sincroniza os 22 EPIs e 3 Uniformes oficiais do formulário público se houver catálogo carregado
     _sincronizar_catalogo_formulario_oficial(conn)

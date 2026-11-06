@@ -16,7 +16,16 @@ class Base(unittest.TestCase):
         self.c = self.app.test_client()
 
     def tearDown(self):
-        self.dir.cleanup()
+        try:
+            with self.app.app_context():
+                from app.db import close_db
+                close_db()
+        except Exception:
+            pass
+        try:
+            self.dir.cleanup()
+        except Exception:
+            pass
 
     def post(self, url, data=None, client=None, **kw):
         client = client or self.c

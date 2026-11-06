@@ -6,6 +6,11 @@
   <title>{% block titulo %}Estoque de EPIs{% endblock %} · Estoque de EPIs</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='icone.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icone.png') }}">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1e3a8a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Estoque EPI">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body{% if usuario %} data-csrf="{{ csrf_token() }}" data-novos-url="{{ url_for('pedidos.novos') }}"{% endif %}>
@@ -47,6 +52,7 @@
       </div>
     </details>
     {% endif %}
+    <button type="button" class="btn-push-toggle btn pequeno nao-imprimir" title="Notificações no celular" style="display:inline-flex;align-items:center;gap:.25rem">🔔 Notificações</button>
     <a href="{{ url_for('auth.minha_senha') }}" title="Alterar login ou senha">{{ usuario['nome'] }}</a>
     <form method="post" action="{{ url_for('auth.sair') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -100,5 +106,6 @@
 </aside>
 {% endif %}
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='push.js') }}"></script>
 </body>
 </html>

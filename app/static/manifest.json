@@ -1,0 +1,25 @@
+{
+  "name": "Estoque de EPIs - Abecker",
+  "short_name": "Estoque EPI",
+  "description": "Sistema de Controle de Pedidos e Estoque de EPIs",
+  "start_url": "/pedidos",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "/static/icone.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icone.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

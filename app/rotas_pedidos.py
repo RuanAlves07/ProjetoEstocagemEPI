@@ -7,7 +7,7 @@ import sqlite3
 from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template,
                    request, url_for)
 
-from . import caepi, email_service, estoque, pedidos
+from . import caepi, email_service, estoque, pedidos, push_service
 from .auth import admin_required, escrita_required, usuario_tem_permissao
 from .cadastros import _csv_response
 from .db import get_db
@@ -43,6 +43,12 @@ def api_criar():
         return jsonify(erro=str(e)), 400
     if criado:
         email_service.notificar_evento_pedido(db, pedido_id, "criado", ator_nome="Integração / Forms")
+        push_service.notificar_novo_pedido_push(
+            current_app._get_current_object(),
+            pedido_id,
+            dados.get("nome") or "Colaborador",
+            dados.get("local") or "Obra",
+        )
     return jsonify(id=pedido_id, criado=criado), 201 if criado else 200
 
 
@@ -77,6 +83,12 @@ def simular():
         if criado:
             email_service.notificar_evento_pedido(
                 db, pedido_id, "criado", ator_nome=g.usuario["nome"] if g.get("usuario") else None
+            )
+            push_service.notificar_novo_pedido_push(
+                current_app._get_current_object(),
+                pedido_id,
+                dados.get("nome") or "Colaborador",
+                dados.get("local") or "Obra",
             )
         flash(f"Pedido #{pedido_id} criado e enviado para a fila de novos pedidos.", "ok")
     except ErroValidacao as e:
@@ -470,6 +482,22 @@ def _formulario_solicitacao(modo_gestor):
                         pedido_id,
                         "criado",
                         ator_nome=g.usuario["nome"] if g.get("usuario") else nome,
+                    )
+                    itens_txt = []
+                    if lista_epi:
+                        itens_txt.extend(lista_epi[:2])
+                    if unidades_vest:
+                        itens_txt.extend([u["nome"] for u in unidades_vest[:2]])
+                    resumo = ", ".join(itens_txt) if itens_txt else "EPI(s)"
+                    if (len(lista_epi) + len(unidades_vest)) > 2:
+                        resumo += f" e mais {(len(lista_epi) + len(unidades_vest)) - 2} item(ns)"
+
+                    push_service.notificar_novo_pedido_push(
+                        current_app._get_current_object(),
+                        pedido_id,
+                        nome,
+                        local,
+                        resumo,
                     )
                 flash(f"Solicitação enviada com sucesso! O pedido de número #{pedido_id} já foi encaminhado ao Almoxarifado.", "ok")
                 return redirect(url_for(endpoint_form, enviado=pedido_id))

@@ -246,3 +246,17 @@ CREATE TABLE IF NOT EXISTS emails_enviados (
     erro           TEXT,
     criado_em      TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+
+-- Inscrições de notificações Web Push Mobile
+CREATE TABLE IF NOT EXISTS push_inscricoes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id  INTEGER REFERENCES usuarios (id) ON DELETE CASCADE,
+    endpoint    TEXT NOT NULL UNIQUE,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    user_agent  TEXT,
+    criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_inscricoes (usuario_id);

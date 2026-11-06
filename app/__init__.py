@@ -62,17 +62,30 @@ def create_app(config=None):
 
     db.init_app(app)
 
-    from . import auth, cadastros, movimentos, painel, filtros, rotas_pedidos
+    from . import auth, cadastros, movimentos, painel, filtros, rotas_pedidos, rotas_push
     filtros.registrar(app)
     app.register_blueprint(auth.bp)
     app.register_blueprint(painel.bp)
     app.register_blueprint(cadastros.bp)
     app.register_blueprint(movimentos.bp)
     app.register_blueprint(rotas_pedidos.bp)
+    app.register_blueprint(rotas_push.bp)
 
     @app.route("/favicon.ico")
     def favicon():
         return app.send_static_file("icone.png")
+
+    @app.route("/manifest.json")
+    def pwa_manifest():
+        return app.send_static_file("manifest.json")
+
+    @app.route("/sw.js")
+    def service_worker():
+        response = app.send_static_file("sw.js")
+        response.headers["Content-Type"] = "application/javascript"
+        response.headers["Service-Worker-Allowed"] = "/"
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.errorhandler(400)
     @app.errorhandler(403)
