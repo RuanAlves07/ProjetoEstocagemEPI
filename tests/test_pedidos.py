@@ -581,6 +581,49 @@ class TestFormularioPorCargo(BasePedidos):
         r = anon.post("/solicitar", data={**self.pedido_base, "epi": ["Luva G"]}, follow_redirects=True)
         self.assertIn("não fazem parte do padrão do seu cargo", r.get_data(as_text=True))
 
+    def test_publico_recusa_item_generico_fora_do_padrao_do_cargo(self):
+        # 1. Configura cargo "Pedreiro" para o colaborador João apenas com "LUVA DE ALGODAO MESCLA 6 FIOS" (id sintético 90009)
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE colaboradores SET funcao = 'Pedreiro' WHERE id = ?", (self.joao,))
+            db.execute("DELETE FROM cargo_epis_padrao WHERE cargo = 'Pedreiro'")
+            db.execute(
+                "INSERT INTO cargo_epis_padrao (cargo, epi_id, nome_generico) VALUES ('Pedreiro', 90009, 'LUVA DE ALGODAO MESCLA 6 FIOS')"
+            )
+
+        anon = self.app.test_client()
+
+        # 2. No formulário público (/solicitar), tentar solicitar item genérico fora do cargo (ex: "CAPACETE DE SEGURANÇA C/ SUSPENSÃO") é barrado
+        r_recusa = anon.post("/solicitar", data={
+            **self.pedido_base,
+            "epi": ["CAPACETE DE SEGURANÇA C/ SUSPENSÃO"],
+        }, follow_redirects=True)
+        texto_recusa = r_recusa.get_data(as_text=True)
+        self.assertIn("não fazem parte do padrão do seu cargo", texto_recusa)
+        self.assertIn("procure o seu gestor", texto_recusa)
+
+        # 3. Solicitar o item genérico que faz parte do cargo ("LUVA DE ALGODAO MESCLA 6 FIOS") é aceito com sucesso
+        r_ok = anon.post("/solicitar", data={
+            **self.pedido_base,
+            "epi": ["LUVA DE ALGODAO MESCLA 6 FIOS"],
+        }, follow_redirects=True)
+        self.assertIn("enviada com sucesso", r_ok.get_data(as_text=True))
+
+        # 4. No formulário do gestor (/solicitar/gestor), o item fora da função pode ser solicitado com justificativa
+        gestor = self.criar_usuario("gestor_obra", "gestor")
+        r_gestor_sem = self.post("/solicitar/gestor", {
+            **self.pedido_base,
+            "epi": ["CAPACETE DE SEGURANÇA C/ SUSPENSÃO"],
+        }, client=gestor, follow_redirects=True)
+        self.assertIn("Informe a justificativa para os itens fora da função", r_gestor_sem.get_data(as_text=True))
+
+        r_gestor_ok = self.post("/solicitar/gestor", {
+            **self.pedido_base,
+            "epi": ["CAPACETE DE SEGURANÇA C/ SUSPENSÃO"],
+            "justificativa": "Necessário para obra em andaime",
+        }, client=gestor, follow_redirects=True)
+        self.assertIn("enviada com sucesso", r_gestor_ok.get_data(as_text=True))
+
     def test_formulario_gestor_exige_login_e_permissao(self):
         anon = self.app.test_client()
         r = anon.get("/solicitar/gestor")

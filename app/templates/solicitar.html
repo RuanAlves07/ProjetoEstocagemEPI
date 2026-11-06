@@ -154,7 +154,9 @@
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_epi else 'lista-opcoes' }}">
         {% for e in epis_protecao %}
         {% set eh_rec = e.id in padrao_ids_sel %}
-        <label class="opcao-item {{ 'opcao-com-imagem' if e.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ e.id }}" data-generico-oficial="{{ '1' if e.eh_generico_oficial else '' }}">
+        {% set deve_ocultar_ini = (not modo_gestor and colab_sel_id and not eh_rec) %}
+        <label class="opcao-item {{ 'opcao-com-imagem' if e.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}"
+               data-epi-id="{{ e.id }}" {{ 'hidden' if deve_ocultar_ini }}>
           <input type="checkbox" name="epi" value="{{ e.nome }}"
                  data-calcado="{{ tipo_calcado(e.nome) or '' }}"
                  data-uniforme="{{ tipo_uniforme(e.nome) or '' }}"
@@ -233,7 +235,9 @@
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_vest else 'lista-opcoes' }}">
         {% for v in vestimentas %}
         {% set eh_rec = v.id in padrao_ids_sel %}
-        <label class="opcao-item {{ 'opcao-com-imagem' if v.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}" data-epi-id="{{ v.id }}" data-generico-oficial="{{ '1' if v.eh_generico_oficial else '' }}">
+        {% set deve_ocultar_ini = (not modo_gestor and colab_sel_id and not eh_rec) %}
+        <label class="opcao-item {{ 'opcao-com-imagem' if v.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}"
+               data-epi-id="{{ v.id }}" {{ 'hidden' if deve_ocultar_ini }}>
           <input type="checkbox" name="vestimento" value="{{ v.nome }}"
                  data-calcado="{{ tipo_calcado(v.nome) or '' }}"
                  data-uniforme="{{ tipo_uniforme(v.nome) or '' }}"
@@ -402,16 +406,16 @@ function ampliarImagemEpi(src, nome) {
 
     for (const item of itensOpcao) {
       const eidNum = Number(item.dataset.epiId);
-      const ehGenericoOficial = item.dataset.genericoOficial === "1" || eidNum >= 90000;
       const rec = idsPadrao.has(eidNum);
       item.classList.toggle("recomendado-cargo", rec);
       const tag = item.querySelector(".tag-recomendado");
       if (tag) tag.hidden = !rec;
       const tagFora = item.querySelector(".tag-fora-funcao");
-      if (tagFora) tagFora.hidden = rec || !colabId || ehGenericoOficial;
-      item.dataset.foraFuncao = (rec || ehGenericoOficial) ? "" : "1";
+      if (tagFora) tagFora.hidden = rec || !colabId;
+      item.dataset.foraFuncao = rec ? "" : "1";
       if (!MODO_GESTOR) {
-        const deveOcultar = Boolean(colabId && idsPadrao.size > 0 && !rec && !ehGenericoOficial);
+        // No formulário comum, só exibe os itens recomendados pelo cargo do colaborador
+        const deveOcultar = Boolean(colabId && !rec);
         item.hidden = deveOcultar;
         const chk = item.querySelector('input[type="checkbox"]');
         if (deveOcultar && chk && chk.checked) {
@@ -425,6 +429,11 @@ function ampliarImagemEpi(src, nome) {
     for (const aviso of form.querySelectorAll(".aviso-sem-itens")) {
       const visiveis = itensOpcao.filter(i => !i.hidden && i.querySelector(`input[name="${aviso.dataset.secao}"]`));
       aviso.hidden = visiveis.length > 0;
+      if (aviso.dataset.secao === "epi") {
+        aviso.textContent = "Nenhum equipamento de proteção individual está configurado no padrão do seu cargo. Caso necessite de algum item, solicite ao seu gestor.";
+      } else if (aviso.dataset.secao === "vestimento") {
+        aviso.textContent = "Nenhuma vestimenta ou uniforme está configurado no padrão do seu cargo. Caso necessite de algum item, solicite ao seu gestor.";
+      }
     }
 
     if (avisoCargo) {
@@ -435,10 +444,10 @@ function ampliarImagemEpi(src, nome) {
         avisoCargo.innerHTML = `${cargoHtml} — os itens do padrão estão em verde; os demais ficam marcados como <strong>fora da função</strong>.`;
         avisoCargo.hidden = false;
       } else if (idsPadrao.size > 0) {
-        avisoCargo.innerHTML = `${cargoHtml} — abaixo aparecem somente os equipamentos do seu cargo.`;
+        avisoCargo.innerHTML = `${cargoHtml} — abaixo aparecem somente os equipamentos recomendados para o seu cargo.`;
         avisoCargo.hidden = false;
       } else {
-        avisoCargo.innerHTML = cargoHtml;
+        avisoCargo.innerHTML = `${cargoHtml} — nenhum equipamento padrão configurado para este cargo. Para solicitar itens fora da função, procure o seu gestor.`;
         avisoCargo.hidden = false;
       }
     }

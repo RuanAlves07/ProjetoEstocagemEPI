@@ -368,15 +368,10 @@ def _formulario_solicitacao(modo_gestor):
                 unidades_vest.append({"nome": nome_v, "tamanho": tam})
 
         permitidos = padrao_colab.get(colab["id"], set()) if colab else set()
-        nomes_genericos_norm = {
-            pedidos.normalizar(n) for n in pedidos.TODOS_ITENS_GENERICOS_FORMULARIO
-        }
         nao_disponiveis = [x for x in todos_marcados if x not in ids_por_nome]
         fora_funcao = [
             x for x in todos_marcados
-            if x in ids_por_nome
-            and not (ids_por_nome[x] & permitidos)
-            and pedidos.normalizar(x) not in nomes_genericos_norm
+            if x in ids_por_nome and not (ids_por_nome[x] & permitidos)
         ]
 
         # Só considera tamanhos dos produtos efetivamente selecionados
