@@ -149,12 +149,17 @@
       {% if cfg_form.pergunta_4_subtitulo %}
       <p class="subtitulo-pergunta">{{ cfg_form.pergunta_4_subtitulo }}</p>
       {% endif %}
+      {% if not modo_gestor %}
+      <div class="aviso-selecione-colab cartao-dica" data-secao="epi" {{ '' if not colab_sel_id else 'hidden' }} style="padding:.9rem 1.1rem;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;margin:.5rem 0 1rem;color:#475569;font-size:.95rem">
+        👆 <strong>Selecione o seu nome completo na pergunta 1</strong> para carregar os Equipamentos de Proteção Individual (EPI) recomendados para o seu cargo.
+      </div>
+      {% endif %}
       {% set epis_marcados = form_dados.get('epi', ()) %}
       {% set tem_img_epi = epis_protecao|selectattr('imagem_url')|list|length > 0 %}
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_epi else 'lista-opcoes' }}">
         {% for e in epis_protecao %}
         {% set eh_rec = e.id in padrao_ids_sel %}
-        {% set deve_ocultar_ini = (not modo_gestor and colab_sel_id and not eh_rec) %}
+        {% set deve_ocultar_ini = (not modo_gestor and (not colab_sel_id or not eh_rec)) %}
         <label class="opcao-item {{ 'opcao-com-imagem' if e.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}"
                data-epi-id="{{ e.id }}" {{ 'hidden' if deve_ocultar_ini }}>
           <input type="checkbox" name="epi" value="{{ e.nome }}"
@@ -230,12 +235,17 @@
       <p class="subtitulo-pergunta">{{ cfg_form.pergunta_5_subtitulo }}</p>
       {% endif %}
       <p class="subtitulo-pergunta">Marque a peça e escolha a quantidade (até {{ max_unidades }}). O tamanho selecionado se aplica a todas as unidades da peça.</p>
+      {% if not modo_gestor %}
+      <div class="aviso-selecione-colab cartao-dica" data-secao="vestimento" {{ '' if not colab_sel_id else 'hidden' }} style="padding:.9rem 1.1rem;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;margin:.5rem 0 1rem;color:#475569;font-size:.95rem">
+        👆 <strong>Selecione o seu nome completo na pergunta 1</strong> para carregar as vestimentas e uniformes recomendados para o seu cargo.
+      </div>
+      {% endif %}
       {% set vest_marcadas = form_dados.get('vestimento', ()) %}
       {% set tem_img_vest = vestimentas|selectattr('imagem_url')|list|length > 0 %}
       <div class="{{ 'grade-opcoes-epi-imagem' if tem_img_vest else 'lista-opcoes' }}">
         {% for v in vestimentas %}
         {% set eh_rec = v.id in padrao_ids_sel %}
-        {% set deve_ocultar_ini = (not modo_gestor and colab_sel_id and not eh_rec) %}
+        {% set deve_ocultar_ini = (not modo_gestor and (not colab_sel_id or not eh_rec)) %}
         <label class="opcao-item {{ 'opcao-com-imagem' if v.imagem_url }} {{ 'recomendado-cargo' if eh_rec }}"
                data-epi-id="{{ v.id }}" {{ 'hidden' if deve_ocultar_ini }}>
           <input type="checkbox" name="vestimento" value="{{ v.nome }}"
@@ -404,6 +414,11 @@ function ampliarImagemEpi(src, nome) {
     const colabId = opt && opt.dataset.colabId ? opt.dataset.colabId : "";
     const idsPadrao = new Set(PADRAO_POR_COLAB[colabId] || []);
 
+    // Avisos para selecionar o colaborador primeiro (aparecem quando campo está vazio no público)
+    for (const avisoSel of form.querySelectorAll(".aviso-selecione-colab")) {
+      avisoSel.hidden = Boolean(colabId || MODO_GESTOR);
+    }
+
     for (const item of itensOpcao) {
       const eidNum = Number(item.dataset.epiId);
       const rec = idsPadrao.has(eidNum);
@@ -414,8 +429,10 @@ function ampliarImagemEpi(src, nome) {
       if (tagFora) tagFora.hidden = rec || !colabId;
       item.dataset.foraFuncao = rec ? "" : "1";
       if (!MODO_GESTOR) {
-        // No formulário comum, só exibe os itens recomendados pelo cargo do colaborador
-        const deveOcultar = Boolean(colabId && !rec);
+        // No formulário comum:
+        // - Se não selecionou o nome ainda (!colabId): não aparece nenhum EPI (tudo oculto)
+        // - Ao selecionar o nome: aparecem somente os itens recomendados do padrão do cargo (rec)
+        const deveOcultar = !colabId || !rec;
         item.hidden = deveOcultar;
         const chk = item.querySelector('input[type="checkbox"]');
         if (deveOcultar && chk && chk.checked) {
@@ -425,8 +442,12 @@ function ampliarImagemEpi(src, nome) {
       }
     }
 
-    // Avisos de seção vazia no formulário público
+    // Avisos de seção vazia no formulário público (somente se já selecionou o colaborador)
     for (const aviso of form.querySelectorAll(".aviso-sem-itens")) {
+      if (!colabId) {
+        aviso.hidden = true;
+        continue;
+      }
       const visiveis = itensOpcao.filter(i => !i.hidden && i.querySelector(`input[name="${aviso.dataset.secao}"]`));
       aviso.hidden = visiveis.length > 0;
       if (aviso.dataset.secao === "epi") {

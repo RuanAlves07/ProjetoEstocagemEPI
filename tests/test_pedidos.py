@@ -593,6 +593,11 @@ class TestFormularioPorCargo(BasePedidos):
 
         anon = self.app.test_client()
 
+        # Valida que, sem colaborador selecionado, o formulário público exibe o aviso para selecionar o nome na pergunta 1
+        r_get = anon.get("/solicitar")
+        html_get = r_get.get_data(as_text=True)
+        self.assertIn("Selecione o seu nome completo na pergunta 1", html_get)
+
         # 2. No formulário público (/solicitar), tentar solicitar item genérico fora do cargo (ex: "CAPACETE DE SEGURANÇA C/ SUSPENSÃO") é barrado
         r_recusa = anon.post("/solicitar", data={
             **self.pedido_base,
