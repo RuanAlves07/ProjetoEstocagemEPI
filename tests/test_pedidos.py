@@ -512,6 +512,28 @@ class TestParser(BasePedidos):
         self.assertIn("Protetor Facial Incolor", html_envio)
         self.assertIn("Qual o turno de trabalho?: Diurno", html_envio)
 
+        # Salva foto em item genérico oficial (id 90000 - ABAFADOR TIPO CONCHA 18DB)
+        r_save_gen = self.post("/solicitar/personalizar", {
+            "atualizar_opcoes_epi": "1",
+            "titulo": "FORMULÁRIO PERSONALIZADO DE EPI",
+            "nome_epi_90000": "ABAFADOR TIPO CONCHA 18DB",
+            "epi_visivel": ["90000"],
+            "imagem_epi_90000": (io.BytesIO(png_1x1), "abafador.png"),
+        }, follow_redirects=True, content_type="multipart/form-data")
+        self.assertEqual(r_save_gen.status_code, 200)
+        self.assertIn("Personalizações do formulário salvas", r_save_gen.get_data(as_text=True))
+
+        # Verifica que o editor e o formulário público exibem a foto enviada para o item genérico
+        r_ed_pos = self.c.get("/solicitar/personalizar")
+        self.assertIn("data:image/png;base64,", r_ed_pos.get_data(as_text=True))
+        r_pub_pos = anon.get("/solicitar")
+        self.assertIn("data:image/png;base64,", r_pub_pos.get_data(as_text=True))
+
+        # Testa rota individual de imagem para item genérico 90000
+        r_ilus = self.post("/solicitar/personalizar/epi/90000/imagem", {"acao": "ilustrar"}, follow_redirects=True)
+        self.assertEqual(r_ilus.status_code, 200)
+        self.assertIn("Ilustração visual aplicada", r_ilus.get_data(as_text=True))
+
 
 class TestFormularioPorCargo(BasePedidos):
     def setUp(self):

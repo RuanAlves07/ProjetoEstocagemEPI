@@ -304,6 +304,8 @@ CONFIG_FORMULARIO_PADRAO = {
     "motivos": list(MOTIVOS_FORMULARIO),
     "tamanhos_uniforme": list(TAMANHOS_UNIFORME),
     "perguntas_extras": [],
+    "fotos_itens": {},
+    "visibilidade_itens": {},
 }
 
 # Título antigo da pergunta 2 (quando o local era a cidade): trocado pelo novo padrão
@@ -361,6 +363,9 @@ def obter_config_formulario(db):
                     elif ch == "perguntas_extras":
                         if isinstance(val, list):
                             cfg[ch] = [p for p in val if isinstance(p, dict) and limpar(p.get("titulo"))]
+                    elif ch in ("fotos_itens", "visibilidade_itens"):
+                        if isinstance(val, dict):
+                            cfg[ch] = {str(k): v for k, v in val.items()}
                     elif isinstance(padrao, bool):
                         cfg[ch] = bool(val)
                     elif isinstance(padrao, str) and val is not None:
@@ -416,6 +421,9 @@ def salvar_config_formulario(db, nova_cfg):
                         "opcoes": opcoes_p,
                     })
                 atual[ch] = extras_limpas
+        elif ch in ("fotos_itens", "visibilidade_itens"):
+            if isinstance(val, dict):
+                atual[ch] = {str(k): v for k, v in val.items()}
         elif isinstance(padrao, bool):
             atual[ch] = bool(val)
         elif isinstance(padrao, str):
@@ -434,8 +442,19 @@ def salvar_config_formulario(db, nova_cfg):
 
 
 def restaurar_config_formulario(db):
-    """Remove customizações de texto/listas, voltando o formulário ao padrão original."""
-    db.execute("DELETE FROM configuracoes WHERE chave = 'forms_config'")
+    """Remove customizações de texto/listas, voltando o formulário ao padrão original, mantendo fotos e visibilidade."""
+    atual = obter_config_formulario(db)
+    fotos = atual.get("fotos_itens") or {}
+    visib = atual.get("visibilidade_itens") or {}
+    cfg = dict(CONFIG_FORMULARIO_PADRAO)
+    cfg["fotos_itens"] = fotos
+    cfg["visibilidade_itens"] = visib
+    payload = json.dumps(cfg, ensure_ascii=False)
+    db.execute(
+        "INSERT INTO configuracoes (chave, valor) VALUES ('forms_config', ?) "
+        "ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor",
+        (payload,),
+    )
 
 
 def processar_imagem_epi(arquivo=None, texto_imagem=None):

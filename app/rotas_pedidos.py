@@ -2,6 +2,7 @@
 import csv
 import hmac
 import io
+import sqlite3
 
 from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template,
                    request, url_for)
@@ -109,7 +110,7 @@ def importar_csv():
 
 # ------------------------------------------------------------ formulário público (/solicitar)
 
-def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_oficiais=False):
+def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_oficiais=False, cfg_form=None):
     """Separa os itens ativos do estoque em (epis_protecao, vestimentas) como no formulário oficial.
     Quando agrupar_por_nome=True, usa o nome generalizado do formulário (nome_formulario se preenchido)
     e evita repetir o mesmo produto várias vezes quando cadastrado em múltiplos tamanhos/modelos/CAs.
@@ -121,6 +122,9 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
     nomes_genericos_norm = {
         pedidos.normalizar(n) for n in pedidos.TODOS_ITENS_GENERICOS_FORMULARIO
     }
+    fotos_salvas = (cfg_form.get("fotos_itens") if isinstance(cfg_form, dict) else None) or {}
+    visib_salvas = (cfg_form.get("visibilidade_itens") if isinstance(cfg_form, dict) else None) or {}
+
     vestimentas = []
     epis_protecao = []
     vistos_nome = set()
@@ -134,6 +138,19 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
             if nome_norm in vistos_nome:
                 continue
             vistos_nome.add(nome_norm)
+
+        # Foto e visibilidade personalizadas do formulário
+        if nome_norm in fotos_salvas and fotos_salvas[nome_norm]:
+            e["imagem_url"] = fotos_salvas[nome_norm]
+            e["tem_foto_customizada"] = 1
+        elif e.get("imagem_url"):
+            e["tem_foto_customizada"] = 1 if not str(e["imagem_url"]).startswith("data:image/svg+xml") else 0
+        else:
+            e["tem_foto_customizada"] = 0
+
+        if nome_norm in visib_salvas:
+            e["exibir_no_forms"] = 1 if visib_salvas[nome_norm] else 0
+
         cat_norm = pedidos.normalizar(e.get("categoria") or "")
         if any(t in nome_norm for t in termos_epi_protecao):
             epis_protecao.append(e)
@@ -147,26 +164,32 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
             nome_norm = pedidos.normalizar(nome_gen)
             if nome_norm not in vistos_nome:
                 vistos_nome.add(nome_norm)
+                img_custom = fotos_salvas.get(nome_norm)
+                visiv_custom = visib_salvas.get(nome_norm, 1)
                 epis_protecao.append({
                     "id": 90000 + idx,
                     "nome": nome_gen,
                     "nome_formulario": nome_gen,
                     "categoria": "Outros / Diversos",
-                    "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
-                    "exibir_no_forms": 1,
+                    "imagem_url": img_custom or pedidos.gerar_svg_ilustrativo_epi(nome_gen),
+                    "tem_foto_customizada": 1 if img_custom else 0,
+                    "exibir_no_forms": 1 if visiv_custom else 0,
                     "eh_generico_oficial": 1,
                 })
         for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
             nome_norm = pedidos.normalizar(nome_gen)
             if nome_norm not in vistos_nome:
                 vistos_nome.add(nome_norm)
+                img_custom = fotos_salvas.get(nome_norm)
+                visiv_custom = visib_salvas.get(nome_norm, 1)
                 vestimentas.append({
                     "id": 91000 + idx,
                     "nome": nome_gen,
                     "nome_formulario": nome_gen,
                     "categoria": "Vestimentas e Uniformes",
-                    "imagem_url": pedidos.gerar_svg_ilustrativo_epi(nome_gen),
-                    "exibir_no_forms": 1,
+                    "imagem_url": img_custom or pedidos.gerar_svg_ilustrativo_epi(nome_gen),
+                    "tem_foto_customizada": 1 if img_custom else 0,
+                    "exibir_no_forms": 1 if visiv_custom else 0,
                     "eh_generico_oficial": 1,
                 })
 
@@ -248,8 +271,11 @@ def _formulario_solicitacao(modo_gestor):
         "FROM epis WHERE ativo = 1 AND COALESCE(exibir_no_forms, 1) = 1 ORDER BY id"
     ).fetchall()
     epis_protecao, vestimentas = _separar_epis_e_vestimentas(
-        epis_ativos, agrupar_por_nome=True, incluir_genericos_oficiais=True
+        epis_ativos, agrupar_por_nome=True, incluir_genericos_oficiais=True, cfg_form=cfg_form
     )
+    # Filtra apenas itens marcados para exibir no formulário
+    epis_protecao = [e for e in epis_protecao if e.get("exibir_no_forms", 1)]
+    vestimentas = [v for v in vestimentas if v.get("exibir_no_forms", 1)]
     id_vest_por_nome = {}
     for v in vestimentas:
         id_vest_por_nome.setdefault(v["nome"], v["id"])
@@ -536,50 +562,118 @@ def personalizar_formulario():
                 "opcoes": novo_extra_opcoes,
             })
 
-        nova_cfg = {
-            "titulo": request.form.get("titulo"),
-            "descricao": request.form.get("descricao"),
-            "pergunta_1_titulo": request.form.get("pergunta_1_titulo"),
-            "pergunta_2_titulo": request.form.get("pergunta_2_titulo"),
-            "permitir_outro_local": request.form.get("permitir_outro_local") == "1",
-            "pergunta_3_titulo": request.form.get("pergunta_3_titulo"),
-            "pergunta_4_titulo": request.form.get("pergunta_4_titulo"),
-            "pergunta_4_subtitulo": request.form.get("pergunta_4_subtitulo"),
-            "pergunta_calcado_titulo": request.form.get("pergunta_calcado_titulo"),
-            "pergunta_calcado_subtitulo": request.form.get("pergunta_calcado_subtitulo"),
-            "pergunta_5_titulo": request.form.get("pergunta_5_titulo"),
-            "pergunta_5_subtitulo": request.form.get("pergunta_5_subtitulo"),
-            "pergunta_uniforme_titulo": request.form.get("pergunta_uniforme_titulo"),
-            "pergunta_uniforme_subtitulo": request.form.get("pergunta_uniforme_subtitulo"),
-            "pergunta_6_titulo": request.form.get("pergunta_6_titulo"),
-            "motivos": motivos,
-            "tamanhos_uniforme": tamanhos,
-            "perguntas_extras": extras,
-        }
+        nova_cfg = {}
+        for campo in (
+            "titulo", "descricao", "pergunta_1_titulo", "pergunta_2_titulo",
+            "pergunta_3_titulo", "pergunta_4_titulo", "pergunta_4_subtitulo",
+            "pergunta_calcado_titulo", "pergunta_calcado_subtitulo",
+            "pergunta_5_titulo", "pergunta_5_subtitulo",
+            "pergunta_uniforme_titulo", "pergunta_uniforme_subtitulo",
+            "pergunta_6_titulo",
+        ):
+            if campo in request.form:
+                nova_cfg[campo] = request.form.get(campo)
+        if "permitir_outro_local" in request.form:
+            nova_cfg["permitir_outro_local"] = request.form.get("permitir_outro_local") == "1"
+        if "motivos" in request.form or "novo_motivo" in request.form:
+            nova_cfg["motivos"] = motivos
+        if "tamanhos_uniforme" in request.form or "novo_tamanho" in request.form:
+            nova_cfg["tamanhos_uniforme"] = tamanhos
+        if "extra_titulo" in request.form or "novo_extra_titulo" in request.form:
+            nova_cfg["perguntas_extras"] = extras
 
         try:
             pedidos.salvar_config_formulario(db, nova_cfg)
 
             # Atualiza visibilidade no formulário, nome e imagens das opções de EPIs e Vestimentas
             if request.form.get("atualizar_opcoes_epi") == "1":
-                visiveis_ids = {to_int(x) for x in request.form.getlist("epi_visivel") if to_int(x)}
-                todos_ativos = db.execute("SELECT id, nome, imagem_url FROM epis WHERE ativo = 1").fetchall()
-                for item in todos_ativos:
-                    eid = item["id"]
-                    visivel = 1 if eid in visiveis_ids else 0
-                    novo_nome = limpar(request.form.get(f"nome_epi_{eid}")) or item["nome"]
-                    nova_img = item["imagem_url"]
-                    if request.form.get(f"remover_img_epi_{eid}") == "1":
-                        nova_img = None
-                    else:
-                        arq = request.files.get(f"imagem_epi_{eid}")
-                        b64_ou_url = request.form.get(f"imagem_url_epi_{eid}")
-                        if (arq and getattr(arq, "filename", "")) or (b64_ou_url and b64_ou_url.strip()):
-                            nova_img = pedidos.processar_imagem_epi(arq, b64_ou_url)
-                    db.execute(
-                        "UPDATE epis SET nome = ?, exibir_no_forms = ?, imagem_url = ? WHERE id = ?",
-                        (novo_nome, visivel, nova_img, eid),
+                cfg_form_atual = pedidos.obter_config_formulario(db)
+                fotos_itens = dict(cfg_form_atual.get("fotos_itens") or {})
+                visib_itens = dict(cfg_form_atual.get("visibilidade_itens") or {})
+
+                visiveis_ids = {to_int(x) for x in request.form.getlist("epi_visivel") if to_int(x) is not None}
+
+                eids_enviados = []
+                for k in request.form.keys():
+                    if k.startswith("nome_epi_"):
+                        eid_num = to_int(k[len("nome_epi_"):])
+                        if eid_num is not None:
+                            eids_enviados.append(eid_num)
+
+                epis_db = {
+                    r["id"]: dict(r)
+                    for r in db.execute("SELECT id, nome, nome_formulario, imagem_url FROM epis WHERE ativo = 1").fetchall()
+                }
+
+                genericos_por_id = {}
+                for idx, n in enumerate(pedidos.ITENS_GENERICOS_EPI_FORMULARIO):
+                    genericos_por_id[90000 + idx] = n
+                for idx, n in enumerate(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
+                    genericos_por_id[91000 + idx] = n
+
+                todos_eids = list(dict.fromkeys(eids_enviados + list(epis_db.keys())))
+                for eid in todos_eids:
+                    item_db = epis_db.get(eid)
+                    nome_gen_padrao = genericos_por_id.get(eid)
+
+                    nome_digitado = limpar(request.form.get(f"nome_epi_{eid}"))
+                    nome_item = nome_digitado or (item_db["nome"] if item_db else nome_gen_padrao)
+                    if not nome_item:
+                        continue
+                    nome_norm = pedidos.normalizar(nome_item)
+
+                    presente_no_form = (
+                        f"nome_epi_{eid}" in request.form
+                        or f"imagem_epi_{eid}" in request.files
+                        or f"imagem_url_epi_{eid}" in request.form
                     )
+                    if presente_no_form:
+                        visivel = 1 if eid in visiveis_ids else 0
+                        visib_itens[nome_norm] = visivel
+                    else:
+                        visivel = 1 if eid in visiveis_ids else (item_db.get("exibir_no_forms", 1) if item_db else 1)
+
+                    remover = request.form.get(f"remover_img_epi_{eid}") == "1"
+                    arq = request.files.get(f"imagem_epi_{eid}")
+                    b64_ou_url = request.form.get(f"imagem_url_epi_{eid}")
+
+                    nova_img = None
+                    img_alterada = False
+                    if remover:
+                        nova_img = None
+                        img_alterada = True
+                    elif (arq and getattr(arq, "filename", "")) or (b64_ou_url and b64_ou_url.strip()):
+                        nova_img = pedidos.processar_imagem_epi(arq, b64_ou_url)
+                        img_alterada = True
+
+                    if img_alterada:
+                        if nova_img:
+                            fotos_itens[nome_norm] = nova_img
+                        else:
+                            fotos_itens.pop(nome_norm, None)
+
+                    if item_db:
+                        img_db = nova_img if img_alterada else item_db["imagem_url"]
+                        db.execute(
+                            "UPDATE epis SET nome = ?, exibir_no_forms = ?, imagem_url = ? WHERE id = ?",
+                            (nome_item, visivel, img_db, eid),
+                        )
+
+                    if img_alterada:
+                        db.execute(
+                            "UPDATE epis SET imagem_url = ? WHERE upper(trim(COALESCE(nome_formulario, nome))) = ?",
+                            (nova_img, nome_item.strip().upper()),
+                        )
+                    if presente_no_form:
+                        db.execute(
+                            "UPDATE epis SET exibir_no_forms = ? WHERE upper(trim(COALESCE(nome_formulario, nome))) = ?",
+                            (visivel, nome_item.strip().upper()),
+                        )
+
+                pedidos.salvar_config_formulario(db, {
+                    "fotos_itens": fotos_itens,
+                    "visibilidade_itens": visib_itens,
+                })
             flash("Personalizações do formulário salvas com sucesso!", "ok")
             return redirect(url_for("pedidos.personalizar_formulario"))
         except (ErroValidacao, sqlite3.IntegrityError) as e:
@@ -591,7 +685,7 @@ def personalizar_formulario():
         "FROM epis WHERE ativo = 1 ORDER BY id"
     ).fetchall()
     epis_protecao, vestimentas = _separar_epis_e_vestimentas(
-        todos_epis, agrupar_por_nome=True, incluir_genericos_oficiais=True
+        todos_epis, agrupar_por_nome=True, incluir_genericos_oficiais=True, cfg_form=cfg_form
     )
     return render_template(
         "solicitar_personalizar.html",
@@ -662,26 +756,51 @@ def form_imagem_epi(epi_id):
     """Atualiza, remove ou gera ilustração da imagem de uma opção específica do formulário."""
     db = get_db()
     epi = db.execute("SELECT id, nome, categoria, imagem_url FROM epis WHERE id = ?", (epi_id,)).fetchone()
+    nome_generico = None
     if not epi:
-        abort(404)
+        if 90000 <= epi_id < 90000 + len(pedidos.ITENS_GENERICOS_EPI_FORMULARIO):
+            nome_generico = pedidos.ITENS_GENERICOS_EPI_FORMULARIO[epi_id - 90000]
+        elif 91000 <= epi_id < 91000 + len(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
+            nome_generico = pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO[epi_id - 91000]
+        else:
+            abort(404)
+
+    nome_item = epi["nome"] if epi else nome_generico
+    nome_norm = pedidos.normalizar(nome_item)
     acao = request.form.get("acao") or "salvar"
     ancora = f"#opcao-epi-{epi_id}"
+
     try:
+        cfg = pedidos.obter_config_formulario(db)
+        fotos = dict(cfg.get("fotos_itens") or {})
+
         if acao == "remover":
-            db.execute("UPDATE epis SET imagem_url = NULL WHERE id = ?", (epi_id,))
-            flash(f"Imagem de “{epi['nome']}” removida.", "ok")
+            fotos.pop(nome_norm, None)
+            if epi:
+                db.execute("UPDATE epis SET imagem_url = NULL WHERE id = ?", (epi_id,))
+            db.execute("UPDATE epis SET imagem_url = NULL WHERE upper(trim(COALESCE(nome_formulario, nome))) = ?", (nome_item.strip().upper(),))
+            pedidos.salvar_config_formulario(db, {"fotos_itens": fotos})
+            flash(f"Foto de “{nome_item}” removida.", "ok")
         elif acao == "ilustrar":
-            svg_uri = pedidos.gerar_svg_ilustrativo_epi(epi["nome"])
-            db.execute("UPDATE epis SET imagem_url = ? WHERE id = ?", (svg_uri, epi_id))
-            flash(f"Ilustração visual aplicada para “{epi['nome']}”!", "ok")
+            svg_uri = pedidos.gerar_svg_ilustrativo_epi(nome_item)
+            fotos[nome_norm] = svg_uri
+            if epi:
+                db.execute("UPDATE epis SET imagem_url = ? WHERE id = ?", (svg_uri, epi_id))
+            db.execute("UPDATE epis SET imagem_url = ? WHERE upper(trim(COALESCE(nome_formulario, nome))) = ?", (svg_uri, nome_item.strip().upper()))
+            pedidos.salvar_config_formulario(db, {"fotos_itens": fotos})
+            flash(f"Ilustração visual aplicada para “{nome_item}”!", "ok")
         else:
             arq = request.files.get("imagem")
             url_img = request.form.get("imagem_url")
             nova_img = pedidos.processar_imagem_epi(arq, url_img)
             if not nova_img:
                 raise ErroValidacao("Selecione um arquivo de imagem ou informe uma URL válida.")
-            db.execute("UPDATE epis SET imagem_url = ? WHERE id = ?", (nova_img, epi_id))
-            flash(f"Imagem de “{epi['nome']}” atualizada no formulário!", "ok")
+            fotos[nome_norm] = nova_img
+            if epi:
+                db.execute("UPDATE epis SET imagem_url = ? WHERE id = ?", (nova_img, epi_id))
+            db.execute("UPDATE epis SET imagem_url = ? WHERE upper(trim(COALESCE(nome_formulario, nome))) = ?", (nova_img, nome_item.strip().upper()))
+            pedidos.salvar_config_formulario(db, {"fotos_itens": fotos})
+            flash(f"Imagem de “{nome_item}” atualizada no formulário!", "ok")
     except ErroValidacao as e:
         flash(str(e), "erro")
     return redirect(url_for("pedidos.personalizar_formulario") + ancora)
@@ -692,13 +811,27 @@ def form_ilustrar_todos():
     """Gera ilustrações visuais automáticas para todas as opções do formulário que ainda não têm foto."""
     db = get_db()
     sobrescrever = request.form.get("sobrescrever") == "1"
-    ativos = db.execute("SELECT id, nome, imagem_url FROM epis WHERE ativo = 1").fetchall()
+    cfg = pedidos.obter_config_formulario(db)
+    fotos = dict(cfg.get("fotos_itens") or {})
     atualizados = 0
+
+    ativos = db.execute("SELECT id, nome, imagem_url FROM epis WHERE ativo = 1").fetchall()
     for item in ativos:
-        if sobrescrever or not item["imagem_url"]:
+        nome_norm = pedidos.normalizar(item["nome"])
+        tem_foto = bool(fotos.get(nome_norm) or item["imagem_url"])
+        if sobrescrever or not tem_foto:
             svg_uri = pedidos.gerar_svg_ilustrativo_epi(item["nome"])
             db.execute("UPDATE epis SET imagem_url = ? WHERE id = ?", (svg_uri, item["id"]))
+            fotos[nome_norm] = svg_uri
             atualizados += 1
+
+    for nome_gen in pedidos.TODOS_ITENS_GENERICOS_FORMULARIO:
+        nome_norm = pedidos.normalizar(nome_gen)
+        if sobrescrever or nome_norm not in fotos:
+            fotos[nome_norm] = pedidos.gerar_svg_ilustrativo_epi(nome_gen)
+            atualizados += 1
+
+    pedidos.salvar_config_formulario(db, {"fotos_itens": fotos})
     flash(f"{atualizados} opção(ões) receberam ilustrações visuais de fácil identificação!", "ok")
     return redirect(url_for("pedidos.personalizar_formulario") + "#secao-q4")
 

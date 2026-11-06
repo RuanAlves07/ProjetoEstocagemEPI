@@ -167,8 +167,8 @@
                      class="input-url-img-curto">
               <button type="button" class="btn pequeno" title="Aplicar desenho ilustrativo automático para este EPI"
                       onclick="aplicarIlustracaoItem({{ e.id }})">✨ Ilustrar</button>
-              {% if e.imagem_url %}
-              <label class="check remover-img-check" title="Marque e salve para remover a imagem atual">
+              {% if e.imagem_url and e.tem_foto_customizada %}
+              <label class="check remover-img-check" title="Marque e salve para remover a foto atual">
                 <input type="checkbox" name="remover_img_epi_{{ e.id }}" value="1"> Remover foto
               </label>
               {% endif %}
@@ -242,7 +242,7 @@
                      value="{{ v.imagem_url if v.imagem_url and not v.imagem_url.startswith('data:') else '' }}"
                      class="input-url-img-curto">
               <button type="button" class="btn pequeno" onclick="aplicarIlustracaoItem({{ v.id }})">✨ Ilustrar</button>
-              {% if v.imagem_url %}
+              {% if v.imagem_url and v.tem_foto_customizada %}
               <label class="check remover-img-check">
                 <input type="checkbox" name="remover_img_epi_{{ v.id }}" value="1"> Remover foto
               </label>
