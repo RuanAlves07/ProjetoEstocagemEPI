@@ -133,6 +133,53 @@ ITENS_GENERICOS_UNIFORME_FORMULARIO = [
 
 TODOS_ITENS_GENERICOS_FORMULARIO = ITENS_GENERICOS_EPI_FORMULARIO + ITENS_GENERICOS_UNIFORME_FORMULARIO
 
+
+def catalogo_itens_genericos_formulario(db=None):
+    """Retorna os 22 EPIs e 3 Uniformes genéricos oficiais do formulário, com categoria formal e saldo somado de estoque."""
+    from .caepi import inferir_categoria_e_unidade
+    itens = []
+    for idx, nome_gen in enumerate(ITENS_GENERICOS_EPI_FORMULARIO):
+        cat, un = inferir_categoria_e_unidade(nome_gen)
+        itens.append({
+            "id": 90000 + idx,
+            "nome": nome_gen,
+            "categoria": cat,
+            "unidade": un,
+            "tipo": "epi",
+            "saldo": 0,
+            "ca": "",
+        })
+    for idx, nome_gen in enumerate(ITENS_GENERICOS_UNIFORME_FORMULARIO):
+        cat, un = inferir_categoria_e_unidade(nome_gen)
+        itens.append({
+            "id": 91000 + idx,
+            "nome": nome_gen,
+            "categoria": cat,
+            "unidade": un,
+            "tipo": "uniforme",
+            "saldo": 0,
+            "ca": "",
+        })
+
+    if db:
+        try:
+            mapa_saldos = {}
+            for r in db.execute("""
+                SELECT COALESCE(NULLIF(trim(nome_formulario), ''), trim(nome)) AS nome_ref,
+                       SUM(COALESCE(saldo, 0)) AS total_saldo
+                FROM epis
+                WHERE ativo = 1
+                GROUP BY 1
+            """).fetchall():
+                if r["nome_ref"]:
+                    mapa_saldos[normalizar(r["nome_ref"])] = r["total_saldo"]
+            for it in itens:
+                it["saldo"] = mapa_saldos.get(normalizar(it["nome"]), 0)
+        except Exception:
+            pass
+
+    return itens
+
 _TERMOS_CALCADO = ("sapat", "bota", "botina", "calcad")
 _TERMOS_CAMISETA = ("camis", "blusa", "polo")
 _TERMOS_CALCA = ("calca", "bermud")
@@ -953,7 +1000,7 @@ def carregar(db, status=None, pedido_id=None, limite=None):
     # Kits padrão por cargo e tamanhos registrados na ficha do colaborador para sinalizar "Analisar"
     # Expande para incluir todas as numerações/tamanhos e modelos vinculados pelo mesmo nome_formulario
     padrao_por_cargo = {}
-    for r in db.execute("SELECT cargo, epi_id FROM cargo_epis_padrao"):
+    for r in db.execute("SELECT cargo, epi_id, nome_generico FROM cargo_epis_padrao"):
         ch_cargo = (r["cargo"] or "").strip().casefold()
         if ch_cargo:
             conj = padrao_por_cargo.setdefault(ch_cargo, set())
@@ -963,6 +1010,19 @@ def carregar(db, status=None, pedido_id=None, limite=None):
                 for var in variantes_por_nome.get(normalizar(epi_ref["nome"]), ()):
                     conj.add(var["id"])
                 for var in variantes_por_grupo.get(normalizar(nome_exibicao_forms(epi_ref)), ()):
+                    conj.add(var["id"])
+            nome_gen = r["nome_generico"]
+            if not nome_gen and r["epi_id"] >= 90000:
+                eid = r["epi_id"]
+                if 90000 <= eid < 90000 + len(ITENS_GENERICOS_EPI_FORMULARIO):
+                    nome_gen = ITENS_GENERICOS_EPI_FORMULARIO[eid - 90000]
+                elif 91000 <= eid < 91000 + len(ITENS_GENERICOS_UNIFORME_FORMULARIO):
+                    nome_gen = ITENS_GENERICOS_UNIFORME_FORMULARIO[eid - 91000]
+            if nome_gen:
+                norm = normalizar(nome_gen)
+                for var in variantes_por_nome.get(norm, ()):
+                    conj.add(var["id"])
+                for var in variantes_por_grupo.get(norm, ()):
                     conj.add(var["id"])
 
     padrao_por_colab = {}

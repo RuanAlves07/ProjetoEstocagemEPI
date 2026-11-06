@@ -156,11 +156,12 @@ CREATE TABLE IF NOT EXISTS epi_apelidos (
 CREATE INDEX IF NOT EXISTS idx_pedidos_status ON pedidos (status);
 CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido ON pedido_itens (pedido_id);
 
--- Equipamentos utilizados por padrão por cargo/função (marcados via checkbox a partir do inventário)
+-- Equipamentos utilizados por padrão por cargo/função (grade oficial de itens genéricos do formulário)
 CREATE TABLE IF NOT EXISTS cargo_epis_padrao (
-    cargo      TEXT NOT NULL COLLATE NOCASE,
-    epi_id     INTEGER NOT NULL REFERENCES epis (id),
-    criado_em  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    cargo         TEXT NOT NULL COLLATE NOCASE,
+    epi_id        INTEGER NOT NULL,
+    nome_generico TEXT COLLATE NOCASE,
+    criado_em     TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     PRIMARY KEY (cargo, epi_id)
 );
 

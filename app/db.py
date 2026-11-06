@@ -413,6 +413,9 @@ def _migrar(conn):
     # Migra categorias existentes para os novos nomes formais e padronizados
     _migrar_categorias_oficiais(conn)
 
+    # Migra padrão de EPIs por cargo para suportar itens genéricos do formulário
+    _migrar_cargo_epis_padrao(conn)
+
 
 def _sincronizar_catalogo_formulario_oficial(conn):
     """Remove da tabela epis quaisquer itens genéricos que tenham sido inseridos automaticamente sem estoque,
@@ -530,6 +533,101 @@ def _migrar_categorias_oficiais(conn):
     conn.execute(
         "UPDATE epis SET categoria = 'Proteção da Pele e Dermatológicos' WHERE (LOWER(nome) LIKE '%protetor solar%' OR LOWER(nome) LIKE '%repelente%') AND (categoria IS NULL OR categoria IN ('Outros / Diversos', 'Proteção das Mãos'))"
     )
+
+
+def _migrar_cargo_epis_padrao(conn):
+    """Garante que cargo_epis_padrao não dependa da chave estrangeira restritiva de epis,
+    possua a coluna nome_generico e converta itens legados (< 90000) para os IDs sintéticos oficiais."""
+    try:
+        colunas_cep = {r["name"] for r in conn.execute("PRAGMA table_info(cargo_epis_padrao)")}
+    except Exception:
+        return
+
+    info_cargo_epis = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cargo_epis_padrao'"
+    ).fetchone()
+    precisa_recriar = False
+    if info_cargo_epis and info_cargo_epis["sql"]:
+        sql_cep = info_cargo_epis["sql"].upper()
+        if "REFERENCES EPIS" in sql_cep or "REFERENCES \"EPIS\"" in sql_cep:
+            precisa_recriar = True
+    if "nome_generico" not in colunas_cep:
+        precisa_recriar = True
+
+    if precisa_recriar:
+        conn.executescript("""
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE IF NOT EXISTS cargo_epis_padrao_novo (
+                cargo          TEXT NOT NULL,
+                epi_id         INTEGER NOT NULL,
+                nome_generico  TEXT,
+                criado_em      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                PRIMARY KEY (cargo, epi_id)
+            );
+        """)
+        if "nome_generico" in colunas_cep:
+            conn.execute("""
+                INSERT OR IGNORE INTO cargo_epis_padrao_novo (cargo, epi_id, nome_generico, criado_em)
+                SELECT cargo, epi_id, nome_generico, criado_em FROM cargo_epis_padrao
+            """)
+        else:
+            conn.execute("""
+                INSERT OR IGNORE INTO cargo_epis_padrao_novo (cargo, epi_id, criado_em)
+                SELECT cargo, epi_id, criado_em FROM cargo_epis_padrao
+            """)
+        conn.executescript("""
+            DROP TABLE cargo_epis_padrao;
+            ALTER TABLE cargo_epis_padrao_novo RENAME TO cargo_epis_padrao;
+            PRAGMA foreign_keys = ON;
+        """)
+
+    from .pedidos import (
+        ITENS_GENERICOS_EPI_FORMULARIO,
+        ITENS_GENERICOS_UNIFORME_FORMULARIO,
+        normalizar,
+    )
+
+    # Constrói mapeamento de nome normalizado para (id_sintético, nome_oficial)
+    mapa_sintetico = {}
+    for idx, nome_gen in enumerate(ITENS_GENERICOS_EPI_FORMULARIO):
+        mapa_sintetico[normalizar(nome_gen)] = (90000 + idx, nome_gen)
+    for idx, nome_gen in enumerate(ITENS_GENERICOS_UNIFORME_FORMULARIO):
+        mapa_sintetico[normalizar(nome_gen)] = (91000 + idx, nome_gen)
+
+    # 1. Se houver registros legados com epi_id < 90000, converte para o id sintético
+    registros_legados = conn.execute(
+        "SELECT cp.cargo, cp.epi_id, e.nome, e.nome_formulario FROM cargo_epis_padrao cp "
+        "LEFT JOIN epis e ON e.id = cp.epi_id WHERE cp.epi_id < 90000"
+    ).fetchall()
+    for reg in registros_legados:
+        cargo = reg["cargo"]
+        eid_antigo = reg["epi_id"]
+        nf = reg["nome_formulario"] or ""
+        nm = reg["nome"] or ""
+        par = mapa_sintetico.get(normalizar(nf)) or mapa_sintetico.get(normalizar(nm))
+        if par:
+            novo_id, nome_oficial = par
+            conn.execute("DELETE FROM cargo_epis_padrao WHERE cargo = ? AND epi_id = ?", (cargo, eid_antigo))
+            conn.execute(
+                "INSERT OR REPLACE INTO cargo_epis_padrao (cargo, epi_id, nome_generico) VALUES (?, ?, ?)",
+                (cargo, novo_id, nome_oficial),
+            )
+
+    # 2. Se houver registros com epi_id >= 90000 sem nome_generico, preenche
+    for r in conn.execute(
+        "SELECT cargo, epi_id FROM cargo_epis_padrao WHERE epi_id >= 90000 AND (nome_generico IS NULL OR trim(nome_generico) = '')"
+    ).fetchall():
+        eid = r["epi_id"]
+        nome_oficial = None
+        if 90000 <= eid < 90000 + len(ITENS_GENERICOS_EPI_FORMULARIO):
+            nome_oficial = ITENS_GENERICOS_EPI_FORMULARIO[eid - 90000]
+        elif 91000 <= eid < 91000 + len(ITENS_GENERICOS_UNIFORME_FORMULARIO):
+            nome_oficial = ITENS_GENERICOS_UNIFORME_FORMULARIO[eid - 91000]
+        if nome_oficial:
+            conn.execute(
+                "UPDATE cargo_epis_padrao SET nome_generico = ? WHERE cargo = ? AND epi_id = ?",
+                (nome_oficial, r["cargo"], eid),
+            )
 
 
 def init_app(app):

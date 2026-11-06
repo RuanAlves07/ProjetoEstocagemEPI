@@ -180,9 +180,10 @@ ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS solicitante_usuario_id INTEGER REFE
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS solicitante_email TEXT;
 
 CREATE TABLE IF NOT EXISTS cargo_epis_padrao (
-    cargo      TEXT NOT NULL,
-    epi_id     INTEGER NOT NULL REFERENCES epis (id),
-    criado_em  TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')),
+    cargo          TEXT NOT NULL,
+    epi_id         INTEGER NOT NULL,
+    nome_generico  TEXT,
+    criado_em      TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')),
     PRIMARY KEY (cargo, epi_id)
 );
 

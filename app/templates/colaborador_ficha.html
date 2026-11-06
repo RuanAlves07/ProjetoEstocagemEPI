@@ -96,7 +96,11 @@
         {% for e in epis_padrao %}
           <tr>
             <td>
-              <a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}"><strong>{{ e.nome }}</strong></a>
+              {% if e.id < 90000 %}
+                <a href="{{ url_for('cadastros.epi_detalhe', epi_id=e.id) }}"><strong>{{ e.nome }}</strong></a>
+              {% else %}
+                <strong>{{ e.nome }}</strong>
+              {% endif %}
             </td>
             <td>{{ e.categoria or '—' }}</td>
             <td>{{ e.ca or '—' }}</td>

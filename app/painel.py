@@ -206,26 +206,36 @@ def _montar_relatorio_tamanhos(db, de_iso, ate_iso, epis_saldo, filtro_subtipo="
 
     # 4. Contabiliza quantos colaboradores ativos têm esse produto + tamanho configurado no seu perfil/cargo
     padrao_cargo = {}
-    for r in db.execute("SELECT cargo, epi_id FROM cargo_epis_padrao"):
-        padrao_cargo.setdefault((r["cargo"] or "").strip().casefold(), set()).add(r["epi_id"])
+    for r in db.execute("SELECT cargo, epi_id, nome_generico FROM cargo_epis_padrao"):
+        padrao_cargo.setdefault((r["cargo"] or "").strip().casefold(), []).append(
+            (r["epi_id"], r["nome_generico"] or "")
+        )
 
     for cid, c in colabs.items():
         if not c["ativo"]:
             continue
         cargo_c = (c["funcao"] or "").strip().casefold()
-        epis_do_colab = padrao_cargo.get(cargo_c, set())
-        for eid in epis_do_colab:
+        itens_do_cargo = padrao_cargo.get(cargo_c, [])
+        for eid, nome_gen in itens_do_cargo:
             epi_info = mapa_epis.get(eid)
-            if not epi_info:
-                continue
-            sub = _subtipo_item(epi_info["nome"])
+            nome_ref = epi_info["nome"] if epi_info else nome_gen
+            sub = _subtipo_item(nome_ref) if nome_ref else None
             if not sub:
                 continue
             tam = tamanhos_perfil.get((cid, f"epi:{eid}")) or tamanhos_perfil.get((cid, f"tipo:{sub}"))
-            if tam:
+            if not tam:
+                continue
+            if epi_info:
                 g = _garantir_grupo(eid, tam)
                 if g:
                     g["funcionarios_perfil"][cid] = c["nome"]
+            else:
+                # Item genérico: aplica a todos os modelos do estoque pertencentes a este subtipo
+                for real_id, real_epi in mapa_epis.items():
+                    if _subtipo_item(real_epi["nome"]) == sub:
+                        g = _garantir_grupo(real_id, tam)
+                        if g:
+                            g["funcionarios_perfil"][cid] = c["nome"]
 
     # Monta lista final ordenada e aplica filtros opcionais
     linhas = []

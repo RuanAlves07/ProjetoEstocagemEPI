@@ -898,6 +898,48 @@ class TestEstoque(Base):
             u = get_db().execute("SELECT foto_perfil FROM usuarios WHERE login = 'admin'").fetchone()
             self.assertIsNone(u["foto_perfil"])
 
+    def test_cargos_padrao_itens_genericos_formulario(self):
+        # 1. Carrega tela de cargo e valida presença dos itens genéricos oficiais do formulário
+        r_cargo = self.c.get("/colaboradores/cargos?cargo=Pedreiro")
+        self.assertEqual(r_cargo.status_code, 200)
+        html = r_cargo.get_data(as_text=True)
+        self.assertIn("CAPACETE DE SEGURANÇA C/ SUSPENSÃO", html)
+        self.assertIn("CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA", html)
+        self.assertIn("Item do Formulário", html)
+
+        # 2. Marcação via AJAX com item genérico (ex: 90000)
+        r_ajax = self.post("/colaboradores/cargos", {
+            "cargo": "Pedreiro",
+            "epi_id": "90000",
+            "marcado": "1",
+            "ajax": "1",
+        })
+        self.assertEqual(r_ajax.status_code, 200)
+        with self.app.app_context():
+            from app.db import get_db
+            row = get_db().execute(
+                "SELECT * FROM cargo_epis_padrao WHERE cargo = 'Pedreiro' AND epi_id = 90000"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertIn("ABAFADOR", row["nome_generico"])
+
+        # 3. Formulário completo salvando EPIs e Uniformes genéricos
+        r_salvar = self.post("/colaboradores/cargos", {
+            "cargo": "Pedreiro",
+            "epi_id": ["90011", "91001"],  # Luva vaqueta e Camiseta manga curta
+        }, follow_redirects=True)
+        self.assertEqual(r_salvar.status_code, 200)
+        html_pedreiro = r_salvar.get_data(as_text=True)
+        self.assertIn("LUVAS VAQUETA PETROLEIRA", html_pedreiro)
+        self.assertIn("CAMISETA MANGA CURTA", html_pedreiro)
+
+        # 4. Ficha do colaborador com cargo Pedreiro exibe os itens genéricos na aba padrão
+        self.post(f"/colaboradores/{self.colab}/cargo", {"funcao": "Pedreiro"}, follow_redirects=True)
+        r_ficha = self.c.get(f"/colaboradores/{self.colab}?aba=padrao")
+        html_ficha = r_ficha.get_data(as_text=True)
+        self.assertIn("LUVAS VAQUETA PETROLEIRA", html_ficha)
+        self.assertIn("CAMISETA MANGA CURTA", html_ficha)
+
 
 if __name__ == "__main__":
     unittest.main()

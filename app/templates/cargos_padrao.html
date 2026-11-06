@@ -78,7 +78,7 @@
 
 {% else %}
   <!-- Visão 2: Detalhe do cargo selecionado com a lista de equipamentos padrão -->
-  {% set selecionados = epis|selectattr('id', 'in', padrao_ids)|list %}
+  {% set selecionados = itens_definidos if itens_definidos is defined and itens_definidos else (epis|selectattr('id', 'in', padrao_ids)|list) %}
   <section class="cartao destaque-pronto">
     <div class="cabecalho">
       <h2 style="margin:0">Equipamentos definidos por padrão para: {{ cargo_atual }}</h2>
@@ -95,7 +95,11 @@
   </section>
 
   <section class="cartao">
-    <h2>Selecionar / alterar equipamentos padrão no inventário</h2>
+    <h2>Selecionar / alterar equipamentos padrão (Itens do Formulário)</h2>
+    <p class="suave" style="margin-top:-.4rem;margin-bottom:1rem">
+      Selecione os EPIs e uniformes genéricos que compõem o kit padrão deste cargo.
+      Ao solicitar no formulário, colaboradores deste cargo terão esses itens identificados automaticamente como de sua função.
+    </p>
 
     <form method="post" action="{{ url_for('cadastros.cargos_padrao', cargo=cargo_atual) }}" id="form-padrao-colab"
           data-ajax-url="{{ url_for('cadastros.cargos_padrao', cargo=cargo_atual) }}">
@@ -106,10 +110,10 @@
           <thead>
             <tr>
               <th>Padrão do cargo</th>
-              <th>Equipamento (inventário)</th>
+              <th>Item do Formulário</th>
               <th>Categoria</th>
-              <th>CA</th>
-              <th class="num">Saldo atual</th>
+              <th>Tipo</th>
+              <th class="num">Saldo total em estoque</th>
             </tr>
           </thead>
           <tbody>
@@ -125,11 +129,17 @@
                 </label>
               </td>
               <td>{{ e.categoria or '—' }}</td>
-              <td>{{ e.ca or '—' }}</td>
+              <td>
+                {% if e.tipo == 'uniforme' %}
+                  <span class="badge cinza">Uniforme</span>
+                {% else %}
+                  <span class="badge cinza">EPI</span>
+                {% endif %}
+              </td>
               <td class="num">{{ e.saldo }} <small class="suave">{{ e.unidade }}</small></td>
             </tr>
           {% else %}
-            <tr><td colspan="5" class="vazio">Nenhum equipamento cadastrado no inventário.</td></tr>
+            <tr><td colspan="5" class="vazio">Nenhum item genérico cadastrado no formulário.</td></tr>
           {% endfor %}
           </tbody>
         </table>

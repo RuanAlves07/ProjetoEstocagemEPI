@@ -694,15 +694,26 @@ def cargos_padrao():
             flash("Informe ou selecione o nome do cargo.", "erro")
             return redirect(url_for("cadastros.cargos_padrao"))
 
+        itens_genericos = pedidos.catalogo_itens_genericos_formulario(db)
+        mapa_genericos = {it["id"]: it["nome"] for it in itens_genericos}
+
         # Modo 1: clique individual via AJAX
         if request.form.get("ajax") == "1":
             epi_id = to_int(request.form.get("epi_id"))
-            if not epi_id or not db.execute("SELECT 1 FROM epis WHERE id = ?", (epi_id,)).fetchone():
-                return jsonify(erro="EPI inválido."), 400
+            nome_item = None
+            if epi_id in mapa_genericos:
+                nome_item = mapa_genericos[epi_id]
+            else:
+                row_epi = db.execute("SELECT id, nome FROM epis WHERE id = ?", (epi_id,)).fetchone()
+                if row_epi:
+                    nome_item = row_epi["nome"]
+                else:
+                    return jsonify(erro="EPI inválido."), 400
+
             if request.form.get("marcado") == "1":
                 db.execute(
-                    "INSERT OR IGNORE INTO cargo_epis_padrao (cargo, epi_id) VALUES (?, ?)",
-                    (cargo_atual, epi_id),
+                    "INSERT OR REPLACE INTO cargo_epis_padrao (cargo, epi_id, nome_generico) VALUES (?, ?, ?)",
+                    (cargo_atual, epi_id, nome_item),
                 )
             else:
                 db.execute(
@@ -715,32 +726,62 @@ def cargos_padrao():
             return jsonify(ok=True, total=total)
 
         # Modo 2: envio do formulário completo
-        ids = {to_int(x) for x in request.form.getlist("epi_id") if to_int(x)}
-        validos = {r["id"] for r in db.execute("SELECT id FROM epis")}
-        ids &= validos
+        ids = [to_int(x) for x in request.form.getlist("epi_id") if to_int(x)]
         db.execute("DELETE FROM cargo_epis_padrao WHERE cargo = ? COLLATE NOCASE", (cargo_atual,))
         for eid in ids:
-            db.execute("INSERT INTO cargo_epis_padrao (cargo, epi_id) VALUES (?, ?)", (cargo_atual, eid))
+            if eid in mapa_genericos:
+                db.execute(
+                    "INSERT INTO cargo_epis_padrao (cargo, epi_id, nome_generico) VALUES (?, ?, ?)",
+                    (cargo_atual, eid, mapa_genericos[eid]),
+                )
+            else:
+                row_epi = db.execute("SELECT id, nome FROM epis WHERE id = ?", (eid,)).fetchone()
+                if row_epi:
+                    db.execute(
+                        "INSERT INTO cargo_epis_padrao (cargo, epi_id, nome_generico) VALUES (?, ?, ?)",
+                        (cargo_atual, eid, row_epi["nome"]),
+                    )
         flash(f"Equipamentos padrão do cargo “{cargo_atual}” salvos para todos os colaboradores da função.", "ok")
         return redirect(url_for("cadastros.cargos_padrao", cargo=cargo_atual))
 
-    epis = estoque.epis_com_saldo(db, somente_ativos=True) if cargo_atual else []
+    itens_genericos = pedidos.catalogo_itens_genericos_formulario(db)
+    mapa_genericos = {it["id"]: it["nome"] for it in itens_genericos}
+    epis = itens_genericos if cargo_atual else []
     padrao_ids = _padrao_ids_cargo(db, cargo_atual) if cargo_atual else set()
+
+    itens_definidos = []
+    if cargo_atual:
+        linhas_def = db.execute(
+            """SELECT cp.epi_id, cp.nome_generico, e.nome AS epi_nome, e.categoria AS epi_cat
+               FROM cargo_epis_padrao cp
+               LEFT JOIN epis e ON e.id = cp.epi_id
+               WHERE cp.cargo = ? COLLATE NOCASE
+               ORDER BY COALESCE(cp.nome_generico, e.nome, '') COLLATE NOCASE""",
+            (cargo_atual,),
+        ).fetchall()
+        for r in linhas_def:
+            itens_definidos.append({
+                "id": r["epi_id"],
+                "nome": r["nome_generico"] or mapa_genericos.get(r["epi_id"]) or r["epi_nome"] or f"Item #{r['epi_id']}",
+                "categoria": r["epi_cat"] or "",
+            })
 
     resumo_cargos = []
     for c_nome in cargos:
         n_colabs = db.execute(
             "SELECT COUNT(*) FROM colaboradores WHERE ativo = 1 AND funcao = ? COLLATE NOCASE", (c_nome,)
         ).fetchone()[0]
+        linhas_cp = db.execute(
+            """SELECT cp.epi_id, cp.nome_generico, e.nome AS epi_nome
+               FROM cargo_epis_padrao cp
+               LEFT JOIN epis e ON e.id = cp.epi_id
+               WHERE cp.cargo = ? COLLATE NOCASE
+               ORDER BY COALESCE(cp.nome_generico, e.nome, '') COLLATE NOCASE""",
+            (c_nome,),
+        ).fetchall()
         nomes_epis = [
-            r["nome"]
-            for r in db.execute(
-                """SELECT e.nome FROM cargo_epis_padrao cp
-                   JOIN epis e ON e.id = cp.epi_id
-                   WHERE cp.cargo = ? COLLATE NOCASE
-                   ORDER BY e.nome COLLATE NOCASE""",
-                (c_nome,),
-            )
+            r["nome_generico"] or mapa_genericos.get(r["epi_id"]) or r["epi_nome"] or f"Item #{r['epi_id']}"
+            for r in linhas_cp
         ]
         resumo_cargos.append({
             "nome": c_nome,
@@ -756,6 +797,7 @@ def cargos_padrao():
         cargo_atual=cargo_atual,
         epis=epis,
         padrao_ids=padrao_ids,
+        itens_definidos=itens_definidos,
     )
 
 
@@ -984,6 +1026,23 @@ def _salvar_tamanho_item(db, colab_id, epi_row, valor):
     return None
 
 
+def _expandir_padrao_ids_com_estoque(db, padrao_ids):
+    """Dado um conjunto de IDs (que pode conter IDs genéricos >= 90000), expande para incluir
+    os IDs reais de estoque vinculados a esses itens genéricos."""
+    expandidos = set(padrao_ids)
+    nomes_gen = set()
+    for eid in padrao_ids:
+        if 90000 <= eid < 90000 + len(pedidos.ITENS_GENERICOS_EPI_FORMULARIO):
+            nomes_gen.add(pedidos.normalizar(pedidos.ITENS_GENERICOS_EPI_FORMULARIO[eid - 90000]))
+        elif 91000 <= eid < 91000 + len(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
+            nomes_gen.add(pedidos.normalizar(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO[eid - 91000]))
+    if nomes_gen:
+        for r in db.execute("SELECT id, nome, nome_formulario FROM epis").fetchall():
+            if pedidos.normalizar(r["nome_formulario"] or "") in nomes_gen or pedidos.normalizar(r["nome"] or "") in nomes_gen:
+                expandidos.add(r["id"])
+    return expandidos
+
+
 @bp.get("/colaboradores/<int:colab_id>")
 def colaborador_ficha(colab_id):
     db = get_db()
@@ -995,26 +1054,47 @@ def colaborador_ficha(colab_id):
     padrao_ids = _padrao_ids_colaborador(db, colab)
     tamanhos_salvos = _obter_tamanhos_colaborador(db, colab_id)
 
+    itens_genericos_lista = pedidos.catalogo_itens_genericos_formulario(db)
+    mapa_gen_por_id = {it["id"]: it for it in itens_genericos_lista}
+
     epis_padrao = []
-    for e in epis:
-        if e["id"] not in padrao_ids:
-            continue
-        item = dict(e)
-        tc = pedidos.tipo_calcado(e["nome"])
-        tu = pedidos.tipo_uniforme(e["nome"])
-        if tc:
-            item["tipo_seletor"] = "numero"
-            item["subtipo_tam"] = {"sapatao": "Sapatão", "botina": "Botina", "bota": "Bota"}.get(tc, "Calçado")
-            item["tamanho_atual"] = tamanhos_salvos.get(f"epi:{e['id']}", tamanhos_salvos.get(f"tipo:{tc}", ""))
-        elif tu:
-            item["tipo_seletor"] = "letra"
-            item["subtipo_tam"] = {"camiseta": "Camiseta", "calca": "Calça"}.get(tu, "Uniforme")
-            item["tamanho_atual"] = tamanhos_salvos.get(f"epi:{e['id']}", tamanhos_salvos.get(f"tipo:{tu}", ""))
+    for eid in sorted(padrao_ids):
+        if eid in mapa_gen_por_id:
+            gen = dict(mapa_gen_por_id[eid])
+            tc = pedidos.tipo_calcado(gen["nome"])
+            tu = pedidos.tipo_uniforme(gen["nome"])
+            if tc:
+                gen["tipo_seletor"] = "numero"
+                gen["subtipo_tam"] = {"sapatao": "Sapatão", "botina": "Botina", "bota": "Bota"}.get(tc, "Calçado")
+                gen["tamanho_atual"] = tamanhos_salvos.get(f"epi:{gen['id']}", tamanhos_salvos.get(f"tipo:{tc}", ""))
+            elif tu:
+                gen["tipo_seletor"] = "letra"
+                gen["subtipo_tam"] = {"camiseta": "Camiseta", "calca": "Calça"}.get(tu, "Uniforme")
+                gen["tamanho_atual"] = tamanhos_salvos.get(f"epi:{gen['id']}", tamanhos_salvos.get(f"tipo:{tu}", ""))
+            else:
+                gen["tipo_seletor"] = None
+                gen["subtipo_tam"] = None
+                gen["tamanho_atual"] = ""
+            epis_padrao.append(gen)
         else:
-            item["tipo_seletor"] = None
-            item["subtipo_tam"] = None
-            item["tamanho_atual"] = ""
-        epis_padrao.append(item)
+            e = next((x for x in epis if x["id"] == eid), None)
+            if e:
+                item = dict(e)
+                tc = pedidos.tipo_calcado(e["nome"])
+                tu = pedidos.tipo_uniforme(e["nome"])
+                if tc:
+                    item["tipo_seletor"] = "numero"
+                    item["subtipo_tam"] = {"sapatao": "Sapatão", "botina": "Botina", "bota": "Bota"}.get(tc, "Calçado")
+                    item["tamanho_atual"] = tamanhos_salvos.get(f"epi:{e['id']}", tamanhos_salvos.get(f"tipo:{tc}", ""))
+                elif tu:
+                    item["tipo_seletor"] = "letra"
+                    item["subtipo_tam"] = {"camiseta": "Camiseta", "calca": "Calça"}.get(tu, "Uniforme")
+                    item["tamanho_atual"] = tamanhos_salvos.get(f"epi:{e['id']}", tamanhos_salvos.get(f"tipo:{tu}", ""))
+                else:
+                    item["tipo_seletor"] = None
+                    item["subtipo_tam"] = None
+                    item["tamanho_atual"] = ""
+                epis_padrao.append(item)
 
     cargo_colab = (colab["funcao"] or "").strip()
     qtd_no_cargo = (
@@ -1024,7 +1104,8 @@ def colaborador_ficha(colab_id):
         if cargo_colab
         else 0
     )
-    solicitados = _solicitados_fora_do_padrao(db, colab_id, padrao_ids)
+    padrao_ids_expandidos = _expandir_padrao_ids_com_estoque(db, padrao_ids)
+    solicitados = _solicitados_fora_do_padrao(db, colab_id, padrao_ids_expandidos)
     from .movimentos import consultar_movimentos
     entregas = consultar_movimentos(db, {"colaborador_id": colab_id, "tipo": "saida"}, limite=None)
     return render_template(

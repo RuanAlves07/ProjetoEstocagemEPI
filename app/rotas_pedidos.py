@@ -225,9 +225,15 @@ def _padrao_por_colaborador(db, colaboradores):
             if ch:
                 ids_por_chave.setdefault(ch, set()).add(r["id"])
     for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_EPI_FORMULARIO):
-        ids_por_chave.setdefault(pedidos.normalizar(nome_gen), set()).add(90000 + idx)
+        gid = 90000 + idx
+        ch = pedidos.normalizar(nome_gen)
+        ids_por_chave.setdefault(ch, set()).add(gid)
+        chaves_por_id.setdefault(gid, set()).add(ch)
     for idx, nome_gen in enumerate(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO):
-        ids_por_chave.setdefault(pedidos.normalizar(nome_gen), set()).add(91000 + idx)
+        gid = 91000 + idx
+        ch = pedidos.normalizar(nome_gen)
+        ids_por_chave.setdefault(ch, set()).add(gid)
+        chaves_por_id.setdefault(gid, set()).add(ch)
 
     def _expandir_tamanhos(conj_ids):
         expandido = set(conj_ids)
