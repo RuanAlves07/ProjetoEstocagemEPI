@@ -286,6 +286,14 @@ class TestTelas(BasePedidos):
         d = self.c.get("/pedidos/novos").get_json()
         self.assertEqual((d["novos"], d["a_atender"]), (0, 1))
 
+    def test_excluir_pelo_card_do_aviso_volta_para_a_lista(self):
+        pid = self.novo_pedido()
+        html = self.c.get("/pedidos/novos").get_json()["html"]
+        self.assertIn('data-auto', html)
+        r = self.post(f"/pedidos/{pid}/excluir", {"voltar": "/pedidos/novos?"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers["Location"].endswith("/pedidos"), r.headers["Location"])
+
     def test_paginas_renderizam_em_todos_os_estados(self):
         pid = self.novo_pedido()
         urls = ["/pedidos", "/pedidos?aba=retirados", "/pedidos?aba=cancelados", f"/pedidos/{pid}", "/integracao"]

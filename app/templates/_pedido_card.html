@@ -40,7 +40,7 @@
           <form method="post" action="{{ url_for('pedidos.editar_item', pedido_id=p.id, item_id=i.id) }}" style="margin:.25rem 0 0;display:flex;gap:.3rem;align-items:center">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="quantidade" value="{{ i.quantidade }}">
-            <input type="hidden" name="voltar" value="{{ request.full_path }}">
+            <input type="hidden" name="voltar" value="{{ request.full_path }}" data-auto>
             <select name="epi_id" onchange="this.form.submit()" style="flex:1;font-size:.8rem;padding:.2rem .35rem">
               {% for op in i.possibilidades %}
               <option value="{{ op.id }}" {{ 'selected' if op.id == i.epi_id }}>
@@ -83,7 +83,7 @@
     <form method="post" action="{{ url_for('pedidos.excluir', pedido_id=p.id) }}"
           onsubmit="return confirm('Tem certeza que deseja excluir o pedido #{{ p.id }}?');" style="margin-left:auto">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="voltar" value="{{ request.full_path }}">
+      <input type="hidden" name="voltar" value="{{ request.full_path }}" data-auto>
       <button type="submit" class="btn perigo pequeno" title="Excluir pedido">🗑️ Excluir</button>
     </form>
     {% endif %}

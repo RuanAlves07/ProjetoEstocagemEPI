@@ -17,6 +17,15 @@ from .util import hoje, limpar, to_int
 
 bp = Blueprint("pedidos", __name__)
 
+
+def _voltar_form(padrao=None):
+    """Destino do campo "voltar". Ignora /pedidos/novos: os cards do aviso são montados por essa
+    rota JSON, e voltar para ela mostraria o JSON em vez da página."""
+    destino = request.form.get("voltar")
+    if not destino or destino.split("?")[0] == url_for("pedidos.novos"):
+        return padrao
+    return _destino_seguro(destino)
+
 ROTULOS_GRUPOS = {
     "novo": "Novos pedidos",
     "pendente": "Pendentes (deixados para mais tarde)",
@@ -1056,7 +1065,7 @@ def mais_tarde(pedido_id):
         email_service.notificar_evento_pedido(db, pedido_id, "pendente", ator_nome=g.usuario["nome"])
     return _executar(_acao, pedido_id,
                      "Pedido guardado em Pendentes.",
-                     destino=_destino_seguro(request.form.get("voltar") or url_for("pedidos.lista")))
+                     destino=_voltar_form(url_for("pedidos.lista")))
 
 
 @bp.post("/pedidos/<int:pedido_id>/itens/<int:item_id>/separar")
@@ -1073,7 +1082,7 @@ def separar(pedido_id, item_id):
 @bp.post("/pedidos/<int:pedido_id>/itens/<int:item_id>/editar")
 @escrita_required
 def editar_item(pedido_id, item_id):
-    voltar = _destino_seguro(request.form.get("voltar")) if request.form.get("voltar") else None
+    voltar = _voltar_form()
     return _executar(lambda: pedidos.editar_item(
         get_db(), pedido_id, item_id, to_int(request.form.get("epi_id")),
         to_int(request.form.get("quantidade")), request.form.get("lembrar") == "1"),
@@ -1163,7 +1172,7 @@ def cancelar(pedido_id):
 @escrita_required
 def excluir(pedido_id):
     db = get_db()
-    voltar = _destino_seguro(request.form.get("voltar")) if request.form.get("voltar") else url_for("pedidos.lista")
+    voltar = _voltar_form(url_for("pedidos.lista"))
     if voltar and f"/pedidos/{pedido_id}" in voltar:
         voltar = url_for("pedidos.lista")
     try:
