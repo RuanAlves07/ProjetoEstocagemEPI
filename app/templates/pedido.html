@@ -9,7 +9,7 @@
     Pedido #{{ p.id }}
     <span class="badge status-{{ p.status }}">{{ STATUS[p.status] }}</span>
     {% if p.ressalva_observacao %}<span class="badge amarelo">⚠️ Com ressalva</span>{% endif %}
-    {% if p.aguardando_estoque %}<span class="badge sla-pausado">⏳ Aguardando estoque</span>{% endif %}
+    {% if p.aguardando_estoque %}<span class="badge sla-pausado">Aguardando estoque</span>{% endif %}
     {% if em_aberto and p.total_analise > 0 %}<span class="badge badge-analisar">🔍 {{ p.total_analise }} para analisar</span>{% endif %}
   </h1>
   <div class="acoes">
