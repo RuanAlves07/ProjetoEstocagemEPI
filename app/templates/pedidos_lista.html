@@ -105,7 +105,7 @@
     <span class="nota">Prazo: pronto em até {{ sla_cfg.horas_atendimento }} h · alerta {{ sla_cfg.horas_alerta }} h antes · retirada em até {{ sla_cfg.dias_retirada }} dia(s)</span>
     {% if eh_admin %}
     <details class="editar-item">
-      <summary class="btn pequeno">⚙️ Ajustar prazos</summary>
+      <summary class="btn pequeno">Ajustar SLA</summary>
       <form method="post" action="{{ url_for('pedidos.config_sla') }}" class="cartao linha-form" style="margin-top:.5rem">
         {{ csrf() }}
         <label>Pronto em até (horas) <input type="number" name="horas_atendimento" min="1" max="720" value="{{ sla_cfg.horas_atendimento }}" required style="width:6rem"></label>

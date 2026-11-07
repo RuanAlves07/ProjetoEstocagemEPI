@@ -8,7 +8,7 @@
   <h1>
     Pedido #{{ p.id }}
     <span class="badge status-{{ p.status }}">{{ STATUS[p.status] }}</span>
-    {% if p.ressalva_observacao %}<span class="badge amarelo">⚠️ Com ressalva</span>{% endif %}
+    {% if p.ressalva_observacao %}<span class="badge amarelo">Com ressalva</span>{% endif %}
     {% if p.aguardando_estoque %}<span class="badge sla-pausado">Aguardando estoque</span>{% endif %}
     {% if em_aberto and p.total_analise > 0 %}<span class="badge badge-analisar">🔍 {{ p.total_analise }} para analisar</span>{% endif %}
   </h1>
@@ -102,12 +102,12 @@
           </div>
           {% if i.epi_ativo == false %}<span class="badge vermelho">EPI inativo</span>{% endif %}
           {% if p.status in ('pronto', 'retirado') and not i.separado %}
-            <span class="badge amarelo">⚠️ não atendido (ressalva){% if p.complementos %} → pendência #{{ p.complementos[0].id }}{% endif %}</span>
+            <span class="badge amarelo">Não atendido (ressalva){% if p.complementos %} → pendência #{{ p.complementos[0].id }}{% endif %}</span>
           {% endif %}
           {% if i.alertas_analise %}
           <div class="alertas-item-pedido" style="display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.25rem">
             {% for alerta in i.alertas_analise %}
-            <span class="badge badge-analisar">🔍 Analisar: {{ alerta }}</span>
+            <span class="badge badge-analisar">Analisar: {{ alerta }}</span>
             {% endfor %}
           </div>
           {% endif %}
@@ -169,7 +169,7 @@
           {% if i.saldo is not none %}
             <span class="{{ 'erro-texto' if i.falta }}">{{ i.saldo }} {{ i.unidade }}</span>
             {% if i.falta %}
-              <br><small class="erro-texto">{{ ('⚠️ zerado no nº/tam. ' ~ i.tamanho) if i.zerado_por_numeracao and i.tamanho else 'insuficiente' }}</small>
+              <br><small class="erro-texto">{{ ('Zerado no nº/tam. ' ~ i.tamanho) if i.zerado_por_numeracao and i.tamanho else 'insuficiente' }}</small>
             {% endif %}
           {% else %}
             <span class="suave">—</span>
