@@ -266,7 +266,7 @@ class TestFluxo(BasePedidos):
         html_pronto = r_ok.get_data(as_text=True)
         self.assertIn("finalizado com ressalva", html_pronto.lower())
         self.assertIn("Bota Tam. 42 e Camiseta fora do padrão do cargo", html_pronto)
-        self.assertIn("não atendido (ressalva)", html_pronto)
+        self.assertIn("Não atendido (ressalva)", html_pronto)
 
         # Verifica que apenas a Luva G teve baixa no estoque (10 -> 9); Bota e Camiseta continuam com 10
         self.assertEqual((self.saldo(self.luva), self.saldo(self.bota), self.saldo(self.camiseta)), (9, 10, 10))

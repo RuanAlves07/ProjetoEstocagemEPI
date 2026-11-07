@@ -37,6 +37,7 @@ FUSO_BRASILIA = timezone(timedelta(hours=-3))   # o Brasil não adota horário d
 HORA_SINCRONIZACAO = 20                          # atualização diária às 20:00 (horário de Brasília)
 INTERVALO_NOVA_TENTATIVA = timedelta(minutes=30)
 _MAX_DESCRICAO = 300
+DESCRICAO_CA_MANUAL = "Cadastrado manualmente no sistema (CA ainda não consta no arquivo oficial do MTE)."
 
 # Layout oficial do tgg_export_caepi.txt (19 colunas separadas por "|"):
 # NR Registro CA|DATA DE VALIDADE|SITUACAO|NR DO PROCESSO|CNPJ|RAZAO SOCIAL|NATUREZA|EQUIPAMENTO|
@@ -442,13 +443,15 @@ def salvar_registro_caepi(db, reg):
 
 
 def gravar_base(db, registros):
-    """Substitui o conteúdo de `base_caepi` pelos registros do arquivo oficial (de forma atômica)."""
+    """Grava em `base_caepi` os registros do arquivo oficial (de forma atômica).
+
+    Não apaga o que já existe: CAs cadastrados à mão (ainda ausentes do arquivo do MTE) continuam na base,
+    e são substituídos pelos dados oficiais quando o CA passar a constar no arquivo."""
     if not registros:
         raise ErroValidacao("Nenhum CA válido foi encontrado no arquivo da Base CAEPI.")
     linhas = [_tupla(r) for r in registros.values()]
 
     def executar():
-        db.execute("DELETE FROM base_caepi")
         db.executemany(_SQL_UPSERT, linhas)
         db.execute("INSERT INTO configuracoes (chave, valor) VALUES ('caepi_base_origem', 'mte') "
                    "ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor")
@@ -706,8 +709,19 @@ def _registro_da_base(db, ca):
     d = dict(linha)
     d["situacao"] = _situacao_efetiva(d.get("situacao"), d.get("validade_ca"))
     d["nome_sugerido"] = _nome_sugerido(d.get("nome_equipamento"), d.get("referencia"), ca)
-    d["fonte"] = "Base CAEPI oficial (MTE)"
+    d["fonte"] = "Cadastro manual" if d.get("descricao") == DESCRICAO_CA_MANUAL else "Base CAEPI oficial (MTE)"
     return d
+
+
+def registrar_ca_manual(db, numero_ca, validade, nome_equipamento):
+    """Guarda na base local um CA preenchido à mão (ainda ausente do arquivo do MTE), para as próximas consultas.
+    Não mexe em CAs que já existem na base."""
+    ca = normalizar_ca(numero_ca)
+    if not ca or not validade or db.execute("SELECT 1 FROM base_caepi WHERE ca = ?", (ca,)).fetchone():
+        return False
+    salvar_registro_caepi(db, _montar_registro(ca, validade, "", nome_equipamento, DESCRICAO_CA_MANUAL,
+                                               "", "", "", ""))
+    return True
 
 
 def _buscar_em_zip_local(ca):

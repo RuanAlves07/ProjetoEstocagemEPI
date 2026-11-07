@@ -464,6 +464,31 @@ class TestEstoque(Base):
             row = get_db().execute("SELECT validade_ca FROM epis WHERE ca = '40362'").fetchone()
             self.assertEqual(row["validade_ca"], "2030-12-31")
 
+    def test_ca_ausente_do_mte_fica_guardado_ao_cadastrar_a_mao(self):
+        import io
+        self.assertEqual(self.c.get("/api/caepi/999123").status_code, 404)
+        self.post("/epis/novo", {"ca": "999123", "nome": "Luva Nova Teste", "categoria": "Proteção das Mãos",
+                                 "validade_ca": "2031-05-20", "unidade": "par",
+                                 "estoque_minimo": "0", "prazo_reposicao_dias": "10"})
+        j = self.c.get("/api/caepi/999123").get_json()
+        self.assertTrue(j["ok"])
+        self.assertEqual((j["dados"]["validade_ca"], j["dados"]["fonte"]), ("2031-05-20", "Cadastro manual"))
+
+        # Importar o arquivo do MTE (sem esse CA) não apaga o cadastro manual
+        tgg = ("#NRRegistroCA|DataDeValidade|Situacao|NRProcesso|CNPJ|RazaoSocial|Natureza|NomeEquipamento|"
+               "DescricaoEquipamento|MarcaCA|Referencia\n"
+               "40362|31/12/2030|VÁLIDO|1|1|X|Nacional|BOTINA|Botina|X|X\n").encode("utf-8")
+        self.post("/epis/sincronizar-caepi", {"arquivo_caepi": (io.BytesIO(tgg), "tgg_export_caepi.txt")},
+                  content_type="multipart/form-data")
+        self.assertTrue(self.c.get("/api/caepi/999123").get_json()["ok"])
+
+        # Quando o CA passa a constar no arquivo oficial, os dados oficiais substituem os manuais
+        tgg = tgg + "999123|01/01/2032|VÁLIDO|1|1|FABRICANTE|Nacional|LUVA|Luva|X|X\n".encode("utf-8")
+        self.post("/epis/sincronizar-caepi", {"arquivo_caepi": (io.BytesIO(tgg), "tgg_export_caepi.txt")},
+                  content_type="multipart/form-data")
+        d = self.c.get("/api/caepi/999123").get_json()["dados"]
+        self.assertEqual((d["validade_ca"], d["fonte"]), ("2032-01-01", "Base CAEPI oficial (MTE)"))
+
     def test_cadastro_epi_tamanho_numeracao_e_letra(self):
         # 1. Cadastra Botina com Numeração 40 e outra com Numeração 41 (mesmo modelo, produtos separados)
         r40 = self.post("/epis/novo", {
@@ -736,7 +761,7 @@ class TestEstoque(Base):
             ped_id = get_db().execute("SELECT id FROM pedidos ORDER BY id DESC LIMIT 1").fetchone()["id"]
         html_ped = self.c.get(f"/pedidos/{ped_id}").get_data(as_text=True)
         self.assertIn("Zerado por conta da numeração", html_ped)
-        self.assertIn("zerado no nº/tam. 40", html_ped)
+        self.assertIn("Zerado no nº/tam. 40", html_ped)
 
     def test_matricula_auto_setor_vinculo_formulario_multiplos_cas_e_excluir_pedido(self):
         # 1. Colaborador: formulário exibe "Setor" (sem "/ Obra") e gera matrícula automática

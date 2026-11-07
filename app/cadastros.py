@@ -68,7 +68,9 @@ def api_caepi(ca_num):
     info = caepi.consultar_ca(get_db(), ca_num)
     if not info:
         num = caepi.normalizar_ca(ca_num) or limpar(ca_num) or ""
-        return jsonify(ok=False, erro=f"CA {num} não encontrado na Base CAEPI."), 404
+        return jsonify(ok=False, erro=f"CA {num} não encontrado na Base CAEPI. O arquivo oficial do MTE pode ainda "
+                                      "não ter este CA: preencha a validade à mão e, ao salvar, o CA fica guardado "
+                                      "para as próximas consultas."), 404
     return jsonify(ok=True, dados=info)
 
 
@@ -255,6 +257,9 @@ def _ler_epi(form, files=None, imagem_atual=None):
             dados["imagem_url"] = imagem_atual
     else:
         dados["imagem_url"] = imagem_atual
+    # CA ainda ausente da base do MTE com validade digitada: fica guardado para as próximas consultas
+    if not erros and ca_norm and not info_ca and validade_form:
+        caepi.registrar_ca_manual(get_db(), ca_norm, validade_form, nome_form)
     return dados, erros
 
 
