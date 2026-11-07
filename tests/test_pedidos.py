@@ -286,6 +286,14 @@ class TestTelas(BasePedidos):
         d = self.c.get("/pedidos/novos").get_json()
         self.assertEqual((d["novos"], d["a_atender"]), (0, 1))
 
+    def test_excluir_pedido_ja_excluido_nao_mostra_erro(self):
+        pid = self.novo_pedido()
+        self.post(f"/pedidos/{pid}/excluir")
+        self.post(f"/pedidos/{pid}/excluir")   # card desatualizado / clique repetido
+        html = self.c.get("/pedidos").get_data(as_text=True)
+        self.assertIn(f"Pedido #{pid} excluído permanentemente.", html)
+        self.assertNotIn("Pedido não encontrado.", html)
+
     def test_excluir_pelo_card_do_aviso_volta_para_a_lista(self):
         pid = self.novo_pedido()
         html = self.c.get("/pedidos/novos").get_json()["html"]
@@ -811,8 +819,12 @@ class TestPendenciasESla(BasePedidos):
         self.assertEqual(self.pedido(pid)["status"], "pronto")
         self.assertEqual(self.saldo(self.luva), 8)   # só a luva (2x) teve baixa
 
-        lista = self.c.get("/pedidos").get_data(as_text=True)
-        self.assertIn("Aguardando estoque (itens que faltaram na ressalva)", lista)
+        # A pendência sai de "Em andamento" e fica na aba própria, com atalho no resumo do SLA
+        em_andamento = self.c.get("/pedidos").get_data(as_text=True)
+        self.assertNotIn(f"#{comp['id']} ·", em_andamento)
+        self.assertIn("?aba=aguardando", em_andamento)
+        lista = self.c.get("/pedidos?aba=aguardando").get_data(as_text=True)
+        self.assertIn(f"#{comp['id']} ·", lista)
         self.assertIn("Estoque disponível — pode separar", lista)   # bota e camiseta têm saldo
         self.assertIn("SLA pausado", lista)
         detalhe = self.c.get(f"/pedidos/{comp['id']}").get_data(as_text=True)
@@ -820,7 +832,7 @@ class TestPendenciasESla(BasePedidos):
 
         # Sem saldo de bota, a pendência fica aguardando; uma entrada avisa que já pode separar
         self.mov("baixa", self.bota, 10, motivo="Avaria")
-        self.assertNotIn("Estoque disponível — pode separar", self.c.get("/pedidos").get_data(as_text=True))
+        self.assertNotIn("Estoque disponível — pode separar", self.c.get("/pedidos?aba=aguardando").get_data(as_text=True))
         r = self.mov("entrada", self.bota, 5)
         avisos = self.c.get(r.headers["Location"]).get_data(as_text=True)
         self.assertIn(f"Chegou estoque para #{comp['id']}", avisos)

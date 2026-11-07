@@ -917,7 +917,7 @@ def _opcoes_inventario(epis):
 def lista():
     db = get_db()
     aba = request.args.get("aba", "abertos")
-    if aba not in ("abertos", "retirados", "cancelados"):
+    if aba not in ("abertos", "aguardando", "retirados", "cancelados"):
         aba = "abertos"
     epis = estoque.epis_com_saldo(db, somente_ativos=True)
     colaboradores = db.execute(
@@ -933,22 +933,23 @@ def lista():
         "locais": locais,
     }
     contexto_form["sla_cfg"] = pedidos.obter_config_sla(db)
+    # Pendências de ressalva ficam numa aba própria (não poluem "Em andamento"); as que já têm estoque vêm primeiro
+    todos = pedidos.carregar(db, status=pedidos.ABERTOS)
+    aguardando = sorted((p for p in todos if p["aguardando_estoque"]),
+                        key=lambda p: (not p["estoque_disponivel"], p["id"]))
+    contexto_form["qtd_aguardando"] = len(aguardando)
+    contexto_form["qtd_aguardando_disponivel"] = sum(1 for p in aguardando if p["estoque_disponivel"])
     if aba == "abertos":
-        todos = pedidos.carregar(db, status=pedidos.ABERTOS)
         grupos = []
         for chave, rotulo in ROTULOS_GRUPOS.items():
-            if chave == "pendente":
-                grupos.append((chave, rotulo, [p for p in todos if p["status"] == "pendente" and not p["aguardando_estoque"]]))
-                # Pendências de ressalva: as que já têm estoque aparecem primeiro
-                aguardando = sorted((p for p in todos if p["aguardando_estoque"]),
-                                    key=lambda p: (not p["estoque_disponivel"], p["id"]))
-                grupos.append(("aguardando", "⏳ Aguardando estoque (itens que faltaram na ressalva)", aguardando))
-            else:
-                grupos.append((chave, rotulo, [p for p in todos if p["status"] == chave]))
-        return render_template("pedidos_lista.html", aba=aba, grupos=grupos, historico=None,
+            grupos.append((chave, rotulo, [p for p in todos if p["status"] == chave and not p["aguardando_estoque"]]))
+        return render_template("pedidos_lista.html", aba=aba, grupos=grupos, historico=None, aguardando=None,
                                resumo_sla=pedidos.resumo_sla(todos), **contexto_form)
+    if aba == "aguardando":
+        return render_template("pedidos_lista.html", aba=aba, grupos=None, historico=None,
+                               aguardando=aguardando, **contexto_form)
     status = ("retirado",) if aba == "retirados" else ("cancelado",)
-    return render_template("pedidos_lista.html", aba=aba, grupos=None,
+    return render_template("pedidos_lista.html", aba=aba, grupos=None, aguardando=None,
                            historico=pedidos.carregar(db, status=status, limite=200), **contexto_form)
 
 
@@ -1175,6 +1176,8 @@ def excluir(pedido_id):
     voltar = _voltar_form(url_for("pedidos.lista"))
     if voltar and f"/pedidos/{pedido_id}" in voltar:
         voltar = url_for("pedidos.lista")
+    if not db.execute("SELECT 1 FROM pedidos WHERE id = ?", (pedido_id,)).fetchone():
+        return redirect(voltar)  # já excluído (card desatualizado ou clique repetido): sem aviso extra
     try:
         pedidos.excluir(db, pedido_id)
         flash(f"Pedido #{pedido_id} excluído permanentemente.", "ok")

@@ -153,7 +153,7 @@ details.cancelar form { display: flex; gap: .4rem; margin-top: .4rem; min-width:
 
 /* ---------------------------------------------------------------- Pedidos */
 .contador { display: inline-block; min-width: 1.4rem; padding: 0 .4rem; border-radius: 999px; background: #e8ebf1; color: #46505f; font-size: .78rem; font-weight: 700; text-align: center; }
-.topo .contador { background: #e5484d; color: #fff; } .contador.alerta { background: #e5484d; color: #fff; } .contador[hidden] { display: none; }
+.topo .contador { background: #e5484d; color: #fff; } .contador.alerta { background: #e5484d; color: #fff; } .contador.disponivel { background: #16a34a; color: #fff; } .contador[hidden] { display: none; }
 .abas { display: flex; gap: .3rem; border-bottom: 2px solid var(--borda); margin-bottom: 1.2rem; }
 .abas a { padding: .5rem 1rem; border-radius: 8px 8px 0 0; color: var(--suave); } .abas a.ativa { background: var(--cartao); color: var(--texto); border: 1px solid var(--borda); border-bottom: 2px solid var(--cartao); margin-bottom: -2px; font-weight: 600; text-decoration: none; }
 .grupo-pedidos h2 { display: flex; align-items: center; gap: .5rem; }

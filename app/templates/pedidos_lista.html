@@ -87,7 +87,9 @@
 </div>
 {% endif %}
 <div class="abas">
-  <a class="{{ 'ativa' if aba == 'abertos' }}" href="{{ url_for('pedidos.lista') }}">Em andamento{% if pedidos_a_atender %} <span class="contador">{{ pedidos_a_atender }}</span>{% endif %}</a>
+  <a class="{{ 'ativa' if aba == 'abertos' }}" href="{{ url_for('pedidos.lista') }}">{% set em_andamento = pedidos_a_atender - (qtd_aguardando or 0) %}Em andamento{% if em_andamento > 0 %} <span class="contador">{{ em_andamento }}</span>{% endif %}</a>
+  <a class="{{ 'ativa' if aba == 'aguardando' }}" href="{{ url_for('pedidos.lista', aba='aguardando') }}"
+     title="Pendências criadas pelos itens que faltaram em pedidos finalizados com ressalva">⏳ Aguardando estoque{% if qtd_aguardando %} <span class="contador {{ 'disponivel' if qtd_aguardando_disponivel }}">{{ qtd_aguardando }}</span>{% endif %}</a>
   <a class="{{ 'ativa' if aba == 'retirados' }}" href="{{ url_for('pedidos.lista', aba='retirados') }}">Retirados</a>
   <a class="{{ 'ativa' if aba == 'cancelados' }}" href="{{ url_for('pedidos.lista', aba='cancelados') }}">Cancelados</a>
 </div>
@@ -98,7 +100,7 @@
     <span class="badge sla-atrasado">⛔ {{ resumo_sla.atrasado }} atrasado(s)</span>
     <span class="badge sla-risco">⚠️ {{ resumo_sla.em_risco }} em risco</span>
     <span class="badge sla-ok">⏱ {{ resumo_sla.no_prazo }} no prazo</span>
-    <span class="badge sla-pausado">⏸ {{ resumo_sla.pausado }} aguardando estoque</span>
+    <a class="badge sla-pausado" href="{{ url_for('pedidos.lista', aba='aguardando') }}" title="Ver pendências aguardando estoque">⏸ {{ resumo_sla.pausado }} aguardando estoque →</a>
     {% if resumo_sla.retirada_atrasada %}<span class="badge sla-atrasado">📦 {{ resumo_sla.retirada_atrasada }} retirada(s) atrasada(s)</span>{% endif %}
     <span class="nota">Prazo: pronto em até {{ sla_cfg.horas_atendimento }} h · alerta {{ sla_cfg.horas_alerta }} h antes · retirada em até {{ sla_cfg.dias_retirada }} dia(s)</span>
     {% if eh_admin %}
@@ -116,15 +118,21 @@
   </div>
 
   {% for chave, rotulo, lista in grupos %}
-  {% if chave != 'aguardando' or lista %}
   <section class="grupo-pedidos">
     <h2>{{ rotulo }} <span class="contador {{ 'alerta' if chave == 'novo' and lista }}">{{ lista|length }}</span></h2>
     {% if lista %}
       <div class="grade-cards">{% for p in lista %}{% include '_pedido_card.html' %}{% endfor %}</div>
     {% else %}<p class="vazio">Nenhum pedido aqui.</p>{% endif %}
   </section>
-  {% endif %}
   {% endfor %}
+{% elif aguardando is not none %}
+  <section class="grupo-pedidos">
+    <h2>⏳ Aguardando estoque <span class="contador">{{ aguardando|length }}</span></h2>
+    <p class="nota">Itens que faltaram em pedidos finalizados com ressalva. O prazo (SLA) fica pausado até iniciar a separação; os que já têm estoque aparecem primeiro.</p>
+    {% if aguardando %}
+      <div class="grade-cards">{% for p in aguardando %}{% include '_pedido_card.html' %}{% endfor %}</div>
+    {% else %}<p class="vazio">Nenhuma pendência aguardando estoque. ✅</p>{% endif %}
+  </section>
 {% else %}
   <div class="cartao"><div class="tabela-rolavel"><table>
     <thead><tr><th>Pedido</th><th>Solicitante</th><th>Local</th><th>Itens</th>
