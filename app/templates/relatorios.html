@@ -272,7 +272,7 @@
         <thead><tr><th>Pedido</th><th>Obra</th><th>Situação</th></tr></thead>
         <tbody>
         {% for p in sla.abertos_atrasados + sla.fora_do_prazo %}
-          <tr><td><a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }}</a> {{ p.solicitante }}</td>
+          <tr><td><a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id|numero_pedido }}</a> {{ p.solicitante }}</td>
               <td>{{ p.local_destino or '—' }}</td>
               <td>{% include '_sla_badge.html' %}</td></tr>
         {% else %}<tr><td colspan="3" class="vazio">Nenhum atraso no período. 🎉</td></tr>{% endfor %}
@@ -304,42 +304,42 @@
 
 <section class="cartao">
   <h2>Para onde estão indo (entregas por local de destino)</h2>
-  <table><thead><tr><th>Local</th><th></th><th class="num">Unid.</th><th class="num">Entregas</th></tr></thead><tbody>
+  <div class="tabela-rolavel"><table><thead><tr><th>Local</th><th></th><th class="num">Unid.</th><th class="num">Entregas</th></tr></thead><tbody>
   {% for r in por_local %}
     <tr><td>{{ r.nome }}</td><td class="barra-celula">{{ barra(r.total, maximos.local, 'azul') }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.entregas }}</td></tr>
   {% else %}<tr><td colspan="4" class="vazio">Sem entregas no período.</td></tr>{% endfor %}
-  </tbody></table>
+  </tbody></table></div>
 </section>
 
 <div class="grade-2">
   <section class="cartao">
     <h2>Entregas por setor</h2>
-    <table><thead><tr><th>Setor</th><th></th><th class="num">Unid.</th><th class="num">Colab.</th></tr></thead><tbody>
+    <div class="tabela-rolavel"><table><thead><tr><th>Setor</th><th></th><th class="num">Unid.</th><th class="num">Colab.</th></tr></thead><tbody>
     {% for r in por_setor %}
       <tr><td><a href="{{ url_for('movimentos.lista', tipo='saida', setor=r.nome if r.nome != '(sem setor)' else '', de=de.isoformat(), ate=ate.isoformat()) }}">{{ r.nome }}</a></td>
           <td class="barra-celula">{{ barra(r.total, maximos.setor, 'azul') }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.colaboradores }}</td></tr>
     {% else %}<tr><td colspan="4" class="vazio">Sem entregas no período.</td></tr>{% endfor %}
-    </tbody></table>
+    </tbody></table></div>
   </section>
   <section class="cartao">
     <h2>Colaboradores que mais receberam</h2>
-    <table><thead><tr><th>Colaborador</th><th></th><th class="num">Unid.</th><th class="num">Entregas</th></tr></thead><tbody>
+    <div class="tabela-rolavel"><table><thead><tr><th>Colaborador</th><th></th><th class="num">Unid.</th><th class="num">Entregas</th></tr></thead><tbody>
     {% for r in por_colaborador %}
       <tr><td><a href="{{ url_for('cadastros.colaborador_ficha', colab_id=r.id) }}">{{ r.nome }}</a>{% if r.setor %} <small class="suave">{{ r.setor }}</small>{% endif %}</td>
           <td class="barra-celula">{{ barra(r.total, maximos.colaborador, 'azul') }}</td><td class="num">{{ r.total }}</td><td class="num">{{ r.entregas }}</td></tr>
     {% else %}<tr><td colspan="4" class="vazio">Sem entregas no período.</td></tr>{% endfor %}
-    </tbody></table>
+    </tbody></table></div>
   </section>
 </div>
 
 <section class="cartao">
   <h2>Entradas × saídas por mês</h2>
-  <table><thead><tr><th>Mês</th><th>Entradas</th><th></th><th>Saídas (entregas + baixas)</th><th></th></tr></thead><tbody>
+  <div class="tabela-rolavel"><table><thead><tr><th>Mês</th><th>Entradas</th><th></th><th>Saídas (entregas + baixas)</th><th></th></tr></thead><tbody>
   {% for r in por_mes %}
     <tr><td>{{ r.mes[5:] }}/{{ r.mes[:4] }}</td>
         <td class="num">{{ r.entradas }}</td><td class="barra-celula">{{ barra(r.entradas, maximos.mes, 'verde') }}</td>
         <td class="num">{{ r.saidas }}</td><td class="barra-celula">{{ barra(r.saidas, maximos.mes, 'vermelho') }}</td></tr>
   {% else %}<tr><td colspan="5" class="vazio">Sem movimentações no período.</td></tr>{% endfor %}
-  </tbody></table>
+  </tbody></table></div>
 </section>
 {% endblock %}

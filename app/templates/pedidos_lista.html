@@ -87,7 +87,9 @@
 </div>
 {% endif %}
 <div class="abas">
-  <a class="{{ 'ativa' if aba == 'abertos' }}" href="{{ url_for('pedidos.lista') }}">Em andamento{% if pedidos_a_atender %} <span class="contador">{{ pedidos_a_atender }}</span>{% endif %}</a>
+  <a class="{{ 'ativa' if aba == 'abertos' }}" href="{{ url_for('pedidos.lista') }}">{% set em_andamento = pedidos_a_atender - (qtd_aguardando or 0) %}Em andamento{% if em_andamento > 0 %} <span class="contador">{{ em_andamento }}</span>{% endif %}</a>
+  <a class="{{ 'ativa' if aba == 'aguardando' }}" href="{{ url_for('pedidos.lista', aba='aguardando') }}"
+     title="Pendências criadas pelos itens que faltaram em pedidos finalizados com ressalva">Finalizados com ressalva{% if qtd_aguardando %} <span class="contador {{ 'disponivel' if qtd_aguardando_disponivel }}">{{ qtd_aguardando }}</span>{% endif %}</a>
   <a class="{{ 'ativa' if aba == 'retirados' }}" href="{{ url_for('pedidos.lista', aba='retirados') }}">Retirados</a>
   <a class="{{ 'ativa' if aba == 'cancelados' }}" href="{{ url_for('pedidos.lista', aba='cancelados') }}">Cancelados</a>
 </div>
@@ -98,12 +100,12 @@
     <span class="badge sla-atrasado">⛔ {{ resumo_sla.atrasado }} atrasado(s)</span>
     <span class="badge sla-risco">⚠️ {{ resumo_sla.em_risco }} em risco</span>
     <span class="badge sla-ok">⏱ {{ resumo_sla.no_prazo }} no prazo</span>
-    <span class="badge sla-pausado">⏸ {{ resumo_sla.pausado }} aguardando estoque</span>
+    <a class="badge sla-pausado" href="{{ url_for('pedidos.lista', aba='aguardando') }}" title="Ver pendências aguardando estoque">⏸ {{ resumo_sla.pausado }} aguardando estoque →</a>
     {% if resumo_sla.retirada_atrasada %}<span class="badge sla-atrasado">📦 {{ resumo_sla.retirada_atrasada }} retirada(s) atrasada(s)</span>{% endif %}
     <span class="nota">Prazo: pronto em até {{ sla_cfg.horas_atendimento }} h · alerta {{ sla_cfg.horas_alerta }} h antes · retirada em até {{ sla_cfg.dias_retirada }} dia(s)</span>
     {% if eh_admin %}
     <details class="editar-item">
-      <summary class="btn pequeno">⚙️ Ajustar prazos</summary>
+      <summary class="btn pequeno">Ajustar SLA</summary>
       <form method="post" action="{{ url_for('pedidos.config_sla') }}" class="cartao linha-form" style="margin-top:.5rem">
         {{ csrf() }}
         <label>Pronto em até (horas) <input type="number" name="horas_atendimento" min="1" max="720" value="{{ sla_cfg.horas_atendimento }}" required style="width:6rem"></label>
@@ -116,15 +118,21 @@
   </div>
 
   {% for chave, rotulo, lista in grupos %}
-  {% if chave != 'aguardando' or lista %}
   <section class="grupo-pedidos">
     <h2>{{ rotulo }} <span class="contador {{ 'alerta' if chave == 'novo' and lista }}">{{ lista|length }}</span></h2>
     {% if lista %}
       <div class="grade-cards">{% for p in lista %}{% include '_pedido_card.html' %}{% endfor %}</div>
     {% else %}<p class="vazio">Nenhum pedido aqui.</p>{% endif %}
   </section>
-  {% endif %}
   {% endfor %}
+{% elif aguardando is not none %}
+  <section class="grupo-pedidos">
+    <h2>Finalizados com ressalva <span class="contador">{{ aguardando|length }}</span></h2>
+    <p class="nota">Aqui aparecem somente os itens que não foram entregues (não marcados) ao finalizar o pedido, com o mesmo número do pedido original. O prazo (SLA) fica pausado até iniciar a separação; os que já têm estoque aparecem primeiro.</p>
+    {% if aguardando %}
+      <div class="grade-cards">{% for p in aguardando %}{% include '_pedido_card.html' %}{% endfor %}</div>
+    {% else %}<p class="vazio">Nenhuma pendência aguardando estoque!</p>{% endif %}
+  </section>
 {% else %}
   <div class="cartao"><div class="tabela-rolavel"><table>
     <thead><tr><th>Pedido</th><th>Solicitante</th><th>Local</th><th>Itens</th>
@@ -133,7 +141,7 @@
     <tbody>
     {% for p in historico %}
       <tr>
-        <td><a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }}</a></td>
+        <td><a href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id|numero_pedido }}</a>{% if p.eh_complemento %} <small class="suave">itens não entregues</small>{% endif %}</td>
         <td>{{ p.solicitante }}</td><td>{{ p.local_destino or '—' }}{% if p.cidade_obra %} • {{ p.cidade_obra }}{% endif %}</td>
         <td>{% for i in p.itens if not i.ignorado %}{{ i.quantidade }}× {{ i.epi_nome or i.texto_original }}{{ ', ' if not loop.last }}{% endfor %}</td>
         {% if aba == 'retirados' %}
@@ -143,7 +151,7 @@
         {% if pode_editar %}
         <td class="acoes">
           <form method="post" action="{{ url_for('pedidos.excluir', pedido_id=p.id) }}"
-                onsubmit="return confirm('Tem certeza que deseja excluir o pedido #{{ p.id }}?');">
+                onsubmit="return confirm('Tem certeza que deseja excluir {{ 'os itens não entregues do pedido' if p.eh_complemento else 'o pedido' }} #{{ p.id|numero_pedido }}?');">
             {{ csrf() }}
             <input type="hidden" name="voltar" value="{{ request.full_path }}">
             <button type="submit" class="btn perigo pequeno">🗑️ Excluir</button>

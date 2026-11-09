@@ -58,6 +58,9 @@ label.check { flex-direction: row; align-items: center; gap: .5rem; font-weight:
 .filtros input, .filtros select { width: auto; } .filtros label { flex: 0 0 auto; }
 
 .tabela-rolavel { overflow-x: auto; }
+pre { overflow-x: auto; max-width: 100%; }
+/* Sem isto, uma tabela larga alarga a coluna da grade e a página inteira ultrapassa a tela */
+.grade-2 > *, .grade-cards > *, .grade-perfis > *, .painel-grade-principal > * { min-width: 0; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--borda); vertical-align: top; }
 th { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--suave); white-space: nowrap; }
@@ -128,7 +131,7 @@ a.indicador:hover { text-decoration: none; background: #fafbfd; transform: trans
 .item-permissao small { display: block; font-size: .78rem; color: var(--suave); line-height: 1.3; margin-top: .1rem; }
 
 @media (max-width: 1200px) {
-  .painel-grade-principal { grid-template-columns: 1fr 1fr; }
+  .painel-grade-principal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .painel-cartao-pedidos { grid-column: 1 / -1; }
 }
 
@@ -154,7 +157,7 @@ details.cancelar form { display: flex; gap: .4rem; margin-top: .4rem; min-width:
 
 /* ---------------------------------------------------------------- Pedidos */
 .contador { display: inline-block; min-width: 1.4rem; padding: 0 .4rem; border-radius: 999px; background: #e8ebf1; color: #46505f; font-size: .78rem; font-weight: 700; text-align: center; }
-.topo .contador { background: #e5484d; color: #fff; } .contador.alerta { background: #e5484d; color: #fff; } .contador[hidden] { display: none; }
+.topo .contador { background: #e5484d; color: #fff; } .contador.alerta { background: #e5484d; color: #fff; } .contador.disponivel { background: #16a34a; color: #fff; } .contador[hidden] { display: none; }
 .abas { display: flex; gap: .3rem; border-bottom: 2px solid var(--borda); margin-bottom: 1.2rem; }
 .abas a { padding: .5rem 1rem; border-radius: 8px 8px 0 0; color: var(--suave); } .abas a.ativa { background: var(--cartao); color: var(--texto); border: 1px solid var(--borda); border-bottom: 2px solid var(--cartao); margin-bottom: -2px; font-weight: 600; text-decoration: none; }
 .grupo-pedidos h2 { display: flex; align-items: center; gap: .5rem; }
@@ -368,7 +371,7 @@ tr.linha-analisar { background: #fffdf5; }
 
   /* Cards, grades e indicadores adaptados para tela vertical */
   .cartao { padding: .9rem 1rem; margin-bottom: .9rem; border-radius: 9px; }
-  .grade-2, .grade-cards, .abas-calcados, .painel-grade-principal, .grade-perfis, .grade-permissoes { grid-template-columns: 1fr; gap: .85rem; }
+  .grade-2, .grade-cards, .abas-calcados, .painel-grade-principal, .grade-perfis, .grade-permissoes { grid-template-columns: minmax(0, 1fr); gap: .85rem; }
   .indicadores { grid-template-columns: repeat(2, 1fr); gap: .65rem; }
   .indicador { padding: .7rem .85rem; }
   .indicador .valor { font-size: 1.45rem; }
@@ -378,6 +381,7 @@ tr.linha-analisar { background: #fffdf5; }
   .cabecalho { align-items: stretch; flex-direction: column; gap: .55rem; margin-bottom: .75rem; }
   .cabecalho .acoes { width: 100%; }
   .cabecalho .acoes > .btn, .cabecalho .acoes > details { flex: 1 1 auto; text-align: center; }
+  .cabecalho .acoes > details > summary { display: block; text-align: center; }
   .abas { overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; gap: .2rem; padding-bottom: 1px; }
   .abas::-webkit-scrollbar { display: none; }
   .abas a { flex: 0 0 auto; padding: .5rem .8rem; font-size: .9rem; }
@@ -388,7 +392,9 @@ tr.linha-analisar { background: #fffdf5; }
   .linha { flex-direction: column; gap: .75rem; }
   .linha > label { min-width: 0; width: 100%; }
   .filtros { flex-direction: column; align-items: stretch; gap: .55rem; }
-  .filtros input, .filtros select, .filtros .btn { width: 100%; }
+  .filtros input, .filtros select, .filtros .btn { width: 100%; min-width: 0 !important; }
+  .formulario div { min-width: 0; max-width: 100%; }
+  .input-nome-epi-editor, .linha-adicionar-opcao input { min-width: 0; }
   .linha-form { flex-direction: column; align-items: stretch; gap: .5rem; }
   .linha-form select, .linha-form input[type=number], .linha-form input:not([type]), .linha-form input[name=motivo], .linha-form .btn {
     width: 100% !important; max-width: none !important; min-width: 0 !important;
@@ -396,6 +402,7 @@ tr.linha-analisar { background: #fffdf5; }
 
   /* Tabelas e checklists no mobile */
   th, td { padding: .48rem .5rem; font-size: .9rem; }
+  .ocultar-mobile { display: none; }
   td[style*="min-width"] { min-width: 200px !important; }
   .checklist input[type=checkbox] { width: 1.55rem; height: 1.55rem; }
   .pedido-card footer .acoes, .pedido-card footer { display: flex; gap: .5rem; width: 100%; }

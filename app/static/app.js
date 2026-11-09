@@ -18,7 +18,7 @@
   });
 })();
 
-// Fecha o menu "+ Movimentar" ao clicar fora e controla o menu mobile (hambúrguer)
+// Fecha menus suspensos (details.menu) ao clicar fora e controla o menu mobile (hambúrguer)
 document.addEventListener('click', function (ev) {
   document.querySelectorAll('details.menu[open]').forEach(function (d) {
     if (!d.contains(ev.target)) d.removeAttribute('open');

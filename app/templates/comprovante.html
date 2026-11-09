@@ -11,20 +11,20 @@
 </div>
 <section class="cartao comprovante">
   <h2 class="so-imprimir">Comprovante de entrega de EPI</h2>
-  <table class="dados">
+  <div class="tabela-rolavel"><table class="dados">
     <tr><th>Colaborador</th><td>{{ topo.colab_nome }}</td><th>Matrícula</th><td>{{ topo.matricula or '—' }}</td></tr>
     <tr><th>Função</th><td>{{ topo.colab_funcao or '—' }}</td><th>Setor</th><td>{{ topo.setor or '—' }}</td></tr>
     <tr><th>Data da entrega</th><td>{{ topo.data|data_br }}</td><th>Responsável</th><td>{{ topo.usuario_nome }}</td></tr>
-    {% if topo.local_destino or pedido %}<tr><th>Local de destino</th><td>{{ topo.local_destino or '—' }}</td><th>Pedido</th><td>{% if pedido %}#{{ pedido.id }}{% else %}—{% endif %}</td></tr>{% endif %}
-  </table>
-  <table>
+    {% if topo.local_destino or pedido %}<tr><th>Local de destino</th><td>{{ topo.local_destino or '—' }}</td><th>Pedido</th><td>{% if pedido %}#{{ pedido.id|numero_pedido }}{% else %}—{% endif %}</td></tr>{% endif %}
+  </table></div>
+  <div class="tabela-rolavel"><table>
     <thead><tr><th>EPI</th><th>CA</th><th class="num">Qtd</th><th>Unid.</th></tr></thead>
     <tbody>
     {% for l in linhas %}
       <tr class="{{ 'cancelada' if l.cancelada }}"><td>{{ l.epi_nome }}{% if l.cancelada %} <small>(CANCELADO)</small>{% endif %}</td><td>{{ l.ca or '—' }}</td><td class="num">{{ l.quantidade }}</td><td>{{ l.unidade }}</td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   <p class="declaracao">Declaro ter recebido, gratuitamente, os Equipamentos de Proteção Individual acima relacionados, em perfeito estado, e estar ciente da obrigatoriedade do seu uso, guarda, conservação e da comunicação de qualquer dano ou extravio.</p>
   <div class="assinaturas">
     {% if pedido and pedido.retirado_por_nome and pedido.retirado_por_nome != topo.colab_nome %}

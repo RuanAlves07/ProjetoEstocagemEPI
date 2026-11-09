@@ -1,8 +1,11 @@
 import re
 from datetime import date, datetime
 
+from flask import g
+
+from .db import get_db
 from .estoque import TIPOS
-from .pedidos import STATUS as STATUS_PEDIDO
+from .pedidos import STATUS as STATUS_PEDIDO, mapa_complementos, numero_exibicao
 
 
 def _data_br(valor):
@@ -87,9 +90,15 @@ def _aparelho(user_agent):
     return navegador or sistema or "Aparelho não identificado"
 
 
+def _numero_pedido(pedido_id):
+    if "mapa_complementos" not in g:
+        g.mapa_complementos = mapa_complementos(get_db())
+    return numero_exibicao(g.mapa_complementos, pedido_id)
+
+
 def registrar(app):
     app.jinja_env.filters.update(data_br=_data_br, hora_br=_hora_br, num=_num, dinheiro=_dinheiro,
                                  tempo_atras=_tempo_atras, obs_pedido=_obs_pedido, duracao=_duracao,
-                                 aparelho=_aparelho)
+                                 aparelho=_aparelho, numero_pedido=_numero_pedido)
     app.jinja_env.globals["TIPOS"] = TIPOS
     app.jinja_env.globals["STATUS_PEDIDO"] = STATUS_PEDIDO

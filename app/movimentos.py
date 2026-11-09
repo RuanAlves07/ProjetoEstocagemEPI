@@ -178,8 +178,9 @@ def movimentar(tipo):
                 from . import pedidos   # import local: pedidos depende de estoque
                 prontas = pedidos.pendencias_com_estoque(db)
                 if prontas:
-                    flash("📦 Chegou estoque para " + ", ".join(f"#{i}" for i in prontas)
-                          + " — pendência(s) de ressalva que já podem ser separadas (Pedidos → Aguardando estoque).", "ok")
+                    mapa = pedidos.mapa_complementos(db)
+                    flash("📦 Chegou estoque para " + ", ".join(f"#{pedidos.numero_exibicao(mapa, i)}" for i in prontas)
+                          + " — itens não entregues que já podem ser separados (Pedidos → Finalizados com ressalva).", "ok")
             return redirect(url_for("movimentos.lista"))
         except ErroValidacao as e:
             flash(str(e), "erro")

@@ -17,6 +17,15 @@ from .util import hoje, limpar, to_int
 
 bp = Blueprint("pedidos", __name__)
 
+
+def _voltar_form(padrao=None):
+    """Destino do campo "voltar". Ignora /pedidos/novos: os cards do aviso são montados por essa
+    rota JSON, e voltar para ela mostraria o JSON em vez da página."""
+    destino = request.form.get("voltar")
+    if not destino or destino.split("?")[0] == url_for("pedidos.novos"):
+        return padrao
+    return _destino_seguro(destino)
+
 ROTULOS_GRUPOS = {
     "novo": "Novos pedidos",
     "pendente": "Pendentes (deixados para mais tarde)",
@@ -908,7 +917,7 @@ def _opcoes_inventario(epis):
 def lista():
     db = get_db()
     aba = request.args.get("aba", "abertos")
-    if aba not in ("abertos", "retirados", "cancelados"):
+    if aba not in ("abertos", "aguardando", "retirados", "cancelados"):
         aba = "abertos"
     epis = estoque.epis_com_saldo(db, somente_ativos=True)
     colaboradores = db.execute(
@@ -924,22 +933,23 @@ def lista():
         "locais": locais,
     }
     contexto_form["sla_cfg"] = pedidos.obter_config_sla(db)
+    # Pendências de ressalva ficam numa aba própria (não poluem "Em andamento"); as que já têm estoque vêm primeiro
+    todos = pedidos.carregar(db, status=pedidos.ABERTOS)
+    aguardando = sorted((p for p in todos if p["aguardando_estoque"]),
+                        key=lambda p: (not p["estoque_disponivel"], p["id"]))
+    contexto_form["qtd_aguardando"] = len(aguardando)
+    contexto_form["qtd_aguardando_disponivel"] = sum(1 for p in aguardando if p["estoque_disponivel"])
     if aba == "abertos":
-        todos = pedidos.carregar(db, status=pedidos.ABERTOS)
         grupos = []
         for chave, rotulo in ROTULOS_GRUPOS.items():
-            if chave == "pendente":
-                grupos.append((chave, rotulo, [p for p in todos if p["status"] == "pendente" and not p["aguardando_estoque"]]))
-                # Pendências de ressalva: as que já têm estoque aparecem primeiro
-                aguardando = sorted((p for p in todos if p["aguardando_estoque"]),
-                                    key=lambda p: (not p["estoque_disponivel"], p["id"]))
-                grupos.append(("aguardando", "⏳ Aguardando estoque (itens que faltaram na ressalva)", aguardando))
-            else:
-                grupos.append((chave, rotulo, [p for p in todos if p["status"] == chave]))
-        return render_template("pedidos_lista.html", aba=aba, grupos=grupos, historico=None,
+            grupos.append((chave, rotulo, [p for p in todos if p["status"] == chave and not p["aguardando_estoque"]]))
+        return render_template("pedidos_lista.html", aba=aba, grupos=grupos, historico=None, aguardando=None,
                                resumo_sla=pedidos.resumo_sla(todos), **contexto_form)
+    if aba == "aguardando":
+        return render_template("pedidos_lista.html", aba=aba, grupos=None, historico=None,
+                               aguardando=aguardando, **contexto_form)
     status = ("retirado",) if aba == "retirados" else ("cancelado",)
-    return render_template("pedidos_lista.html", aba=aba, grupos=None,
+    return render_template("pedidos_lista.html", aba=aba, grupos=None, aguardando=None,
                            historico=pedidos.carregar(db, status=status, limite=200), **contexto_form)
 
 
@@ -1056,7 +1066,7 @@ def mais_tarde(pedido_id):
         email_service.notificar_evento_pedido(db, pedido_id, "pendente", ator_nome=g.usuario["nome"])
     return _executar(_acao, pedido_id,
                      "Pedido guardado em Pendentes.",
-                     destino=_destino_seguro(request.form.get("voltar") or url_for("pedidos.lista")))
+                     destino=_voltar_form(url_for("pedidos.lista")))
 
 
 @bp.post("/pedidos/<int:pedido_id>/itens/<int:item_id>/separar")
@@ -1073,7 +1083,7 @@ def separar(pedido_id, item_id):
 @bp.post("/pedidos/<int:pedido_id>/itens/<int:item_id>/editar")
 @escrita_required
 def editar_item(pedido_id, item_id):
-    voltar = _destino_seguro(request.form.get("voltar")) if request.form.get("voltar") else None
+    voltar = _voltar_form()
     return _executar(lambda: pedidos.editar_item(
         get_db(), pedido_id, item_id, to_int(request.form.get("epi_id")),
         to_int(request.form.get("quantidade")), request.form.get("lembrar") == "1"),
@@ -1126,8 +1136,8 @@ def finalizar(pedido_id):
     if not com_ressalva:
         flash("Pedido finalizado: baixa feita no estoque e pronto para retirada.", "ok")
     elif complemento:
-        flash(f"Pedido finalizado com ressalva. Os itens que faltaram foram para a pendência #{complemento} "
-              "(Pedidos → Aguardando estoque).", "ok")
+        flash("Pedido finalizado com ressalva. Os itens não entregues continuam neste mesmo pedido, "
+              "em Pedidos → Finalizados com ressalva.", "ok")
     else:
         flash("Pedido finalizado com ressalva: baixa registrada para os itens separados e justificativa gravada.", "ok")
     return redirect(url_for("pedidos.detalhe", pedido_id=pedido_id))
@@ -1163,12 +1173,16 @@ def cancelar(pedido_id):
 @escrita_required
 def excluir(pedido_id):
     db = get_db()
-    voltar = _destino_seguro(request.form.get("voltar")) if request.form.get("voltar") else url_for("pedidos.lista")
+    voltar = _voltar_form(url_for("pedidos.lista"))
     if voltar and f"/pedidos/{pedido_id}" in voltar:
         voltar = url_for("pedidos.lista")
+    if not db.execute("SELECT 1 FROM pedidos WHERE id = ?", (pedido_id,)).fetchone():
+        return redirect(voltar)  # já excluído (card desatualizado ou clique repetido): sem aviso extra
+    numero = pedidos.numero_do_pedido(db, pedido_id)
     try:
         pedidos.excluir(db, pedido_id)
-        flash(f"Pedido #{pedido_id} excluído permanentemente.", "ok")
+        flash(f"Itens não entregues do pedido #{numero} excluídos permanentemente." if numero != pedido_id
+              else f"Pedido #{numero} excluído permanentemente.", "ok")
     except ErroValidacao as e:
         flash(str(e), "erro")
     return redirect(voltar or url_for("pedidos.lista"))

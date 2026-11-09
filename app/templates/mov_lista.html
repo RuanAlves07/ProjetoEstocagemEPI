@@ -4,7 +4,15 @@
 {% block conteudo %}
 <div class="cabecalho">
   <h1>Movimentações</h1>
-  <div class="acoes"><a class="btn" href="{{ url_for('movimentos.exportar_csv', **args) }}">Exportar Excel (CSV)</a></div>
+  <div class="acoes">
+    {% if pode_movimentar %}
+    <a class="btn primario" href="{{ url_for('movimentos.movimentar', tipo='saida') }}">+ Entrega a colaborador</a>
+    <a class="btn" href="{{ url_for('movimentos.movimentar', tipo='entrada') }}">+ Entrada de estoque</a>
+    <a class="btn" href="{{ url_for('movimentos.movimentar', tipo='baixa') }}">Baixa (perda/avaria)</a>
+    <a class="btn" href="{{ url_for('movimentos.movimentar', tipo='ajuste') }}">Ajuste / saldo inicial</a>
+    {% endif %}
+    <a class="btn" href="{{ url_for('movimentos.exportar_csv', **args) }}">Exportar Excel (CSV)</a>
+  </div>
 </div>
 <form class="filtros" method="get">
   <select name="tipo"><option value="">Todos os tipos</option>
