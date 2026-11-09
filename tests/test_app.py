@@ -3,8 +3,9 @@ import re
 import tempfile
 import unittest
 from datetime import timedelta
+from unittest import mock
 
-from app import create_app, estoque
+from app import create_app, estoque, push_service
 from app.db import get_db
 from app.util import hoje
 
@@ -77,6 +78,90 @@ class TestAcesso(Base):
         self.assertEqual(outro.get("/movimentar/saida").status_code, 403)
         self.assertEqual(self.post("/epis/novo", {"nome": "X"}, client=outro).status_code, 403)
         self.assertEqual(outro.get("/usuarios").status_code, 403)
+
+    def _criar_usuario(self, login, perfil="consulta"):
+        self.post("/usuarios/novo", {"nome": login.title(), "login": login, "perfil": perfil,
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        with self.app.app_context():
+            return get_db().execute("SELECT id FROM usuarios WHERE login = ?", (login,)).fetchone()["id"]
+
+    def test_usuario_inativar_e_reativar(self):
+        self.setup_admin()
+        uid = self._criar_usuario("ver")
+        outro = self.app.test_client()
+        self.post("/login", {"login": "ver", "senha": "senha1234"}, client=outro)
+        self.assertEqual(outro.get("/epis").status_code, 200)
+
+        self.post(f"/usuarios/{uid}/situacao")
+        self.assertEqual(outro.get("/epis").status_code, 302)  # a sessão aberta cai na hora
+        self.post("/login", {"login": "ver", "senha": "senha1234"}, client=outro)
+        self.assertEqual(outro.get("/epis").status_code, 302)
+        self.assertIn("Reativar", self.c.get("/usuarios").get_data(as_text=True))
+
+        self.post(f"/usuarios/{uid}/situacao")
+        self.post("/login", {"login": "ver", "senha": "senha1234"}, client=outro)
+        self.assertEqual(outro.get("/epis").status_code, 200)
+
+    def test_usuario_excluir_sem_historico(self):
+        self.setup_admin()
+        uid = self._criar_usuario("ver")
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO push_inscricoes (usuario_id, endpoint, p256dh, auth) VALUES (?, 'e1', 'p', 'a')", (uid,))
+            db.execute("INSERT INTO recuperacao_senha (usuario_id, token_hash, codigo_hash, expira_em) "
+                       "VALUES (?, 't', 'c', '2030-01-01')", (uid,))
+            db.commit()
+        self.post(f"/usuarios/{uid}/excluir")
+        with self.app.app_context():
+            db = get_db()
+            self.assertIsNone(db.execute("SELECT 1 FROM usuarios WHERE id = ?", (uid,)).fetchone())
+            self.assertIsNone(db.execute("SELECT 1 FROM push_inscricoes WHERE endpoint = 'e1'").fetchone())
+            self.assertIsNone(db.execute("SELECT 1 FROM recuperacao_senha WHERE token_hash = 't'").fetchone())
+
+    def test_usuario_com_historico_nao_e_excluido(self):
+        self.setup_admin()
+        uid = self._criar_usuario("oper", perfil="almoxarifado")
+        epi = self.criar_epi()
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO movimentacoes (grupo, epi_id, tipo, quantidade, data, usuario_id) "
+                       "VALUES ('g1', ?, 'entrada', 1, '2026-01-01', ?)", (epi, uid))
+            db.commit()
+        r = self.post(f"/usuarios/{uid}/excluir", follow_redirects=True)
+        self.assertIn("não pode ser excluído", r.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertIsNotNone(get_db().execute("SELECT 1 FROM usuarios WHERE id = ?", (uid,)).fetchone())
+
+    def test_usuario_nao_inativa_nem_exclui_a_si_mesmo(self):
+        self.setup_admin()
+        self.assertNotIn("/usuarios/1/excluir", self.c.get("/usuarios").get_data(as_text=True))
+        self.post("/usuarios/1/situacao")
+        self.post("/usuarios/1/excluir")
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT ativo FROM usuarios WHERE id = 1").fetchone()["ativo"], 1)
+
+    def test_usuario_inativar_e_excluir_so_admin(self):
+        self.setup_admin()
+        self._criar_usuario("ver")
+        alvo = self._criar_usuario("alvo")
+        outro = self.app.test_client()
+        self.post("/login", {"login": "ver", "senha": "senha1234"}, client=outro)
+        self.assertEqual(self.post(f"/usuarios/{alvo}/situacao", client=outro).status_code, 403)
+        self.assertEqual(self.post(f"/usuarios/{alvo}/excluir", client=outro).status_code, 403)
+
+    def test_push_geral_ignora_usuario_inativo(self):
+        self.setup_admin()
+        uid = self._criar_usuario("ver")
+        self.post(f"/usuarios/{uid}/situacao")
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO push_inscricoes (usuario_id, endpoint, p256dh, auth) VALUES (?, 'inativo', 'p', 'a')", (uid,))
+            db.execute("INSERT INTO push_inscricoes (usuario_id, endpoint, p256dh, auth) VALUES (1, 'ativo', 'p', 'a')")
+            enviados = []
+            with mock.patch("app.push_service.enviar_push_dispositivo",
+                            side_effect=lambda sub, *_: enviados.append(sub["endpoint"]) or (True, None)):
+                push_service.enviar_para_todos(db, {"title": "x"})
+        self.assertEqual(enviados, ["ativo"])
 
     def test_login_errado(self):
         self.setup_admin()

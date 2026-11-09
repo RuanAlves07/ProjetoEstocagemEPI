@@ -1609,3 +1609,52 @@ def usuario_editar(uid):
                     "ativo": ativo,
                 }
     return render_template("usuario_form.html", u=u, novo=False, PERFIS=perfis_dict, SENHA_MIN=SENHA_MIN)
+
+
+@bp.post("/usuarios/<int:uid>/situacao")
+@admin_required
+def usuario_situacao(uid):
+    db = get_db()
+    u = db.execute("SELECT id, nome, ativo FROM usuarios WHERE id = ?", (uid,)).fetchone() or abort(404)
+    if uid == g.usuario["id"]:
+        flash("Você não pode inativar o seu próprio usuário.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista"))
+    novo = 0 if u["ativo"] else 1
+    db.execute("UPDATE usuarios SET ativo = ? WHERE id = ?", (novo, uid))
+    flash(f"Usuário “{u['nome']}” {'reativado' if novo else 'inativado'}.", "ok")
+    return redirect(url_for("cadastros.usuarios_lista"))
+
+
+# Cada coluna que registra um usuário no histórico do sistema
+_HISTORICO_USUARIO = (
+    ("movimentacoes", "usuario_id"),
+    ("movimentacoes", "cancelada_por"),
+    ("pedidos", "iniciado_por"),
+    ("pedidos", "finalizado_por"),
+    ("pedidos", "entregue_por"),
+    ("pedidos", "cancelado_por"),
+    ("pedidos", "solicitante_usuario_id"),
+    ("colaborador_epis_solicitados", "usuario_id"),
+)
+
+
+@bp.post("/usuarios/<int:uid>/excluir")
+@admin_required
+def usuario_excluir(uid):
+    db = get_db()
+    u = db.execute("SELECT id, nome FROM usuarios WHERE id = ?", (uid,)).fetchone() or abort(404)
+    if uid == g.usuario["id"]:
+        flash("Você não pode excluir o seu próprio usuário.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista"))
+    registros = sum(
+        db.execute(f"SELECT COUNT(*) FROM {tabela} WHERE {coluna} = ?", (uid,)).fetchone()[0]
+        for tabela, coluna in _HISTORICO_USUARIO
+    )
+    if registros:
+        flash(f"“{u['nome']}” não pode ser excluído porque tem {registros} registro(s) no histórico de pedidos e "
+              "movimentações. Use Inativar para bloquear o acesso e manter o histórico.", "erro")
+        return redirect(url_for("cadastros.usuarios_lista"))
+    db.execute("DELETE FROM recuperacao_senha WHERE usuario_id = ?", (uid,))
+    db.execute("DELETE FROM usuarios WHERE id = ?", (uid,))
+    flash(f"Usuário “{u['nome']}” excluído.", "ok")
+    return redirect(url_for("cadastros.usuarios_lista"))

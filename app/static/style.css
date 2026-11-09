@@ -489,6 +489,8 @@ tr.linha-analisar { background: #fffdf5; }
 }
 .item-permissao.somente-leitura { cursor: default; }
 .acoes-aparelho { display: flex; gap: .35rem; justify-content: flex-end; }
+.acoes-usuario { display: flex; gap: .35rem; justify-content: flex-end; }
+.acoes-usuario form { margin: 0; }
 @media (max-width: 900px) {
   .conta-colunas { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
 }

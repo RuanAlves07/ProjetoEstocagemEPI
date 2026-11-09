@@ -122,7 +122,10 @@ def enviar_para_todos(db, payload_dict, usuario_id=None):
             (usuario_id,),
         ).fetchall()
     else:
-        linhas = db.execute("SELECT id, endpoint, p256dh, auth FROM push_inscricoes").fetchall()
+        linhas = db.execute(
+            """SELECT id, endpoint, p256dh, auth FROM push_inscricoes
+               WHERE usuario_id IS NULL OR usuario_id IN (SELECT id FROM usuarios WHERE ativo = 1)"""
+        ).fetchall()
 
     expirados = []
     enviados = 0

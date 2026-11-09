@@ -68,7 +68,23 @@
             </td>
             <td>{{ 'Ativo' if u.ativo else 'Inativo' }}</td>
             <td class="num">
-              <a class="btn pequeno" href="{{ url_for('cadastros.usuario_editar', uid=u.id) }}">Editar</a>
+              <div class="acoes-usuario">
+                <a class="btn pequeno" href="{{ url_for('cadastros.usuario_editar', uid=u.id) }}">Editar</a>
+                {% if u.id != usuario.id %}
+                  <form method="post" action="{{ url_for('cadastros.usuario_situacao', uid=u.id) }}">
+                    {{ csrf() }}
+                    <button class="btn pequeno" data-nome="{{ u.nome }}"
+                            {% if u.ativo %}onclick="return confirm('Inativar ' + this.dataset.nome + '? O acesso ao sistema será bloqueado até ser reativado.')"{% endif %}>
+                      {{ 'Inativar' if u.ativo else 'Reativar' }}
+                    </button>
+                  </form>
+                  <form method="post" action="{{ url_for('cadastros.usuario_excluir', uid=u.id) }}">
+                    {{ csrf() }}
+                    <button class="btn pequeno perigo-suave" data-nome="{{ u.nome }}"
+                            onclick="return confirm('Excluir ' + this.dataset.nome + ' definitivamente? Essa ação não pode ser desfeita.')">Excluir</button>
+                  </form>
+                {% endif %}
+              </div>
             </td>
           </tr>
         {% endfor %}
