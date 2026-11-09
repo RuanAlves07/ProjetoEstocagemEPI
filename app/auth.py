@@ -589,7 +589,20 @@ def sair():
 
 @bp.route("/meu-perfil", methods=["GET", "POST"])
 @bp.route("/minha-senha", methods=["GET", "POST"])
-def meu_perfil():
+def conta_endereco_antigo():
+    # 308 mantém o método, para não perder um formulário aberto no endereço antigo
+    return redirect(url_for("auth.conta"), code=308)
+
+
+@bp.post("/conta/aparelhos/<int:aparelho_id>/remover")
+def conta_remover_aparelho(aparelho_id):
+    get_db().execute("DELETE FROM push_inscricoes WHERE id = ? AND usuario_id = ?", (aparelho_id, g.usuario["id"]))
+    flash("Aparelho removido das notificações.", "ok")
+    return redirect(url_for("auth.conta"))
+
+
+@bp.route("/conta", methods=["GET", "POST"])
+def conta():
     db = get_db()
     if request.method == "POST":
         novo_login = limpar(request.form.get("login")) or g.usuario["login"]
@@ -597,9 +610,14 @@ def meu_perfil():
         receber_notif = 1 if request.form.get("receber_notificacoes") else 0
         senha_nova = request.form.get("senha", "")
         remover_foto = request.form.get("remover_foto") == "1"
+        altera_acesso = (
+            bool(senha_nova)
+            or novo_login != g.usuario["login"]
+            or novo_email != ((g.usuario["email"] or "").lower() or None)
+        )
 
-        if not check_password_hash(g.usuario["senha_hash"], request.form.get("atual", "")):
-            flash("Senha atual incorreta.", "erro")
+        if altera_acesso and not check_password_hash(g.usuario["senha_hash"], request.form.get("atual", "")):
+            flash("Para alterar login, e-mail ou senha, informe corretamente sua senha atual.", "erro")
         elif not novo_login:
             flash("Informe um login válido.", "erro")
         elif novo_email and not email_service.email_valido(novo_email):
@@ -627,16 +645,22 @@ def meu_perfil():
                         db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
                                    (generate_password_hash(senha_nova), g.usuario["id"]))
                     g.usuario = db.execute("SELECT * FROM usuarios WHERE id = ?", (g.usuario["id"],)).fetchone()
-                    flash("Perfil atualizado com sucesso!", "ok")
-                    return redirect(url_for("auth.meu_perfil"))
+                    flash("Conta atualizada com sucesso!", "ok")
+                    return redirect(url_for("auth.conta"))
                 except sqlite3.IntegrityError:
                     flash("Esse login já está em uso por outro usuário.", "erro")
                 except ErroValidacao as e:
                     flash(str(e), "erro")
-    return render_template("meu_perfil.html")
-
-
-minha_senha = meu_perfil
+    aparelhos = db.execute(
+        "SELECT id, endpoint, user_agent, criado_em FROM push_inscricoes WHERE usuario_id = ? ORDER BY id DESC",
+        (g.usuario["id"],),
+    ).fetchall()
+    return render_template(
+        "conta.html",
+        aparelhos=aparelhos,
+        nome_perfil=obter_perfis_dict(db).get(g.usuario["perfil"], g.usuario["perfil"]),
+        catalogo_permissoes=CATALOGO_PERMISSOES,
+    )
 
 
 @bp.app_context_processor

@@ -73,8 +73,23 @@ def _duracao(horas):
     return f"{d} d {h} h" if h else f"{d} d"
 
 
+def _aparelho(user_agent):
+    """Resume o User-Agent de uma inscrição de push, ex.: 'Chrome no Android'."""
+    ua = user_agent or ""
+    navegadores = (("Edg", "Edge"), ("OPR", "Opera"), ("SamsungBrowser", "Samsung Internet"), ("CriOS", "Chrome"),
+                   ("Firefox", "Firefox"), ("Chrome", "Chrome"), ("Safari", "Safari"))
+    sistemas = (("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"), ("Windows", "Windows"),
+                ("Mac OS X", "macOS"), ("Linux", "Linux"))
+    navegador = next((nome for trecho, nome in navegadores if trecho in ua), None)
+    sistema = next((nome for trecho, nome in sistemas if trecho in ua), None)
+    if navegador and sistema:
+        return f"{navegador} no {sistema}"
+    return navegador or sistema or "Aparelho não identificado"
+
+
 def registrar(app):
     app.jinja_env.filters.update(data_br=_data_br, hora_br=_hora_br, num=_num, dinheiro=_dinheiro,
-                                 tempo_atras=_tempo_atras, obs_pedido=_obs_pedido, duracao=_duracao)
+                                 tempo_atras=_tempo_atras, obs_pedido=_obs_pedido, duracao=_duracao,
+                                 aparelho=_aparelho)
     app.jinja_env.globals["TIPOS"] = TIPOS
     app.jinja_env.globals["STATUS_PEDIDO"] = STATUS_PEDIDO

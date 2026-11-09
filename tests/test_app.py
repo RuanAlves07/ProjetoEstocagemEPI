@@ -242,7 +242,7 @@ class TestEstoque(Base):
         urls = ["/", "/epis", f"/epis/{self.epi}", f"/epis/{self.epi}/editar", "/colaboradores",
                 f"/colaboradores/{self.colab}", f"/colaboradores/{self.colab}/editar", "/movimentos",
                 "/movimentos?tipo=saida&canceladas=1", "/relatorios", "/usuarios", "/usuarios/novo",
-                "/minha-senha", "/epis/novo", "/colaboradores/novo", comprovante,
+                "/conta", "/epis/novo", "/colaboradores/novo", comprovante,
                 "/movimentar/entrada", "/movimentar/saida", "/movimentar/baixa", "/movimentar/ajuste"]
         for u in urls:
             r = self.c.get(u)
@@ -851,13 +851,63 @@ class TestEstoque(Base):
             from app.db import get_db
             self.assertIsNone(get_db().execute("SELECT id FROM pedidos WHERE id = ?", (ped_id,)).fetchone())
 
-    def test_meu_perfil_foto_e_notificacoes(self):
+    def test_conta_enderecos_antigos_redirecionam(self):
+        for antigo in ("/meu-perfil", "/minha-senha"):
+            r = self.c.get(antigo)
+            self.assertEqual(r.status_code, 308, antigo)
+            self.assertTrue(r.headers["Location"].endswith("/conta"), antigo)
+
+    def test_conta_senha_atual_so_para_dados_de_acesso(self):
+        dados = {"login": "admin", "email": ""}
+        r = self.post("/conta", dados, follow_redirects=True)
+        self.assertIn("Conta atualizada com sucesso", r.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT receber_notificacoes FROM usuarios WHERE login = 'admin'")
+                             .fetchone()[0], 0)
+
+        for campo, valor in (("email", "novo@empresa.com"), ("login", "outro")):
+            r = self.post("/conta", {**dados, campo: valor}, follow_redirects=True)
+            self.assertIn("informe corretamente sua senha atual", r.get_data(as_text=True), campo)
+        r = self.post("/conta", {**dados, "senha": "novasenha123", "confirmacao": "novasenha123"},
+                      follow_redirects=True)
+        self.assertIn("informe corretamente sua senha atual", r.get_data(as_text=True))
+        with self.app.app_context():
+            u = get_db().execute("SELECT login, email FROM usuarios WHERE login = 'admin'").fetchone()
+            self.assertIsNone(u["email"])
+
+    def test_conta_aparelhos_e_acessos(self):
+        with self.app.app_context():
+            db = get_db()
+            admin = db.execute("SELECT id FROM usuarios WHERE login = 'admin'").fetchone()[0]
+            outro = db.execute("INSERT INTO usuarios (nome, login, senha_hash, perfil) "
+                               "VALUES ('Outro', 'outro', 'x', 'almoxarifado')").lastrowid
+            ua = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36"
+            for dono, sufixo in ((admin, "meu"), (outro, "alheio")):
+                db.execute("INSERT INTO push_inscricoes (endpoint, p256dh, auth, usuario_id, user_agent) "
+                           "VALUES (?, 'p', 'a', ?, ?)", (f"https://push.test/{sufixo}", dono, ua))
+            db.commit()
+            meu = db.execute("SELECT id FROM push_inscricoes WHERE usuario_id = ?", (admin,)).fetchone()[0]
+            alheio = db.execute("SELECT id FROM push_inscricoes WHERE usuario_id = ?", (outro,)).fetchone()[0]
+
+        html = self.c.get("/conta").get_data(as_text=True)
+        self.assertIn("Chrome no Android", html)
+        self.assertNotIn("https://push.test/alheio", html)
+        self.assertIn("Perfil: Administrador", html)
+        self.assertIn("O que posso acessar", html)
+
+        self.post(f"/conta/aparelhos/{alheio}/remover")
+        self.post(f"/conta/aparelhos/{meu}/remover")
+        with self.app.app_context():
+            restantes = [r[0] for r in get_db().execute("SELECT id FROM push_inscricoes").fetchall()]
+        self.assertEqual(restantes, [alheio])
+
+    def test_conta_foto_e_notificacoes(self):
         import io
-        # 1. Acessa /meu-perfil e /minha-senha
-        r_perfil = self.c.get("/meu-perfil")
+        # 1. Acessa /conta
+        r_perfil = self.c.get("/conta")
         self.assertEqual(r_perfil.status_code, 200)
         html = r_perfil.get_data(as_text=True)
-        self.assertIn("Meu Perfil", html)
+        self.assertIn("Minha Conta", html)
         self.assertIn("Foto do Perfil", html)
         self.assertIn("Notificações de navegador", html)
         self.assertIn("Ativar Notificações neste Aparelho", html)
@@ -871,7 +921,7 @@ class TestEstoque(Base):
             b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
             b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
         )
-        r_post = self.post("/meu-perfil", {
+        r_post = self.post("/conta", {
             "login": "admin",
             "email": "admin@empresa.com",
             "receber_notificacoes": "1",
@@ -880,12 +930,12 @@ class TestEstoque(Base):
         }, follow_redirects=True, content_type="multipart/form-data")
         self.assertEqual(r_post.status_code, 200)
         html_salvo = r_post.get_data(as_text=True)
-        self.assertIn("Perfil atualizado com sucesso", html_salvo)
+        self.assertIn("Conta atualizada com sucesso", html_salvo)
         self.assertIn("avatar-header", html_salvo)
         self.assertIn("data:image/png;base64,", html_salvo)
 
         # 3. Remover foto de perfil
-        r_rem = self.post("/meu-perfil", {
+        r_rem = self.post("/conta", {
             "login": "admin",
             "email": "admin@empresa.com",
             "receber_notificacoes": "1",

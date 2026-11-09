@@ -52,7 +52,7 @@
       </div>
     </details>
     {% endif %}
-    <a href="{{ url_for('auth.meu_perfil') }}" class="link-perfil-header" title="Meu Perfil">
+    <a href="{{ url_for('auth.conta') }}" class="link-perfil-header" title="Minha Conta">
       {% if usuario.foto_perfil %}
       <img src="{{ usuario.foto_perfil }}" alt="{{ usuario['nome'] }}" class="avatar-header">
       {% else %}

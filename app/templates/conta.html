@@ -1,0 +1,248 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Minha Conta{% endblock %}
+{% block conteudo %}
+<div class="cartao">
+  <div class="perfil-cabecalho-bloco">
+    <div class="perfil-avatar-wrapper">
+      {% if usuario.foto_perfil %}
+        <img id="preview-foto-perfil" src="{{ usuario.foto_perfil }}" alt="Foto de {{ usuario.nome }}" class="avatar-perfil-grande">
+      {% else %}
+        <div id="preview-foto-perfil-placeholder" class="avatar-perfil-grande avatar-padrao">
+          {{ (usuario.nome or 'U')[:1]|upper }}
+        </div>
+        <img id="preview-foto-perfil" src="" alt="Nova Foto" class="avatar-perfil-grande" style="display:none">
+      {% endif %}
+    </div>
+    <div class="perfil-info-topo">
+      <h1 style="margin:0 0 .25rem 0;font-size:1.45rem">{{ usuario.nome }}</h1>
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <span class="badge azul">Perfil: {{ nome_perfil }}</span>
+        <span class="suave" style="font-size:.85rem">Login: <strong>{{ usuario.login }}</strong></span>
+        <span class="suave" style="font-size:.85rem">Conta criada em <strong>{{ usuario.criado_em|data_br }}</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" class="formulario" id="form-meu-perfil">
+    {{ csrf() }}
+
+    <div class="conta-colunas">
+      <div>
+        <!-- 1. Foto do Perfil -->
+        <div class="perfil-secao">
+          <div class="perfil-secao-titulo">
+            <span>Foto do Perfil</span>
+          </div>
+          <p class="suave" style="margin:0 0 .75rem 0;font-size:.88rem">
+            Escolha uma foto sua (PNG, JPG ou WEBP de até 2 MB). Ela aparecerá em formato circular ao lado do seu nome no topo do sistema.
+          </p>
+          <div class="linha" style="align-items:center;gap:1rem;flex-wrap:wrap">
+            <label style="flex:1;min-width:240px;margin:0">
+              <span class="rotulo-campo">Selecionar nova foto</span>
+              <input type="file" name="foto_perfil" id="campo-foto-perfil" accept="image/png,image/jpeg,image/webp,image/gif" onchange="carregarPreviaFoto(this)">
+            </label>
+            {% if usuario.foto_perfil %}
+            <label class="check" style="margin:1.4rem 0 0 0;font-size:.88rem;color:#b91c1c">
+              <input type="checkbox" name="remover_foto" value="1" onchange="alternarRemocaoFoto(this)">
+              Remover foto atual
+            </label>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- 2. Notificações Web Push (PC e Celular) -->
+        <div class="perfil-secao">
+          <div class="perfil-secao-titulo">
+            <span>Notificações de navegador</span>
+          </div>
+          <p class="suave" style="margin:0 0 .5rem 0;font-size:.88rem">
+            Receba avisos instantâneos com som e vibração no celular ou na tela do computador sempre que novos pedidos de EPI forem criados ou atualizados.
+          </p>
+
+          <div class="card-push-banner">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem">
+              <strong style="color:var(--cor-primaria-esc);font-size:.92rem">Status neste Aparelho / Navegador:</strong>
+              <span class="status-push-tag badge cinza">⚪ Verificando status…</span>
+            </div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+              <button type="button" class="btn primario btn-ativar-push" onclick="window.ativarNotificacoesPush().then(() => location.reload())">
+                Ativar Notificações neste Aparelho
+              </button>
+              <button type="button" class="btn link btn-desativar-push" onclick="window.desativarNotificacoesPush().then(() => location.reload())" style="color:#b91c1c;font-size:.85rem" hidden>
+                Desativar neste aparelho
+              </button>
+            </div>
+
+            <!-- Instruções claras de desbloqueio caso a permissão tenha sido negada no navegador anteriormente -->
+            <div id="ajuda-push-bloqueado" style="display:none;margin-top:.85rem;padding:.75rem .9rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:.85rem;color:#991b1b">
+              <strong>As notificações estão bloqueadas nas configurações deste navegador.</strong>
+              <p style="margin:.3rem 0 .4rem 0">Para que este aparelho possa receber notificações, libere a permissão na barra de endereços:</p>
+              <ul style="margin:0;padding-left:1.2rem;line-height:1.45">
+                <li><strong>No Computador (PC):</strong> Clique no ícone de cadeado (🔒) à esquerda do endereço (URL) do site e marque <em>Notificações: Permitir</em> (ou <em>Redefinir permissões</em>). Depois recarregue a página (F5).</li>
+                <li><strong>No Celular (Mobile):</strong> Toque no cadeado (🔒) ou opções ⋮ ao lado da URL &gt; <em>Configurações do site</em> &gt; <em>Notificações</em> &gt; <em>Permitir</em>.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div style="margin-top:.85rem">
+            <label class="check" style="margin:0;font-size:.88rem">
+              <input type="checkbox" name="receber_notificacoes" value="1" {{ 'checked' if usuario.receber_notificacoes is none or usuario.receber_notificacoes }}>
+              Receber também notificações por e-mail sobre o andamento e listas dos pedidos
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <!-- 3. Dados de Acesso -->
+        <div class="perfil-secao">
+          <div class="perfil-secao-titulo">
+            <span>Dados de Acesso</span>
+          </div>
+          <div class="linha">
+            <label style="flex:1">
+              <span class="rotulo-campo">Meu login de acesso <span class="obrigatorio">*</span></span>
+              <input name="login" required autocomplete="username" value="{{ usuario.login }}">
+            </label>
+            <label style="flex:1.2">
+              <span class="rotulo-campo">Meu e-mail corporativo</span>
+              <input name="email" type="email" autocomplete="email" value="{{ usuario.email or '' }}" placeholder="nome@abecker.com.br">
+            </label>
+          </div>
+        </div>
+
+        <!-- 4. Senha e Confirmação -->
+        <div class="perfil-secao">
+          <div class="perfil-secao-titulo">
+            <span>Alteração de Senha</span>
+          </div>
+          <p class="suave" style="margin:0 0 .75rem 0;font-size:.88rem">
+            Preencha a nova senha apenas se desejar alterá-la.
+          </p>
+
+          <div class="linha">
+            <label style="flex:1">
+              <span class="rotulo-campo">Nova senha (mín. 8 caracteres)</span>
+              <input name="senha" type="password" minlength="8" autocomplete="new-password" placeholder="Deixe em branco para não alterar">
+            </label>
+            <label style="flex:1">
+              <span class="rotulo-campo">Confirmar nova senha</span>
+              <input name="confirmacao" type="password" minlength="8" autocomplete="new-password" placeholder="Repita a nova senha">
+            </label>
+          </div>
+
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.85rem 1rem;margin-top:.75rem">
+            <label style="margin:0">
+              <span class="rotulo-campo" style="color:#991b1b;font-weight:600">Senha atual (necessária para alterar login, e-mail ou senha)</span>
+              <input name="atual" type="password" autocomplete="current-password" placeholder="Digite sua senha atual">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.5rem">
+      <button type="submit" class="btn primario" style="padding:.6rem 1.4rem;font-size:1rem">💾 Salvar Alterações</button>
+    </div>
+  </form>
+</div>
+
+<div class="grade-2">
+  <section class="cartao">
+    <div class="perfil-secao-titulo">
+      <span>Meus aparelhos com notificações ({{ aparelhos|length }})</span>
+    </div>
+    {% if aparelhos %}
+      <div class="tabela-rolavel">
+        <table>
+          <thead>
+            <tr>
+              <th>Aparelho</th>
+              <th>Ativo desde</th>
+              <th class="num"></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for a in aparelhos %}
+            <tr data-endpoint="{{ a.endpoint }}">
+              <td>
+                {{ a.user_agent|aparelho }}
+                <span class="badge verde tag-este-aparelho" hidden>Este aparelho</span>
+              </td>
+              <td style="white-space:nowrap">{{ a.criado_em|data_br }}</td>
+              <td class="num">
+                <form method="post" action="{{ url_for('auth.conta_remover_aparelho', aparelho_id=a.id) }}" style="margin:0">
+                  {{ csrf() }}
+                  <button class="btn pequeno perigo btn-remover-aparelho" onclick="return confirm('Remover este aparelho das notificações?')">Remover</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="suave" style="margin:0;font-size:.88rem">Nenhum aparelho está recebendo notificações nesta conta.</p>
+    {% endif %}
+  </section>
+
+  <section class="cartao">
+    <div class="perfil-secao-titulo">
+      <span>O que posso acessar</span>
+    </div>
+    <div class="grade-permissoes">
+      {% for chave_p, rotulo_p, desc_p in catalogo_permissoes if chave_p in permissoes_usuario %}
+        <div class="item-permissao ativa somente-leitura">
+          <div>
+            <strong>{{ rotulo_p }}</strong>
+            <small>{{ desc_p }}</small>
+          </div>
+        </div>
+      {% else %}
+        <p class="suave" style="margin:0;font-size:.88rem">Nenhuma permissão liberada para este perfil.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<script>
+function carregarPreviaFoto(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const imgPreview = document.getElementById("preview-foto-perfil");
+    const placeholder = document.getElementById("preview-foto-perfil-placeholder");
+    if (imgPreview) {
+      imgPreview.src = e.target.result;
+      imgPreview.style.display = "flex";
+      imgPreview.style.opacity = "1";
+    }
+    if (placeholder) {
+      placeholder.style.display = "none";
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function alternarRemocaoFoto(chk) {
+  const imgPreview = document.getElementById("preview-foto-perfil");
+  if (imgPreview) {
+    imgPreview.style.opacity = chk.checked ? "0.2" : "1";
+  }
+}
+
+// O aparelho em uso é desativado pelo botão acima, que também cancela a inscrição no navegador
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
+    if (!sub) return;
+    document.querySelectorAll("tr[data-endpoint]").forEach(linha => {
+      if (linha.dataset.endpoint !== sub.endpoint) return;
+      linha.querySelector(".tag-este-aparelho").hidden = false;
+      linha.querySelector(".btn-remover-aparelho").hidden = true;
+    });
+  });
+}
+</script>
+{% endblock %}

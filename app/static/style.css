@@ -37,6 +37,7 @@ main { width: 100%; max-width: 100%; margin: 0 auto; padding: 1.4rem 2.2rem; } m
 .btn.primario { background: var(--cor-primaria); border-color: var(--cor-primaria); color: #fff; } .btn.primario:hover { background: var(--cor-primaria-esc); }
 .btn.perigo { background: var(--vermelho); border-color: var(--vermelho); color: #fff; }
 .btn.link { border: 0; background: none; color: var(--cor-primaria); padding: .3rem .5rem; }
+.btn[hidden], .badge[hidden] { display: none; }
 .btn.pequeno { padding: .2rem .6rem; font-size: .85rem; }
 
 .menu { position: relative; } .menu summary { list-style: none; } .menu summary::-webkit-details-marker { display: none; }
@@ -469,9 +470,19 @@ tr.linha-analisar { background: #fffdf5; }
   white-space: nowrap;
 }
 
-.perfil-card-container {
-  max-width: 760px;
-  margin: 0 auto;
+.conta-colunas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 2.2rem;
+}
+.conta-colunas .perfil-secao:last-child {
+  border-bottom: 0;
+  margin-bottom: .5rem;
+  padding-bottom: 0;
+}
+.item-permissao.somente-leitura { cursor: default; }
+@media (max-width: 900px) {
+  .conta-colunas { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
 }
 .perfil-cabecalho-bloco {
   display: flex;

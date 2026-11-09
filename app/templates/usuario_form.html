@@ -2,36 +2,40 @@
 {% from '_macros.html' import csrf with context %}
 {% block titulo %}{{ 'Novo usuário' if novo else 'Editar usuário' }}{% endblock %}
 {% block conteudo %}
-<div class="cartao estreito-card">
+<div class="cartao">
   <h1>{{ 'Novo usuário' if novo else 'Editar usuário' }}</h1>
   <form method="post" class="formulario">
     {{ csrf() }}
-    <label>Nome completo <input name="nome" required value="{{ u.nome or '' }}"></label>
-    <label>Login de acesso
-      <input name="login" required autocomplete="off" value="{{ u.login or '' }}">
-      {% if not novo %}<small class="suave">Você pode alterar o login deste usuário a qualquer momento.</small>{% endif %}
-    </label>
-    <label>E-mail do usuário (para recuperação de senha e disparo de notificações)
-      <input name="email" type="email" autocomplete="email" value="{{ u.email or '' }}" placeholder="usuario@abecker.com.br">
-      <small class="suave">Usado quando o usuário clica em “Esqueceu a senha?” e para enviar o andamento dos pedidos.</small>
-    </label>
+    <div class="linha">
+      <label>Nome completo <input name="nome" required value="{{ u.nome or '' }}"></label>
+      <label>Login de acesso
+        <input name="login" required autocomplete="off" value="{{ u.login or '' }}">
+        {% if not novo %}<small class="suave">Você pode alterar o login deste usuário a qualquer momento.</small>{% endif %}
+      </label>
+      <label>Perfil de acesso
+        <select name="perfil">
+          {% for k, v in PERFIS.items() %}
+            <option value="{{ k }}" {{ 'selected' if u.perfil == k }}>{{ v }}</option>
+          {% endfor %}
+        </select>
+        <small class="suave">Deseja criar um perfil diferente ou ajustar permissões? <a href="{{ url_for('cadastros.usuarios_lista', aba='perfis') }}">Gerenciar perfis de acesso →</a></small>
+      </label>
+    </div>
+    <div class="linha">
+      <label>E-mail do usuário (para recuperação de senha e disparo de notificações)
+        <input name="email" type="email" autocomplete="email" value="{{ u.email or '' }}" placeholder="usuario@abecker.com.br">
+        <small class="suave">Usado quando o usuário clica em “Esqueceu a senha?” e para enviar o andamento dos pedidos.</small>
+      </label>
+      <label>{{ 'Senha' if novo else 'Nova senha (deixe em branco para manter a atual)' }} (mín. {{ SENHA_MIN }} caracteres)
+        <input name="senha" type="password" minlength="{{ SENHA_MIN }}" {{ 'required' if novo }} autocomplete="new-password">
+      </label>
+      <label>Confirmar senha
+        <input name="confirmacao" type="password" minlength="{{ SENHA_MIN }}" autocomplete="new-password">
+      </label>
+    </div>
     <label class="check">
       <input type="checkbox" name="receber_notificacoes" value="1" {{ 'checked' if u.receber_notificacoes is none or u.receber_notificacoes }}>
       Receber notificações por e-mail sobre o processo e a fila atual dos pedidos
-    </label>
-    <label>Perfil de acesso
-      <select name="perfil">
-        {% for k, v in PERFIS.items() %}
-          <option value="{{ k }}" {{ 'selected' if u.perfil == k }}>{{ v }}</option>
-        {% endfor %}
-      </select>
-      <small class="suave">Deseja criar um perfil diferente ou ajustar permissões? <a href="{{ url_for('cadastros.usuarios_lista', aba='perfis') }}">Gerenciar perfis de acesso →</a></small>
-    </label>
-    <label>{{ 'Senha' if novo else 'Nova senha (deixe em branco para manter a atual)' }} (mín. {{ SENHA_MIN }} caracteres)
-      <input name="senha" type="password" minlength="{{ SENHA_MIN }}" {{ 'required' if novo }} autocomplete="new-password">
-    </label>
-    <label>Confirmar senha
-      <input name="confirmacao" type="password" minlength="{{ SENHA_MIN }}" autocomplete="new-password">
     </label>
     {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if u.ativo }}> Usuário ativo</label>{% endif %}
     <div class="acoes">
