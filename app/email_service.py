@@ -26,6 +26,8 @@ from email.utils import formataddr
 
 from flask import current_app, url_for
 
+from .pedidos import numero_do_pedido
+
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # Credenciais corporativas padrão ABecker (Microsoft 365 Graph API)
@@ -579,16 +581,18 @@ def notificar_evento_pedido(db, pedido_id, evento, ator_nome=None, extra_info=No
 
     fila = info_fila_pedido(pedido)
     eh_complemento = bool(pedido["pedido_origem_id"])
+    numero = numero_do_pedido(db, pedido_id)
+    rotulo_pedido = f"#{numero} (itens não entregues)" if eh_complemento else f"#{numero}"
 
     titulos_evento = {
-        "criado": f"Novo Pedido #{pedido_id} registrado",
-        "em_separacao": f"Pedido #{pedido_id} entrou Em Separação",
-        "pendente": f"Pedido #{pedido_id} movido para Pendentes",
-        "finalizado": f"Pedido #{pedido_id} Pronto para Retirada",
-        "retirado": f"Pedido #{pedido_id} Retirado / Entregue",
-        "cancelado": f"Pedido #{pedido_id} Cancelado",
+        "criado": f"Novo Pedido {rotulo_pedido} registrado",
+        "em_separacao": f"Pedido {rotulo_pedido} entrou Em Separação",
+        "pendente": f"Pedido {rotulo_pedido} movido para Pendentes",
+        "finalizado": f"Pedido {rotulo_pedido} Pronto para Retirada",
+        "retirado": f"Pedido {rotulo_pedido} Retirado / Entregue",
+        "cancelado": f"Pedido {rotulo_pedido} Cancelado",
     }
-    titulo = titulos_evento.get(evento, f"Atualização do Pedido #{pedido_id}")
+    titulo = titulos_evento.get(evento, f"Atualização do Pedido {rotulo_pedido}")
     subtitulo = f"Lista atual: {fila['lista']} · Solicitante: {pedido['solicitante']}"
 
     stepper_html = _render_stepper_html(pedido["status"], eh_complemento=eh_complemento)
@@ -649,14 +653,14 @@ def notificar_evento_pedido(db, pedido_id, evento, ator_nome=None, extra_info=No
     if pedido["pedido_origem_id"]:
         blocos_extras.append(f"""
           <div style="margin-top:14px; padding:12px 14px; background:#fff7ed; border:1px solid #fed7aa; border-radius:6px; font-size:13px; color:#9a3412;">
-            <strong>Pedido Complementar:</strong> originado dos itens pendentes do Pedido <strong>#{pedido['pedido_origem_id']}</strong>.
+            <strong>Itens não entregues:</strong> mesmo pedido <strong>#{numero}</strong>, somente com os itens não entregues na finalização com ressalva.
           </div>
         """)
 
     if pedido["ressalva_observacao"]:
         comp = db.execute("SELECT id FROM pedidos WHERE pedido_origem_id = ? ORDER BY id DESC LIMIT 1", (pedido_id,)).fetchone()
         comp_txt = (
-            f"<br>Foi gerado automaticamente o <strong>Pedido Complementar #{comp['id']}</strong> na lista <strong>Pendências aguardando estoque</strong>."
+            f"<br>Os itens não entregues continuam no mesmo pedido <strong>#{numero}</strong>, na lista <strong>Finalizados com ressalva</strong>."
             if comp else ""
         )
         blocos_extras.append(f"""
@@ -767,10 +771,10 @@ def notificar_evento_pedido(db, pedido_id, evento, ator_nome=None, extra_info=No
         subtitulo=subtitulo,
         cor_topo=fila["cor"],
         conteudo_html=conteudo,
-        texto_botao=f"Abrir Pedido #{pedido_id} no Sistema",
+        texto_botao=f"Abrir Pedido {rotulo_pedido} no Sistema",
         url_botao=link_pedido,
     )
-    assunto = f"[Estoque de EPIs] Pedido #{pedido_id} — Lista: {fila['lista']} ({pedido['solicitante']})"
+    assunto = f"[Estoque de EPIs] Pedido {rotulo_pedido} — Lista: {fila['lista']} ({pedido['solicitante']})"
     return enviar_em_segundo_plano(destinatarios, assunto, html, tipo=f"pedido_{evento}")
 
 

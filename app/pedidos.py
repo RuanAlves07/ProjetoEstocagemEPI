@@ -1362,6 +1362,26 @@ def contagens(db):
 
 # ------------------------------------------------------------ ações
 
+def mapa_complementos(db):
+    """{id do complemento: id do pedido que o originou}."""
+    return {r["id"]: r["pedido_origem_id"] for r in db.execute(
+        "SELECT id, pedido_origem_id FROM pedidos WHERE pedido_origem_id IS NOT NULL")}
+
+
+def numero_exibicao(mapa, pedido_id):
+    """Número mostrado ao usuário: os itens não entregues de uma ressalva usam o número do pedido original."""
+    vistos = set()
+    atual = pedido_id
+    while atual in mapa and atual not in vistos:
+        vistos.add(atual)
+        atual = mapa[atual]
+    return atual
+
+
+def numero_do_pedido(db, pedido_id):
+    return numero_exibicao(mapa_complementos(db), pedido_id)
+
+
 def _pedido(db, pedido_id, *status_validos):
     p = db.execute("SELECT * FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
     if not p:
@@ -1506,9 +1526,10 @@ def finalizar(db, pedido_id, usuario_id, com_ressalva=False, ressalva_obs=None, 
 
         grupo = None
         if itens_baixa:
-            obs_mov = f"Pedido #{pedido_id}"
+            numero = numero_do_pedido(db, pedido_id)
+            obs_mov = f"Pedido #{numero}"
             if obs_ressalva:
-                obs_mov = f"Pedido #{pedido_id} (Ressalva: {obs_ressalva})"
+                obs_mov = f"Pedido #{numero} (Ressalva: {obs_ressalva})"
             grupo = estoque.registrar_na_transacao(
                 db, "saida", [{"epi_id": i["epi_id"], "quantidade": i["quantidade"]} for i in itens_baixa], hoje(),
                 usuario_id, colaborador_id=p["colaborador_id"], motivo=p["motivo"],
@@ -1568,7 +1589,7 @@ def cancelar(db, pedido_id, motivo, usuario_id, pode_estornar):
             if not pode_estornar:
                 raise ErroValidacao("Só o administrador pode cancelar um pedido que já deu baixa no estoque.")
             for m in db.execute("SELECT id FROM movimentacoes WHERE pedido_id = ? AND cancelada = 0", (pedido_id,)):
-                estoque.cancelar_na_transacao(db, m["id"], f"Pedido #{pedido_id} cancelado: {motivo}", usuario_id)
+                estoque.cancelar_na_transacao(db, m["id"], f"Pedido #{numero_do_pedido(db, pedido_id)} cancelado: {motivo}", usuario_id)
         db.execute("UPDATE pedidos SET status = 'cancelado', cancelado_motivo = ?, cancelado_por = ?, "
                    "cancelado_em = datetime('now', 'localtime') WHERE id = ?", (motivo, usuario_id, pedido_id))
 

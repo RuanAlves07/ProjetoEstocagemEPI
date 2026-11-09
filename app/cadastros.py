@@ -913,6 +913,7 @@ def _solicitados_fora_do_padrao(db, colab_id, padrao_ids):
            ORDER BY p.id DESC, i.id DESC""",
         (colab_id,),
     ).fetchall()
+    complementos = pedidos.mapa_complementos(db)
     for r in linhas_ped:
         if r["epi_id"] in padrao_ids:
             continue
@@ -922,7 +923,7 @@ def _solicitados_fora_do_padrao(db, colab_id, padrao_ids):
         itens.append({
             "reg_id": reg["id"] if reg else None,
             "origem_chave": chave,
-            "origem_rotulo": f"Pedido #{r['pedido_id']}",
+            "origem_rotulo": f"Pedido #{pedidos.numero_exibicao(complementos, r['pedido_id'])}",
             "pedido_id": r["pedido_id"],
             "epi_id": r["epi_id"],
             "epi_nome": r["epi_nome"],

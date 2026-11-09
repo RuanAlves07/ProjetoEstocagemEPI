@@ -1,12 +1,13 @@
 <article class="pedido-card status-{{ p.status }} {{ 'aguardando-estoque' if p.aguardando_estoque }} {{ 'estoque-chegou' if p.aguardando_estoque and p.estoque_disponivel }}">
   <header>
-    <a class="pedido-titulo" href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id }} · {{ p.solicitante }}</a>
+    <a class="pedido-titulo" href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">#{{ p.id|numero_pedido }} · {{ p.solicitante }}</a>
     <span class="suave">{{ p.recebido_em|tempo_atras }}</span>
   </header>
   {% include '_sla_badge.html' %}
   {% if p.eh_complemento %}
   <div class="faixa-complemento">
-    🔗 Itens que faltaram no <a href="{{ url_for('pedidos.detalhe', pedido_id=p.pedido_origem_id) }}">pedido #{{ p.pedido_origem_id }}</a>
+    <strong>Itens não entregues do pedido #{{ p.id|numero_pedido }}</strong>
+    <br>É o mesmo pedido: aqui ficam só os itens não marcados ao finalizar com ressalva. <a href="{{ url_for('pedidos.detalhe', pedido_id=p.pedido_origem_id) }}">Ver o que foi entregue</a>
     {% if p.aguardando_estoque %}
       {% if p.estoque_disponivel %}<br><strong class="ok-texto">✅ Estoque disponível — pode separar</strong>
       {% else %}<br>{{ p.itens_com_saldo }} de {{ p.total_itens }} item(ns) com saldo{% endif %}
@@ -57,7 +58,7 @@
   {% if p.observacao %}<p class="pedido-obs">💬 {{ p.observacao|obs_pedido }}</p>{% endif %}
   {% if p.ressalva_observacao %}<p class="pedido-obs" style="border-left-color:#d97706;background:#fffbeb;color:#92400e">⚠️ <strong>Ressalva:</strong> {{ p.ressalva_observacao }}</p>{% endif %}
   {% for c in p.complementos %}
-  <p class="nota" style="margin:0">📦 Itens que faltaram: <a href="{{ url_for('pedidos.detalhe', pedido_id=c.id) }}">pendência #{{ c.id }}</a> ({{ STATUS_PEDIDO[c.status] if c.status != 'pendente' else 'aguardando estoque' }})</p>
+  <p class="nota" style="margin:0">Entrega parcial: <a href="{{ url_for('pedidos.detalhe', pedido_id=c.id) }}">itens não entregues deste pedido</a> ({{ STATUS_PEDIDO[c.status] if c.status != 'pendente' else 'aguardando estoque' }})</p>
   {% endfor %}
   {% if p.status == 'em_separacao' %}<div class="progresso-mini">{{ p.separados }}/{{ p.total_itens }} separados</div>{% endif %}
   {% if p.status == 'retirado' %}<p class="nota">Retirado por <strong>{{ p.retirado_por_nome }}</strong> em {{ p.retirado_em|hora_br }}</p>{% endif %}
@@ -81,7 +82,7 @@
     {% endif %}
     {% if pode_editar %}
     <form method="post" action="{{ url_for('pedidos.excluir', pedido_id=p.id) }}"
-          onsubmit="return confirm('Tem certeza que deseja excluir o pedido #{{ p.id }}?');" style="margin-left:auto">
+          onsubmit="return confirm('Tem certeza que deseja excluir {{ 'os itens não entregues do pedido' if p.eh_complemento else 'o pedido' }} #{{ p.id|numero_pedido }}?');" style="margin-left:auto">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="voltar" value="{{ request.full_path }}" data-auto>
       <button type="submit" class="btn perigo pequeno" title="Excluir pedido">🗑️ Excluir</button>

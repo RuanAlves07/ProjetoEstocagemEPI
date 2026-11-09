@@ -34,7 +34,7 @@
       </td>{% endif %}
       <td>
         {% if m.local_destino %}📍 {{ m.local_destino }} · {% endif %}
-        {% if m.pedido_id %}<a href="{{ url_for('pedidos.detalhe', pedido_id=m.pedido_id) }}">Pedido #{{ m.pedido_id }}</a> · {% endif %}
+        {% if m.pedido_id %}<a href="{{ url_for('pedidos.detalhe', pedido_id=m.pedido_id) }}">Pedido #{{ m.pedido_id|numero_pedido }}</a> · {% endif %}
         {% if m.nota_fiscal %}NF {{ m.nota_fiscal }} · {% endif %}
         {% if m.custo_unitario is not none %}{{ m.custo_unitario|dinheiro }}/un · {% endif %}
         {{ m.motivo or '' }}{% if m.observacao %} <small class="suave">{{ m.observacao }}</small>{% endif %}

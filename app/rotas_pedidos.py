@@ -1136,8 +1136,8 @@ def finalizar(pedido_id):
     if not com_ressalva:
         flash("Pedido finalizado: baixa feita no estoque e pronto para retirada.", "ok")
     elif complemento:
-        flash(f"Pedido finalizado com ressalva. Os itens que faltaram foram para a pendência #{complemento} "
-              "(Pedidos → Aguardando estoque).", "ok")
+        flash("Pedido finalizado com ressalva. Os itens não entregues continuam neste mesmo pedido, "
+              "em Pedidos → Finalizados com ressalva.", "ok")
     else:
         flash("Pedido finalizado com ressalva: baixa registrada para os itens separados e justificativa gravada.", "ok")
     return redirect(url_for("pedidos.detalhe", pedido_id=pedido_id))
@@ -1178,9 +1178,11 @@ def excluir(pedido_id):
         voltar = url_for("pedidos.lista")
     if not db.execute("SELECT 1 FROM pedidos WHERE id = ?", (pedido_id,)).fetchone():
         return redirect(voltar)  # já excluído (card desatualizado ou clique repetido): sem aviso extra
+    numero = pedidos.numero_do_pedido(db, pedido_id)
     try:
         pedidos.excluir(db, pedido_id)
-        flash(f"Pedido #{pedido_id} excluído permanentemente.", "ok")
+        flash(f"Itens não entregues do pedido #{numero} excluídos permanentemente." if numero != pedido_id
+              else f"Pedido #{numero} excluído permanentemente.", "ok")
     except ErroValidacao as e:
         flash(str(e), "erro")
     return redirect(voltar or url_for("pedidos.lista"))

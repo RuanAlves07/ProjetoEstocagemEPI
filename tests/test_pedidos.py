@@ -814,17 +814,19 @@ class TestPendenciasESla(BasePedidos):
         self.assertEqual(len(filhos), 1)
         comp = filhos[0]
         self.assertEqual((comp["status"], comp["colaborador_id"], comp["local_destino"]), ("pendente", self.joao, "Obra A"))
-        self.assertIn(f"pendência #{comp['id']}", html)
+        self.assertIn(f'href="/pedidos/{comp["id"]}"', html)
         self.assertEqual(sorted(i["epi_id"] for i in self.itens(comp["id"])), sorted([self.bota, self.camiseta]))
         self.assertEqual(self.pedido(pid)["status"], "pronto")
         self.assertEqual(self.saldo(self.luva), 8)   # só a luva (2x) teve baixa
 
         # A pendência sai de "Em andamento" e fica na aba própria, com atalho no resumo do SLA
         em_andamento = self.c.get("/pedidos").get_data(as_text=True)
-        self.assertNotIn(f"#{comp['id']} ·", em_andamento)
+        self.assertNotIn("Itens não entregues do pedido", em_andamento)
         self.assertIn("?aba=aguardando", em_andamento)
         lista = self.c.get("/pedidos?aba=aguardando").get_data(as_text=True)
-        self.assertIn(f"#{comp['id']} ·", lista)
+        self.assertIn(f"#{pid} ·", lista)   # mesmo número do pedido original
+        self.assertNotIn(f"#{comp['id']} ·", lista)
+        self.assertIn(f"Itens não entregues do pedido #{pid}", lista)
         self.assertIn("Estoque disponível — pode separar", lista)   # bota e camiseta têm saldo
         self.assertIn("SLA pausado", lista)
         detalhe = self.c.get(f"/pedidos/{comp['id']}").get_data(as_text=True)
@@ -835,7 +837,7 @@ class TestPendenciasESla(BasePedidos):
         self.assertNotIn("Estoque disponível — pode separar", self.c.get("/pedidos?aba=aguardando").get_data(as_text=True))
         r = self.mov("entrada", self.bota, 5)
         avisos = self.c.get(r.headers["Location"]).get_data(as_text=True)
-        self.assertIn(f"Chegou estoque para #{comp['id']}", avisos)
+        self.assertIn(f"Chegou estoque para #{pid}", avisos)
 
         # Iniciar a separação tira da fileira "aguardando" e o SLA começa a contar
         self.post(f"/pedidos/{comp['id']}/iniciar")
