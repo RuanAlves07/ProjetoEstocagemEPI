@@ -926,6 +926,44 @@ class TestEstoque(Base):
             restantes = [r[0] for r in get_db().execute("SELECT id FROM push_inscricoes").fetchall()]
         self.assertEqual(restantes, [alheio])
 
+    def test_conta_apelido_do_aparelho(self):
+        from app import push_service
+        with self.app.app_context():
+            db = get_db()
+            admin = db.execute("SELECT id FROM usuarios WHERE login = 'admin'").fetchone()[0]
+            outro = db.execute("INSERT INTO usuarios (nome, login, senha_hash, perfil) "
+                               "VALUES ('Outro', 'outro', 'x', 'almoxarifado')").lastrowid
+            ua = "Mozilla/5.0 (Windows NT 10.0) Firefox/130.0"
+            push_service.salvar_inscricao(db, "https://push.test/meu", "p", "a", admin, ua)
+            push_service.salvar_inscricao(db, "https://push.test/alheio", "p", "a", outro, ua)
+            db.commit()
+            meu = db.execute("SELECT id FROM push_inscricoes WHERE usuario_id = ?", (admin,)).fetchone()[0]
+            alheio = db.execute("SELECT id FROM push_inscricoes WHERE usuario_id = ?", (outro,)).fetchone()[0]
+
+        def apelido_de(aparelho):
+            with self.app.app_context():
+                return get_db().execute("SELECT apelido FROM push_inscricoes WHERE id = ?", (aparelho,)).fetchone()[0]
+
+        r = self.post(f"/conta/aparelhos/{meu}/apelido", {"apelido": "  Notebook <b>RH</b> "}, follow_redirects=True)
+        html = r.get_data(as_text=True)
+        self.assertIn("Notebook &lt;b&gt;RH&lt;/b&gt;", html)
+        self.assertIn("Firefox no Windows", html)
+
+        self.post(f"/conta/aparelhos/{alheio}/apelido", {"apelido": "Invasor"})
+        self.assertIsNone(apelido_de(alheio))
+
+        # O navegador renova a inscrição e o apelido continua
+        with self.app.app_context():
+            db = get_db()
+            push_service.salvar_inscricao(db, "https://push.test/meu", "p2", "a2", admin, ua)
+            db.commit()
+        self.assertEqual(apelido_de(meu), "Notebook <b>RH</b>")
+
+        self.post(f"/conta/aparelhos/{meu}/apelido", {"apelido": "x" * 60})
+        self.assertEqual(len(apelido_de(meu)), 40)
+        self.post(f"/conta/aparelhos/{meu}/apelido", {"apelido": "   "})
+        self.assertIsNone(apelido_de(meu))
+
     def test_conta_foto_e_notificacoes(self):
         import io
         # 1. Acessa /conta

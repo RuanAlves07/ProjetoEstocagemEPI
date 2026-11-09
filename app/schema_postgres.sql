@@ -276,7 +276,9 @@ CREATE TABLE IF NOT EXISTS push_inscricoes (
     p256dh      TEXT NOT NULL,
     auth        TEXT NOT NULL,
     user_agent  TEXT,
+    apelido     TEXT,
     criado_em   TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')
 );
+ALTER TABLE push_inscricoes ADD COLUMN IF NOT EXISTS apelido TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_inscricoes (usuario_id);

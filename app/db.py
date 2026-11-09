@@ -406,6 +406,9 @@ def _migrar(conn):
             criado_em             TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )
     """)
+    colunas_push = {r["name"] for r in conn.execute("PRAGMA table_info(push_inscricoes)")}
+    if "apelido" not in colunas_push:
+        conn.execute("ALTER TABLE push_inscricoes ADD COLUMN apelido TEXT")
 
     # Sincroniza os 22 EPIs e 3 Uniformes oficiais do formulário público se houver catálogo carregado
     _sincronizar_catalogo_formulario_oficial(conn)

@@ -258,6 +258,7 @@ CREATE TABLE IF NOT EXISTS push_inscricoes (
     p256dh      TEXT NOT NULL,
     auth        TEXT NOT NULL,
     user_agent  TEXT,
+    apelido     TEXT,
     criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 

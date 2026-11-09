@@ -601,6 +601,15 @@ def conta_remover_aparelho(aparelho_id):
     return redirect(url_for("auth.conta"))
 
 
+@bp.post("/conta/aparelhos/<int:aparelho_id>/apelido")
+def conta_apelidar_aparelho(aparelho_id):
+    apelido = (limpar(request.form.get("apelido")) or "")[:40] or None
+    get_db().execute("UPDATE push_inscricoes SET apelido = ? WHERE id = ? AND usuario_id = ?",
+                     (apelido, aparelho_id, g.usuario["id"]))
+    flash("Apelido do aparelho salvo." if apelido else "Apelido do aparelho removido.", "ok")
+    return redirect(url_for("auth.conta"))
+
+
 @bp.route("/conta", methods=["GET", "POST"])
 def conta():
     db = get_db()
@@ -652,7 +661,7 @@ def conta():
                 except ErroValidacao as e:
                     flash(str(e), "erro")
     aparelhos = db.execute(
-        "SELECT id, endpoint, user_agent, criado_em FROM push_inscricoes WHERE usuario_id = ? ORDER BY id DESC",
+        "SELECT id, endpoint, user_agent, apelido, criado_em FROM push_inscricoes WHERE usuario_id = ? ORDER BY id DESC",
         (g.usuario["id"],),
     ).fetchall()
     return render_template(

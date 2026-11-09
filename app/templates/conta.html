@@ -155,7 +155,7 @@
     </div>
     {% if aparelhos %}
       <div class="tabela-rolavel">
-        <table>
+        <table class="tabela-aparelhos">
           <thead>
             <tr>
               <th>Aparelho</th>
@@ -167,15 +167,25 @@
           {% for a in aparelhos %}
             <tr data-endpoint="{{ a.endpoint }}">
               <td>
-                {{ a.user_agent|aparelho }}
+                {% if a.apelido %}<strong>{{ a.apelido }}</strong>{% else %}{{ a.user_agent|aparelho }}{% endif %}
                 <span class="badge verde tag-este-aparelho" hidden>Este aparelho</span>
+                {% if a.apelido %}<small class="suave" style="display:block">{{ a.user_agent|aparelho }}</small>{% endif %}
+                <form method="post" action="{{ url_for('auth.conta_apelidar_aparelho', aparelho_id=a.id) }}" class="linha-form form-apelido" hidden>
+                  {{ csrf() }}
+                  <input name="apelido" maxlength="40" value="{{ a.apelido or '' }}" placeholder="Ex.: Celular do trabalho" aria-label="Apelido do aparelho">
+                  <button class="btn primario pequeno">Salvar</button>
+                  <button type="button" class="btn pequeno" onclick="alternarApelido(this, false)">Cancelar</button>
+                </form>
               </td>
               <td style="white-space:nowrap">{{ a.criado_em|data_br }}</td>
               <td class="num">
-                <form method="post" action="{{ url_for('auth.conta_remover_aparelho', aparelho_id=a.id) }}" style="margin:0">
-                  {{ csrf() }}
-                  <button class="btn pequeno perigo btn-remover-aparelho" onclick="return confirm('Remover este aparelho das notificações?')">Remover</button>
-                </form>
+                <div class="acoes-aparelho">
+                  <button type="button" class="btn pequeno btn-editar-apelido" onclick="alternarApelido(this, true)">Editar</button>
+                  <form method="post" action="{{ url_for('auth.conta_remover_aparelho', aparelho_id=a.id) }}" style="margin:0">
+                    {{ csrf() }}
+                    <button class="btn pequeno perigo btn-remover-aparelho" onclick="return confirm('Remover este aparelho das notificações?')">Remover</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
@@ -231,6 +241,13 @@ function alternarRemocaoFoto(chk) {
   if (imgPreview) {
     imgPreview.style.opacity = chk.checked ? "0.2" : "1";
   }
+}
+
+function alternarApelido(botao, abrir) {
+  const linha = botao.closest("tr");
+  linha.querySelector(".form-apelido").hidden = !abrir;
+  linha.querySelector(".btn-editar-apelido").hidden = abrir;
+  if (abrir) linha.querySelector(".form-apelido input[name=apelido]").focus();
 }
 
 // O aparelho em uso é desativado pelo botão acima, que também cancela a inscrição no navegador
