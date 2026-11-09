@@ -632,7 +632,5 @@ def _migrar_cargo_epis_padrao(conn):
 
 def init_app(app):
     app.teardown_appcontext(close_db)
-    # Em ambiente serverless (Vercel), inicializa o schema sob demanda ou se não estiver desativado
-    if not os.environ.get("EPI_SKIP_INIT_DB"):
-        with app.app_context():
-            init_db()
+    with app.app_context():
+        init_db()

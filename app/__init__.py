@@ -9,13 +9,13 @@ from . import db
 
 
 def _chave_secreta(instance_path):
-    """Usa EPI_SECRET_KEY / SECRET_KEY, ou chave determinística na Vercel, ou arquivo local em instance/."""
+    """Usa EPI_SECRET_KEY / SECRET_KEY, ou chave determinística com DATABASE_URL, ou arquivo local em instance/."""
     env = os.environ.get("EPI_SECRET_KEY") or os.environ.get("SECRET_KEY")
     if env:
         return env
-    db_url = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
-    if os.environ.get("VERCEL") or db_url:
-        semente = f"epi-estoque-secret-{db_url or 'vercel'}"
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        semente = f"epi-estoque-secret-{db_url}"
         return hashlib.sha256(semente.encode("utf-8")).hexdigest()
     caminho = os.path.join(instance_path, "secret_key")
     if not os.path.exists(caminho):
@@ -27,18 +27,11 @@ def _chave_secreta(instance_path):
 
 
 def create_app(config=None):
-    em_serverless = bool(os.environ.get("VERCEL"))
-    pasta_instancia = "/tmp/epi_instance" if em_serverless else None
-    app = Flask(__name__, instance_path=pasta_instancia, instance_relative_config=True)
-    try:
-        os.makedirs(app.instance_path, exist_ok=True)
-    except OSError:
-        app.instance_path = "/tmp/epi_instance"
-        os.makedirs(app.instance_path, exist_ok=True)
+    app = Flask(__name__, instance_relative_config=True)
+    os.makedirs(app.instance_path, exist_ok=True)
 
     banco_padrao = (
         os.environ.get("DATABASE_URL")
-        or os.environ.get("POSTGRES_URL")
         or os.path.join(app.instance_path, "epi.sqlite")
     )
 
@@ -50,13 +43,13 @@ def create_app(config=None):
         SESSION_COOKIE_SAMESITE="Lax",
         POR_PAGINA=50,
         MAX_CONTENT_LENGTH=32 * 1024 * 1024,
-        # em produção atrás de HTTPS (ou Vercel): cookie seguro
-        SESSION_COOKIE_SECURE=os.environ.get("EPI_COOKIE_SECURE") == "1" or em_serverless,
+        # em produção atrás de HTTPS: cookie seguro
+        SESSION_COOKIE_SECURE=os.environ.get("EPI_COOKIE_SECURE") == "1",
     )
     if config:
         app.config.update(config)
 
-    if os.environ.get("EPI_PROXY") == "1" or em_serverless:
+    if os.environ.get("EPI_PROXY") == "1":
         from werkzeug.middleware.proxy_fix import ProxyFix
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 

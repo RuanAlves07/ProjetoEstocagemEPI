@@ -674,7 +674,7 @@ def verificar_sincronizacao_diaria_20h(db):
 
 def agendar_sincronizacao_automatica(app):
     """Dispara em segundo plano a atualização diária (20:00) quando o servidor fica ligado."""
-    if app.config.get("TESTING") or os.environ.get("VERCEL") or os.environ.get("CAEPI_AUTO_SYNC") == "0":
+    if app.config.get("TESTING") or os.environ.get("CAEPI_AUTO_SYNC") == "0":
         return False
     try:
         if not precisa_sincronizar(get_db()):

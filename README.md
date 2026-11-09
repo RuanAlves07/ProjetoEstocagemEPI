@@ -2,7 +2,7 @@
 
 Aplicação web completa (**Web Desktop em tela inteira + Web Mobile responsiva**) para controle de inventário de EPIs e uniformes, formulário público de solicitação para obras, fila de separação estilo comanda, padronização de kits por cargo, fichas de colaboradores, gestão de fornecedores e controle granular de perfis de acesso.
 
-Compatível tanto com **SQLite local** (`instance/epi.sqlite`)
+Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **PostgreSQL (Supabase)**.
 ---
 
 ##  Principais Funcionalidades
