@@ -1672,6 +1672,7 @@ def usuario_excluir(uid):
               "movimentações. Use Inativar para bloquear o acesso e manter o histórico.", "erro")
         return redirect(url_for("cadastros.usuarios_lista"))
     db.execute("DELETE FROM recuperacao_senha WHERE usuario_id = ?", (uid,))
+    db.execute("UPDATE modelos_documento SET criado_por = NULL WHERE criado_por = ?", (uid,))
     db.execute("DELETE FROM usuarios WHERE id = ?", (uid,))
     flash(f"Usuário “{u['nome']}” excluído.", "ok")
     return redirect(url_for("cadastros.usuarios_lista"))

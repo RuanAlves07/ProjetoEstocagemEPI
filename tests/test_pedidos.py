@@ -313,7 +313,7 @@ class TestTelas(BasePedidos):
         self.post(f"/pedidos/{pid}/finalizar")
         html = self.c.get(f"/pedidos/{pid}").get_data(as_text=True)
         self.assertIn("Pronto para retirada", html)
-        self.assertIn("Marcar como retirado", html)
+        self.assertIn("Registrar retirada de pedido", html)
 
     def test_xss_no_pedido_escapado(self):
         pid = self.novo_pedido(id="xss", nome="<img src=x onerror=1>", observacao="<script>1</script>")

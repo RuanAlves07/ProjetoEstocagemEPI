@@ -51,8 +51,9 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 3. **Checklist de separação e baixa automática**: ao marcar todos os itens separados e clicar em **Finalizar pedido**, o sistema valida o saldo e o CA, dá **baixa automática no estoque** e muda o status para **Pronto para retirada**.
 4. **Registro de retirada e comprovante**: registra quem retirou (próprio colaborador, encarregado ou portador), data/hora e emite o comprovante de entrega.
 
-**Ficha de EPI com assinatura (`Registrar retirada com ficha de EPI`)**
-- Na retirada de um pedido pronto, abre a prévia da ficha (mesmo modelo do RH Gestor): escolha o **colaborador que retirou**, ajuste a coluna *Higienizado?* e clique em **Enviar ficha de EPI** (WhatsApp) ou **Imprimir ficha** (assinatura no papel). Os dois botões registram a retirada.
+**Ficha de EPI com assinatura (`Registrar retirada de pedido`)**
+- Na retirada de um pedido pronto, abre a ficha já preenchida pelo **modelo padrão** (inclusive em pedidos sem baixa no estoque, com a tabela de itens vazia): confira o **colaborador que retirou**, ajuste a coluna *Higienizado?* e clique em **Enviar ficha de EPI** (WhatsApp) ou **Imprimir ficha** (assinatura no papel). Os dois botões registram a retirada.
+- Aba **Modelos** (permissão *Modelos de documento*, só o Administrador tem por padrão): o layout segue o do RH Gestor e o modelo define título, empresa, campos do cabeçalho, colunas da tabela de itens, *Higienizado?* padrão, declaração, linha da data e nome da assinatura, com parâmetros como `{colaborador.nome}` e `{pedido.obra}` e prévia ao vivo. Cada ficha guarda uma cópia do modelo, então editar um modelo não muda fichas já emitidas.
 - Pelo WhatsApp o colaborador recebe um link (vale 7 dias); ao abrir, pede um **código de 5 dígitos** (vale 15 min, 5 tentativas), vê a ficha e assina na tela. Ficam guardados data/hora, IP, aparelho e o SHA-256 do documento.
 - Ficha impressa: depois de colher a assinatura, use **Marcar como assinada em papel** e anexe a foto ou o PDF (guardados em `instance/fichas/`).
 - No perfil do colaborador, a aba **Fichas de EPI assinadas** mostra quantas vezes ele retirou, para quem, e os pedidos dele retirados por outra pessoa. O **Relatório de fichas** imprime todas as fichas com a rubrica do colaborador no rodapé de todas as páginas.

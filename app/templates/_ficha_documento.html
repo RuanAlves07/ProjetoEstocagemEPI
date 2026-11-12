@@ -1,61 +1,60 @@
-{# Documento da ficha de EPI, no mesmo modelo usado pelo RH Gestor.
+{# Documento da ficha de EPI, no layout do RH Gestor; textos, campos e colunas vêm do modelo (doc.layout).
    editavel: mostra a coluna "Higienizado?" como seleção, ligada ao formulário form_id. #}
 {% macro documento(doc, assinatura=None, editavel=False, form_id='', papel=False) %}
-{% set c = doc.colaborador %}
+{% set L = layout_ficha(doc) %}
 <div class="ficha-doc">
-  <h2 class="ficha-titulo">Controle de Entrega de EPI, Uniformes e outros materiais #{{ doc.numero }}</h2>
-  <h3 class="ficha-nome">{{ c.nome|upper }} - {{ c.matricula }}</h3>
+  <h2 class="ficha-titulo">{{ L.titulo }}</h2>
+  {% if L.subtitulo %}<h3 class="ficha-nome">{{ L.subtitulo }}</h3>{% endif %}
+  {% for linha in L.cabecalho %}
   <table class="ficha-tabela">
-    <tr><th>Empresa</th><th>Setor</th><th>Cargo</th></tr>
-    <tr><td>{{ doc.empresa }}</td><td>{{ c.setor or '—' }}</td><td>{{ c.funcao or '—' }}</td></tr>
+    <tr>{% for c in linha %}<th>{{ c.rotulo }}</th>{% endfor %}</tr>
+    <tr>{% for c in linha %}<td>{{ c.valor }}</td>{% endfor %}</tr>
   </table>
-  <table class="ficha-tabela">
-    <tr><th>CPF</th><th>Data Nascimento</th><th>Local de destino</th></tr>
-    <tr><td>{{ c.cpf or '—' }}</td><td>{{ c.data_nascimento|data_br if c.data_nascimento else '—' }}</td><td>{{ doc.local_destino or '—' }}</td></tr>
-  </table>
-  {% if doc.beneficiario %}
-  <p class="ficha-obs">Retirado em nome de <strong>{{ doc.beneficiario.nome }}</strong>{% if doc.beneficiario.matricula %} ({{ doc.beneficiario.matricula }}){% endif %}, solicitante do pedido.</p>
-  {% endif %}
+  {% endfor %}
+  {% if L.beneficiario %}<p class="ficha-obs">{{ L.beneficiario }}</p>{% endif %}
   <table class="ficha-tabela ficha-itens">
     <thead>
-      <tr><th>Código CA</th><th>Validade CA</th><th>Descrição</th><th>Qtde</th><th>Higienizado?</th><th>Data Entrega</th><th>Data Devolução</th><th>Rubrica</th></tr>
+      <tr>{% for col in L.colunas %}<th class="{{ 'ficha-desc' if col.coluna == 'descricao' }}">{{ col.rotulo }}</th>{% endfor %}</tr>
     </thead>
     <tbody>
     {% for it in doc.itens %}
       <tr>
-        <td>{{ it.ca or '—' }}</td>
-        <td>{{ it.validade_ca|data_br if it.validade_ca else '' }}</td>
-        <td class="ficha-desc">{{ it.descricao|upper }}</td>
-        <td class="centro">{{ it.quantidade }}</td>
-        <td class="centro">
-          {% if editavel %}
-            <select name="hig_{{ it.mov_id }}" form="{{ form_id }}" aria-label="Higienizado? {{ it.descricao }}">
-              <option value="SIM" {{ 'selected' if it.higienizado == 'SIM' }}>SIM</option>
-              <option value="NAO" {{ 'selected' if it.higienizado != 'SIM' }}>NÃO</option>
-            </select>
-          {% else %}{{ it.higienizado }}{% endif %}
-        </td>
-        <td class="centro">{{ it.data_entrega|data_br }}</td>
-        <td></td>
-        <td class="ficha-rubrica">{% if assinatura %}<img src="{{ assinatura }}" alt="Rubrica">{% endif %}</td>
+      {% for col in L.colunas %}
+        {% set k = col.coluna %}
+        {% if k == 'descricao' %}<td class="ficha-desc">{{ it.descricao|upper }}</td>
+        {% elif k == 'validade_ca' %}<td>{{ it.validade_ca|data_br if it.validade_ca else '' }}</td>
+        {% elif k == 'ca' %}<td>{{ it.ca or '—' }}</td>
+        {% elif k == 'quantidade' %}<td class="centro">{{ it.quantidade }}</td>
+        {% elif k == 'unidade' %}<td class="centro">{{ it.unidade or '' }}</td>
+        {% elif k == 'higienizado' %}
+          <td class="centro">
+            {% if editavel %}
+              <select name="hig_{{ it.mov_id }}" form="{{ form_id }}" aria-label="Higienizado? {{ it.descricao }}">
+                <option value="SIM" {{ 'selected' if it.higienizado == 'SIM' }}>SIM</option>
+                <option value="NAO" {{ 'selected' if it.higienizado != 'SIM' }}>NÃO</option>
+              </select>
+            {% else %}{{ it.higienizado }}{% endif %}
+          </td>
+        {% elif k == 'data_entrega' %}<td class="centro">{{ it.data_entrega|data_br }}</td>
+        {% elif k == 'rubrica' %}<td class="ficha-rubrica">{% if assinatura %}<img src="{{ assinatura }}" alt="Rubrica">{% endif %}</td>
+        {% else %}<td></td>
+        {% endif %}
+      {% endfor %}
       </tr>
+    {% else %}
+      <tr><td colspan="{{ L.colunas|length }}" class="centro">Nenhum item foi baixado do estoque neste pedido.</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  {% if L.declaracao %}
   <div class="ficha-declaracao">
-    <p>Declaro para todos efeitos legais que recebi da empresa acima mencionada, os Equipamentos de Proteção Individual constantes da lista descrita neste documento, em perfeitas condições de uso, e que estou ciente das obrigações descritas na NR 06, baixada pela Portaria MTb 3214/78, subitem 6.7.1, sendo:<br>
-    a) Usar, utilizando-o apenas para a finalidade a que se destina;<br>
-    b) Responsabilizar-se pela guarda e conservação;<br>
-    c) Comunicar ao empregador qualquer alteração que o torne impróprio para uso;<br>
-    d) Cumprir as determinações do empregador sobre o uso adequado.<br>
-    e) Fico proibido de dar ou emprestar o equipamento que estiver sob minha responsabilidade, só podendo fazê-lo se receber ordem por escrito da pessoa autorizada para tal fim.</p>
-    <p>Declaro, também, que estou ciente das disposições do Art. 462 e § 1º da CLT, e autorizo o desconto salarial proporcional ao custo de reparação do dano que os EPIs aos meus cuidados venham apresentar.</p>
-    <p>Declaro ainda que estou ciente das disposições do artigo 158, alínea “a”, da CLT, e do item 1.4 da NR 01, em especial daquela do subitem 1.4.2, de que constitui ato faltoso a recusa injustificada de usar EPI fornecido pela empresa, incorrendo nas penas da Lei cabíveis que irão desde simples advertências até a dispensa por justa causa (Art. 482 da C.L.T).</p>
+    {% for paragrafo in L.declaracao %}<p>{% for linha in paragrafo %}{{ linha }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>{% endfor %}
   </div>
-  <p class="ficha-data">{{ doc.data_extenso }}</p>
+  {% endif %}
+  {% if L.linha_data %}<p class="ficha-data">{{ L.linha_data }}</p>{% endif %}
   <div class="ficha-assinatura">
-    <div class="ficha-assinatura-img">{% if assinatura %}<img src="{{ assinatura }}" alt="Assinatura de {{ c.nome }}">{% endif %}</div>
-    <div class="ficha-assinatura-nome">{{ c.nome|upper }}</div>
+    <div class="ficha-assinatura-img">{% if assinatura %}<img src="{{ assinatura }}" alt="Assinatura de {{ doc.colaborador.nome }}">{% endif %}</div>
+    <div class="ficha-assinatura-nome">{{ L.assinatura_nome }}</div>
     {% if papel and not assinatura %}<small class="ficha-obs">Assinado em papel</small>{% endif %}
   </div>
 </div>

@@ -18,6 +18,7 @@ _TABELAS_COM_ID = (
     "emails_enviados",
     "push_inscricoes",
     "fichas_epi",
+    "modelos_documento",
 )
 
 
@@ -179,6 +180,7 @@ def init_db():
         _garantir_perfis_padrao(conn)
         _garantir_base_caepi_inicial(conn)
         _garantir_obras_iniciais(conn)
+        _garantir_modelo_ficha(conn)
         return
     conn.execute("PRAGMA journal_mode = WAL")
     with open(os.path.join(os.path.dirname(__file__), "schema.sql"), encoding="utf-8") as f:
@@ -187,6 +189,13 @@ def init_db():
     _garantir_perfis_padrao(conn)
     _garantir_base_caepi_inicial(conn)
     _garantir_obras_iniciais(conn)
+    _garantir_modelo_ficha(conn)
+
+
+def _garantir_modelo_ficha(conn):
+    """Cria o modelo de ficha de EPI padrão (layout do RH Gestor) se ainda não houver nenhum."""
+    from . import modelos
+    modelos.garantir_modelo_padrao(conn)
 
 
 def _garantir_obras_iniciais(conn):

@@ -1,0 +1,3 @@
+{% from '_ficha_documento.html' import documento %}
+{% for e in erros %}<div class="aviso erro">{{ e }}</div>{% endfor %}
+{{ documento(doc) }}

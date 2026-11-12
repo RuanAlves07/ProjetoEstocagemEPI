@@ -38,6 +38,7 @@ CATALOGO_PERMISSOES = [
     ("ver_relatorios", "Relatórios", "Visualizar relatórios gerenciais por período, setor, obra e colaborador"),
     ("cancelar_estornar", "Cancelar / Estornar Lançamentos", "Cancelar movimentações do livro-razão e cancelar pedidos prontos com estorno"),
     ("solicitar_fora_funcao", "Formulário do Gestor (fora da função)", "Usar o formulário do gestor para pedir EPIs a um colaborador fora do padrão do cargo dele"),
+    ("gerenciar_modelos", "Modelos de documento", "Criar e editar os modelos da ficha de EPI usados na retirada de pedidos"),
 ]
 
 TODAS_PERMISSOES = tuple(chave for chave, _, _ in CATALOGO_PERMISSOES)
@@ -132,7 +133,7 @@ def permissoes_do_perfil(perfil, db=None):
         linha = None
     if not linha:
         if perfil == "almoxarifado":
-            perms = {p for p in TODAS_PERMISSOES if p != "cancelar_estornar"}
+            perms = {p for p in TODAS_PERMISSOES if p not in ("cancelar_estornar", "gerenciar_modelos")}
         elif perfil == "consulta":
             perms = {"ver_painel", "ver_pedidos", "ver_epis", "ver_fornecedores", "ver_colaboradores", "ver_movimentos", "ver_relatorios"}
         elif perfil == "gestor":
@@ -186,6 +187,8 @@ def _permissao_exigida_rota(endpoint, metodo):
         return "ver_colaboradores"
     if endpoint.startswith("fichas."):
         return "gerenciar_pedidos"
+    if endpoint.startswith("modelos."):
+        return "gerenciar_modelos"
     if endpoint in ("pedidos.lista", "pedidos.detalhe", "pedidos.exportar_csv", "pedidos.novos"):
         return "ver_pedidos"
     if endpoint.startswith("pedidos."):

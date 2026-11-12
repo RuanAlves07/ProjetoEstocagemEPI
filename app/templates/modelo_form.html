@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% from '_ficha_documento.html' import documento %}
+{% block titulo %}{{ m.nome or 'Novo modelo' }} · Modelos{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>{{ 'Editar modelo' if m.id else 'Novo modelo' }}{% if m.padrao %} <span class="badge verde">Padrão na retirada</span>{% endif %}</h1>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('modelos.lista') }}">← Modelos</a>
+    <button class="btn primario" form="form-modelo">Salvar modelo</button>
+  </div>
+</div>
+
+{% for e in erros %}<div class="aviso erro">{{ e }}</div>{% endfor %}
+
+<div class="modelo-editor">
+  <form method="post" id="form-modelo" class="formulario modelo-campos"
+        action="{{ url_for('modelos.editar', modelo_id=m.id) if m.id else url_for('modelos.novo') }}">
+    {{ csrf() }}
+
+    <section class="cartao">
+      <h2>Identificação</h2>
+      <div class="linha">
+        <label style="flex:2"><span class="rotulo-campo">Nome do modelo <span class="obrigatorio">*</span></span>
+          <input name="nome" value="{{ m.nome }}" required placeholder="Ex.: Ficha de EPI · obras"></label>
+        <label style="flex:1">Tipo
+          <select name="tipo">{% for k, r in TIPOS_MODELO.items() %}<option value="{{ k }}" {{ 'selected' if m.tipo == k }}>{{ r }}</option>{% endfor %}</select>
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="padrao" value="1" {{ 'checked' if m.padrao }} {{ 'disabled' if m.id and m.padrao }}>
+        Usar este modelo em “Registrar retirada de pedido”</label>
+      {% if m.id and m.padrao %}<input type="hidden" name="padrao" value="1">{% endif %}
+    </section>
+
+    <section class="cartao">
+      <h2>Parâmetros</h2>
+      <p class="nota">Clique num parâmetro para inserir no campo de texto selecionado. Ele é trocado pelo dado do pedido na hora da retirada. Use <code>|maiusculas</code> para sair em letras maiúsculas, ex.: <code>{colaborador.nome|maiusculas}</code>.</p>
+      <div class="parametros">
+        {% for chave, rotulo in PARAMETROS %}<button type="button" class="chip-parametro" data-param="{{ chave }}" title="{{ rotulo }}">{{ '{' ~ chave ~ '}' }}</button>{% endfor %}
+      </div>
+    </section>
+
+    <section class="cartao">
+      <h2>Cabeçalho</h2>
+      <label>Título <input name="titulo" value="{{ config.titulo }}" required data-texto></label>
+      <label>Linha do nome <input name="subtitulo" value="{{ config.subtitulo }}" data-texto></label>
+      <label>Empresa <input name="empresa" value="{{ config.empresa }}" data-texto></label>
+      <span class="rotulo-campo">Campos das tabelas do cabeçalho (3 por linha)</span>
+      <div id="cab-lista" class="cab-lista">
+        {% for c in config.cabecalho %}
+        <div class="cab-linha">
+          <select name="cab_campo" aria-label="Campo">{% for chave, rotulo in PARAMETROS %}<option value="{{ chave }}" data-rotulo="{{ rotulo }}" {{ 'selected' if c.campo == chave }}>{{ rotulo }}</option>{% endfor %}</select>
+          <input name="cab_rotulo" value="{{ c.rotulo }}" aria-label="Título da coluna" placeholder="Título da coluna">
+          <button type="button" class="btn pequeno" data-mover="-1" title="Subir">↑</button>
+          <button type="button" class="btn pequeno" data-mover="1" title="Descer">↓</button>
+          <button type="button" class="btn pequeno perigo-suave" data-remover title="Remover">✕</button>
+        </div>
+        {% endfor %}
+      </div>
+      <div><button type="button" class="btn pequeno" id="cab-adicionar">+ Adicionar campo</button></div>
+      <label>Aviso quando outra pessoa retira <input name="texto_beneficiario" value="{{ config.texto_beneficiario }}" data-texto>
+        <small class="suave">Só aparece quando quem retirou não é quem fez o pedido. Deixe vazio para não mostrar.</small></label>
+    </section>
+
+    <section class="cartao">
+      <h2>Tabela de itens</h2>
+      <div class="colunas-itens">
+        {% for c, rotulo in COLUNAS_ITENS %}
+        <div class="coluna-item">
+          <label class="check"><input type="checkbox" name="col_ativa" value="{{ c }}" {{ 'checked' if c in colunas_ativas }} {{ 'disabled checked' if c in COLUNAS_OBRIGATORIAS }}> {{ rotulo }}</label>
+          <input name="col_rotulo_{{ c }}" value="{{ colunas_ativas.get(c, rotulo) }}" aria-label="Título da coluna {{ rotulo }}">
+        </div>
+        {% endfor %}
+      </div>
+      <label style="max-width:260px">“Higienizado?” já vem marcado como
+        <select name="higienizado_padrao">
+          <option value="SIM" {{ 'selected' if config.higienizado_padrao == 'SIM' }}>SIM</option>
+          <option value="NAO" {{ 'selected' if config.higienizado_padrao != 'SIM' }}>NÃO</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="cartao">
+      <h2>Declaração e assinatura</h2>
+      <label>Texto da declaração
+        <textarea name="declaracao" rows="14" data-texto>{{ config.declaracao }}</textarea>
+        <small class="suave">Deixe uma linha em branco entre os parágrafos.</small></label>
+      <label>Linha da data <input name="linha_data" value="{{ config.linha_data }}" data-texto placeholder="Ex.: Joinville, {data_extenso}"></label>
+      <label>Nome abaixo da assinatura <input name="assinatura_nome" value="{{ config.assinatura_nome }}" data-texto></label>
+    </section>
+  </form>
+
+  <aside class="modelo-previa">
+    <section class="cartao ficha-previa">
+      <h2 style="margin-top:0">Prévia <small class="suave">com dados de exemplo</small></h2>
+      <div id="previa">{{ documento(doc) }}</div>
+    </section>
+  </aside>
+</div>
+
+<template id="cab-modelo">
+  <div class="cab-linha">
+    <select name="cab_campo" aria-label="Campo">{% for chave, rotulo in PARAMETROS %}<option value="{{ chave }}" data-rotulo="{{ rotulo }}">{{ rotulo }}</option>{% endfor %}</select>
+    <input name="cab_rotulo" aria-label="Título da coluna" placeholder="Título da coluna">
+    <button type="button" class="btn pequeno" data-mover="-1" title="Subir">↑</button>
+    <button type="button" class="btn pequeno" data-mover="1" title="Descer">↓</button>
+    <button type="button" class="btn pequeno perigo-suave" data-remover title="Remover">✕</button>
+  </div>
+</template>
+
+<script>
+(function () {
+  const form = document.getElementById("form-modelo");
+  const lista = document.getElementById("cab-lista");
+  const previa = document.getElementById("previa");
+  let alvo = form.querySelector("[data-texto]");
+  let espera = null;
+
+  function atualizar() {
+    clearTimeout(espera);
+    espera = setTimeout(async () => {
+      try {
+        const r = await fetch("{{ url_for('modelos.previa') }}", { method: "POST", body: new FormData(form) });
+        if (r.ok) previa.innerHTML = await r.text();
+      } catch (e) { /* sem conexão: mantém a prévia anterior */ }
+    }, 350);
+  }
+
+  ["focusin", "pointerdown", "keyup"].forEach(ev =>
+    form.addEventListener(ev, e => { if (e.target.matches("[data-texto]")) alvo = e.target; }));
+  form.addEventListener("input", atualizar);
+  form.addEventListener("change", atualizar);
+
+  document.querySelectorAll(".chip-parametro").forEach(b => b.addEventListener("click", () => {
+    const texto = "{" + b.dataset.param + "}";
+    const ini = alvo.selectionStart ?? alvo.value.length, fim = alvo.selectionEnd ?? ini;
+    alvo.value = alvo.value.slice(0, ini) + texto + alvo.value.slice(fim);
+    alvo.focus();
+    alvo.setSelectionRange(ini + texto.length, ini + texto.length);
+    atualizar();
+  }));
+
+  // ao trocar o campo, o título acompanha enquanto ainda for o título sugerido
+  lista.addEventListener("focusin", e => { if (e.target.name === "cab_campo") e.target.dataset.antes = e.target.selectedOptions[0].dataset.rotulo; });
+  lista.addEventListener("change", e => {
+    if (e.target.name !== "cab_campo") return;
+    const rotulo = e.target.parentElement.querySelector("[name=cab_rotulo]");
+    if (!rotulo.value || rotulo.value === e.target.dataset.antes) rotulo.value = e.target.selectedOptions[0].dataset.rotulo;
+    e.target.dataset.antes = e.target.selectedOptions[0].dataset.rotulo;
+  });
+  lista.addEventListener("click", e => {
+    const linha = e.target.closest(".cab-linha");
+    if (!linha) return;
+    if (e.target.matches("[data-remover]")) linha.remove();
+    else if (e.target.dataset.mover === "-1" && linha.previousElementSibling) linha.after(linha.previousElementSibling);
+    else if (e.target.dataset.mover === "1" && linha.nextElementSibling) linha.before(linha.nextElementSibling);
+    else return;
+    atualizar();
+  });
+  document.getElementById("cab-adicionar").addEventListener("click", () => {
+    const linha = document.getElementById("cab-modelo").content.firstElementChild.cloneNode(true);
+    lista.appendChild(linha);
+    const sel = linha.querySelector("select");
+    linha.querySelector("[name=cab_rotulo]").value = sel.selectedOptions[0].dataset.rotulo;
+    sel.focus();
+    atualizar();
+  });
+})();
+</script>
+{% endblock %}

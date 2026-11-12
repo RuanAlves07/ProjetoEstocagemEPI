@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from flask import (Blueprint, abort, current_app, flash, g, redirect, render_template, request,
                    send_file, session, url_for)
 
-from . import email_service, pedidos, whatsapp
+from . import email_service, modelos, pedidos, whatsapp
 from .auth import escrita_required
 from .db import get_db
 from .estoque import ErroValidacao
@@ -18,7 +18,6 @@ from .util import limpar, to_int
 
 bp = Blueprint("fichas", __name__)
 
-EMPRESA_PADRAO = "ABECKER EMPREENDIMENTOS IMOBILIARIOS LTDA"
 LINK_VALIDADE_DIAS = 7
 CODIGO_VALIDADE_MIN = 15
 CODIGO_MAX_TENTATIVAS = 5
@@ -84,21 +83,24 @@ def _itens_do_pedido(db, pedido):
     return itens
 
 
-def montar_documento(db, pedido, colab, data_entrega=None):
-    """Dados e itens da ficha, congelados no momento da retirada."""
+def montar_documento(db, pedido, colab, data_entrega=None, modelo=None):
+    """Dados e itens da ficha, congelados no momento da retirada junto com o modelo já preenchido."""
+    modelo = modelo or modelos.modelo_para_ficha(db)
+    config = modelo["config"]
     data_entrega = data_entrega or date.today().isoformat()
     itens = _itens_do_pedido(db, pedido)
     for it in itens:
         it["data_entrega"] = data_entrega
+        it["higienizado"] = config.get("higienizado_padrao") or "SIM"
     beneficiario = None
     if pedido["colaborador_id"] and pedido["colaborador_id"] != colab["id"]:
         b = db.execute("SELECT nome, matricula FROM colaboradores WHERE id = ?", (pedido["colaborador_id"],)).fetchone()
         if b:
             beneficiario = {"nome": b["nome"], "matricula": b["matricula"]}
-    return {
+    doc = {
         "numero": pedidos.numero_do_pedido(db, pedido["id"]),
         "pedido_id": pedido["id"],
-        "empresa": (os.environ.get("EPI_FICHA_EMPRESA") or EMPRESA_PADRAO).strip(),
+        "empresa": (os.environ.get("EPI_FICHA_EMPRESA") or modelos.EMPRESA_PADRAO).strip(),
         "colaborador": {
             "nome": colab["nome"],
             "matricula": colab["matricula"] or str(colab["id"]),
@@ -110,11 +112,16 @@ def montar_documento(db, pedido, colab, data_entrega=None):
         "solicitante": pedido["solicitante"],
         "beneficiario": beneficiario,
         "local_destino": pedido["local_destino"] or "",
+        "motivo": pedido["motivo"] or "",
         "data_entrega": data_entrega,
         "data_extenso": data_por_extenso(data_entrega),
         "responsavel": g.usuario["nome"] if g.get("usuario") else "",
         "itens": itens,
+        "modelo": {"id": modelo["id"], "nome": modelo["nome"]},
     }
+    doc["empresa"] = modelos.substituir(config.get("empresa"), modelos.valores_parametros(doc)) or doc["empresa"]
+    doc["layout"] = modelos.montar_layout(config, doc)
+    return doc
 
 
 def _documento_json(doc):
@@ -169,9 +176,11 @@ def _pedido_pronto(db, pedido_id):
 
 
 def _aplicar_higienizado(doc):
-    """Coluna "Higienizado?" escolhida item a item na tela de revisão (padrão SIM)."""
+    """Coluna "Higienizado?" escolhida item a item na tela de revisão (sem escolha, vale o padrão do modelo)."""
     for it in doc["itens"]:
-        it["higienizado"] = "NÃO" if request.values.get(f"hig_{it['mov_id']}") == "NAO" else "SIM"
+        escolha = request.values.get(f"hig_{it['mov_id']}")
+        if escolha:
+            it["higienizado"] = "NÃO" if escolha == "NAO" else "SIM"
 
 
 @bp.get("/pedidos/<int:pedido_id>/ficha")
@@ -186,11 +195,13 @@ def preparar(pedido_id):
         "SELECT * FROM colaboradores WHERE ativo = 1 ORDER BY nome COLLATE NOCASE").fetchall()
     colab_id = to_int(request.args.get("colaborador_id")) or pedido["colaborador_id"]
     colab = next((c for c in colaboradores if c["id"] == colab_id), None)
+    modelo = modelos.modelo_para_ficha(db, to_int(request.args.get("modelo_id")))
     doc = None
     if colab:
-        doc = montar_documento(db, pedido, colab)
+        doc = montar_documento(db, pedido, colab, modelo=modelo)
         _aplicar_higienizado(doc)
     return render_template("ficha_preparar.html", p=pedido, colaboradores=colaboradores, colab=colab, doc=doc,
+                           modelo=modelo, modelos_ficha=modelos.modelos_ativos(db),
                            whatsapp_ativo=whatsapp.configurado() or current_app.config.get("TESTING"))
 
 
@@ -202,7 +213,8 @@ def emitir(pedido_id):
     acao = request.form.get("acao")
     colab = db.execute("SELECT * FROM colaboradores WHERE id = ? AND ativo = 1",
                        (to_int(request.form.get("colaborador_id")),)).fetchone()
-    voltar = redirect(url_for("fichas.preparar", pedido_id=pedido_id,
+    modelo = modelos.modelo_para_ficha(db, to_int(request.form.get("modelo_id")))
+    voltar = redirect(url_for("fichas.preparar", pedido_id=pedido_id, modelo_id=modelo["id"],
                               colaborador_id=request.form.get("colaborador_id") or None))
     if not colab:
         flash("Selecione o colaborador que retirou o pedido.", "erro")
@@ -210,10 +222,7 @@ def emitir(pedido_id):
     if acao == "enviar" and not colab["whatsapp"]:
         flash(f"{colab['nome']} não tem WhatsApp no cadastro. Cadastre o número ou use Imprimir ficha.", "erro")
         return voltar
-    doc = montar_documento(db, pedido, colab)
-    if not doc["itens"]:
-        flash("Este pedido não tem itens baixados no estoque para montar a ficha.", "erro")
-        return redirect(url_for("pedidos.detalhe", pedido_id=pedido_id))
+    doc = montar_documento(db, pedido, colab, modelo=modelo)
     _aplicar_higienizado(doc)
     try:
         pedidos.retirar(db, pedido_id, colab["nome"], limpar(request.form.get("retirado_descricao")),

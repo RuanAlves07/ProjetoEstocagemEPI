@@ -579,6 +579,25 @@ tr.linha-analisar { background: #fffdf5; }
 .ficha-obs { font-size: 11px; color: #333; margin: .3rem 0; }
 .ficha-botoes { justify-content: flex-end; margin: .2rem 0 .4rem; }
 .ficha-anexo-img { max-width: 100%; max-height: 640px; border: 1px solid var(--borda); border-radius: 8px; }
+/* Editor de modelos de documento */
+.modelo-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 1rem; align-items: start; }
+.modelo-campos .cartao { margin-bottom: 0; }
+.modelo-campos h2 { margin: 0 0 .2rem; font-size: 1.05rem; }
+.modelo-campos input, .modelo-campos textarea, .modelo-campos select { font-weight: 400; }
+.modelo-previa { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; }
+.parametros { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chip-parametro { font: 600 .78rem/1.2 ui-monospace, monospace; padding: .25rem .5rem; border-radius: 999px;
+                  border: 1px solid #b9cbe6; background: #eef4fc; color: #1749a3; cursor: pointer; }
+.chip-parametro:hover { background: #dde8fb; }
+.cab-lista { display: flex; flex-direction: column; gap: .35rem; }
+.cab-linha { display: flex; gap: .35rem; align-items: center; }
+.cab-linha select { flex: 1.2; min-width: 0; } .cab-linha input { flex: 1; min-width: 0; }
+.colunas-itens { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .5rem .9rem; }
+.coluna-item { display: flex; flex-direction: column; gap: .2rem; }
+@media (max-width: 1100px) {
+  .modelo-editor { grid-template-columns: 1fr; }
+  .modelo-previa { position: static; max-height: none; }
+}
 .assinar-pagina { max-width: 860px; margin: 0 auto; }
 .assinar-codigo { max-width: 480px; margin: 1rem auto; }
 .campo-codigo { font-size: 1.6rem; letter-spacing: .5rem; text-align: center; font-family: monospace; }
@@ -594,7 +613,7 @@ tr.linha-analisar { background: #fffdf5; }
   .ficha-titulo, .ficha-nome { font-size: 13px; }
   .ficha-tabela th, .ficha-tabela td { font-size: 9.5px; padding: .15rem .2rem; overflow-wrap: anywhere; }
   .ficha-itens { table-layout: fixed; }
-  .ficha-itens th:nth-child(3) { width: 26%; }
+  .ficha-itens th.ficha-desc { width: 26%; }
   .ficha-itens .ficha-desc { min-width: 0; }
   .ficha-itens th { hyphens: auto; }
   .ficha-rubrica { width: auto; }

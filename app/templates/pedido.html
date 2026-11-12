@@ -267,22 +267,9 @@
     {% endif %}
   </p>
   {% if pode_editar %}
-  {% if p.grupo %}
   <div class="acoes" style="margin:.6rem 0">
-    <a class="btn primario" href="{{ url_for('fichas.preparar', pedido_id=p.id) }}">📝 Registrar retirada com ficha de EPI</a>
+    <a class="btn primario" href="{{ url_for('fichas.preparar', pedido_id=p.id) }}">📝 Registrar retirada de pedido</a>
   </div>
-  {% endif %}
-  <details class="editar-item" {{ 'open' if not p.grupo }}>
-    <summary>{{ 'Registrar retirada sem ficha de EPI' if p.grupo else 'Registrar retirada' }}</summary>
-    <form method="post" action="{{ url_for('pedidos.retirar', pedido_id=p.id) }}" class="formulario">
-      {{ csrf() }}
-      <div class="linha">
-        <label>Quem retirou <input name="retirado_por_nome" required value="{{ p.solicitante }}"></label>
-        <label>Descrição (cargo/função, empresa, obra…) <input name="retirado_descricao" placeholder="Ex.: Encarregado da obra X"></label>
-      </div>
-      <div class="acoes"><button class="btn {{ 'primario' if not p.grupo }}">Marcar como retirado</button></div>
-    </form>
-  </details>
   {% endif %}
 </section>
 {% elif p.status == 'retirado' %}

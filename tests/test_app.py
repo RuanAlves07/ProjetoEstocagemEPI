@@ -1158,7 +1158,8 @@ def _png_assinatura():
     return "data:image/png;base64," + base64.b64encode(png).decode()
 
 
-class TestFichaEPI(Base):
+class BaseFicha(Base):
+    """Admin, dois colaboradores e um EPI com estoque, para montar pedidos prontos com ficha de EPI."""
     def setUp(self):
         super().setUp()
         self.setup_admin()
@@ -1195,6 +1196,8 @@ class TestFichaEPI(Base):
             sql = "SELECT * FROM fichas_epi " + ("WHERE id = ?" if ficha_id else "ORDER BY id DESC LIMIT 1")
             return dict(get_db().execute(sql, (ficha_id,) if ficha_id else ()).fetchone())
 
+
+class TestFichaEPI(BaseFicha):
     def test_cadastro_whatsapp_cpf_e_nascimento(self):
         with self.app.app_context():
             c = get_db().execute("SELECT whatsapp, cpf, data_nascimento FROM colaboradores WHERE id = ?",
@@ -1323,3 +1326,75 @@ class TestFichaEPI(Base):
         self.assertEqual(outro.get(f"/pedidos/{ped}/ficha").status_code, 403)
         self.assertEqual(self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir"},
                                    client=outro).status_code, 403)
+
+
+class TestModelosDocumento(BaseFicha):
+    def form_modelo(self, **extra):
+        dados = {
+            "nome": "Ficha obras", "tipo": "ficha_epi", "padrao": "1",
+            "titulo": "Entrega de EPI do pedido #{pedido.numero} · {pedido.obra}",
+            "subtitulo": "{colaborador.nome|maiusculas}", "empresa": "Empresa Teste LTDA",
+            "cab_campo": ["colaborador.funcao", "pedido.motivo"], "cab_rotulo": ["Função", "Motivo"],
+            "col_ativa": ["quantidade", "higienizado", "rubrica"], "col_rotulo_quantidade": "Quant.",
+            "higienizado_padrao": "NAO", "texto_beneficiario": "",
+            "declaracao": "Recebi os itens acima.\n\nSegundo parágrafo.", "linha_data": "Joinville, {data_extenso}",
+            "assinatura_nome": "{colaborador.nome}",
+        }
+        dados.update(extra)
+        return dados
+
+    def test_modelo_padrao_criado_e_aba_so_com_permissao(self):
+        html = self.c.get("/modelos").get_data(as_text=True)
+        self.assertIn("Ficha de EPI (padrão RH Gestor)", html)
+        self.assertIn("Padrão na retirada", html)
+        self.post("/usuarios/novo", {"nome": "Almox", "login": "almox", "perfil": "almoxarifado",
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        outro = self.app.test_client()
+        self.post("/login", {"login": "almox", "senha": "senha1234"}, client=outro)
+        self.assertEqual(outro.get("/modelos").status_code, 403)
+        self.assertNotIn('href="/modelos"', outro.get("/pedidos").get_data(as_text=True))
+
+    def test_retirada_usa_modelo_padrao_e_congela_na_ficha(self):
+        r = self.post("/modelos/novo", self.form_modelo())
+        self.assertEqual(r.status_code, 302)
+        ped = self.pedido_pronto()
+        html = self.c.get(f"/pedidos/{ped}/ficha").get_data(as_text=True)
+        self.assertIn("Entrega de EPI do pedido #", html)
+        self.assertIn("· Acordes", html)
+        self.assertIn("Joinville, ", html)
+        self.assertIn("Desgaste", html)          # motivo no cabeçalho
+        self.assertIn("Quant.", html)
+        self.assertNotIn("Código CA", html)      # coluna desmarcada
+        self.assertIn('<option value="NAO" selected>', html)  # higienizado padrão do modelo
+        self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir"})
+        f = self.ficha()
+        with self.app.app_context():
+            modelo_id = get_db().execute("SELECT id FROM modelos_documento WHERE nome = 'Ficha obras'").fetchone()["id"]
+        # editar o modelo depois não muda a ficha emitida
+        self.post(f"/modelos/{modelo_id}", self.form_modelo(titulo="Outro título"))
+        html = self.c.get(f"/fichas/{f['id']}").get_data(as_text=True)
+        self.assertIn("Entrega de EPI do pedido #", html)
+        self.assertNotIn("Outro título", html)
+
+    def test_parametro_inexistente_e_previa(self):
+        r = self.post("/modelos/novo", self.form_modelo(titulo="Ficha {colaborador.apelido}"))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("{colaborador.apelido}", r.get_data(as_text=True))
+        previa = self.post("/modelos/previa", self.form_modelo(titulo="Ficha · {empresa}")).get_data(as_text=True)
+        self.assertIn("JOÃO DA SILVA", previa)
+        self.assertIn("Empresa Teste LTDA", previa)
+
+    def test_pedido_sem_baixa_tambem_gera_ficha(self):
+        self.post("/pedidos/simular", {"nome": "Carlos Obra", "local": "Acordes", "motivo": "Desgaste",
+                                       "epi": "Item que não existe"})
+        with self.app.app_context():
+            db = get_db()
+            ped = db.execute("SELECT id FROM pedidos ORDER BY id DESC LIMIT 1").fetchone()["id"]
+            db.execute("UPDATE pedidos SET colaborador_id = ?, status = 'pronto' WHERE id = ?", (self.carlos, ped))
+        html = self.c.get(f"/pedidos/{ped}/ficha").get_data(as_text=True)
+        self.assertIn("Nenhum item foi baixado do estoque", html)
+        self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir"})
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT status FROM pedidos WHERE id = ?", (ped,)).fetchone()[0],
+                             "retirado")
+        self.assertEqual(self.ficha()["pedido_id"], ped)

@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Modelos de documento{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Modelos de documento</h1>
+  <div class="acoes">
+    <a class="btn primario" href="{{ url_for('modelos.novo') }}">+ Novo modelo</a>
+  </div>
+</div>
+
+<p class="nota">O modelo <strong>padrão</strong> da ficha de EPI é o que abre em “Registrar retirada de pedido”. As fichas já emitidas guardam uma cópia do modelo, então editar ou excluir um modelo não muda nenhuma ficha emitida.</p>
+
+<section class="cartao">
+  <div class="tabela-rolavel">
+    <table>
+      <thead>
+        <tr><th>Nome</th><th>Tipo</th><th>Situação</th><th>Atualizado</th><th class="num"></th></tr>
+      </thead>
+      <tbody>
+      {% for m in modelos %}
+        <tr class="{{ 'inativo' if not m.ativo }}">
+          <td><a href="{{ url_for('modelos.editar', modelo_id=m.id) }}"><strong>{{ m.nome }}</strong></a>
+            {% if m.padrao %}<span class="badge verde">Padrão na retirada</span>{% endif %}</td>
+          <td>{{ TIPOS_MODELO.get(m.tipo, m.tipo) }}</td>
+          <td><span class="badge {{ 'verde' if m.ativo }}">{{ 'Ativo' if m.ativo else 'Inativo' }}</span></td>
+          <td>{{ (m.atualizado_em or m.criado_em)|hora_br }}{% if m.criado_por_nome %}<br><small class="suave">criado por {{ m.criado_por_nome }}</small>{% endif %}</td>
+          <td class="num">
+            <div class="acoes-usuario">
+              <a class="btn pequeno" href="{{ url_for('modelos.editar', modelo_id=m.id) }}">Editar</a>
+              <a class="btn pequeno" href="{{ url_for('modelos.novo', copiar=m.id) }}">Duplicar</a>
+              {% if not m.padrao %}
+                <form method="post" action="{{ url_for('modelos.tornar_padrao', modelo_id=m.id) }}">
+                  {{ csrf() }}<button class="btn pequeno">Usar como padrão</button>
+                </form>
+                <form method="post" action="{{ url_for('modelos.situacao', modelo_id=m.id) }}">
+                  {{ csrf() }}<button class="btn pequeno">{{ 'Inativar' if m.ativo else 'Reativar' }}</button>
+                </form>
+                <form method="post" action="{{ url_for('modelos.excluir', modelo_id=m.id) }}"
+                      onsubmit="return confirm('Excluir o modelo “' + this.dataset.nome + '”?')" data-nome="{{ m.nome }}">
+                  {{ csrf() }}<button class="btn pequeno perigo-suave">Excluir</button>
+                </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="suave">Nenhum modelo cadastrado. A retirada usa o layout padrão do RH Gestor.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

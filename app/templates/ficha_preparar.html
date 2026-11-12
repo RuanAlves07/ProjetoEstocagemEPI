@@ -23,6 +23,14 @@
           {% endfor %}
         </select>
       </label>
+      {% if modelos_ficha|length > 1 %}
+      <label style="flex:1">
+        <span class="rotulo-campo">Modelo da ficha</span>
+        <select name="modelo_id" id="sel-modelo">
+          {% for mf in modelos_ficha %}<option value="{{ mf.id }}" {{ 'selected' if mf.id == modelo.id }}>{{ mf.nome }}{% if mf.padrao %} (padrão){% endif %}</option>{% endfor %}
+        </select>
+      </label>
+      {% elif modelo.id %}<input type="hidden" name="modelo_id" value="{{ modelo.id }}">{% endif %}
       <label style="flex:2">
         <span class="rotulo-campo">Observação da retirada</span>
         <input name="retirado_descricao" placeholder="Ex.: Retirou para a equipe da obra X">
@@ -45,8 +53,7 @@
 
 {% if colab and doc %}
   <section class="cartao ficha-previa">
-    <h2 style="margin-top:0">Confira a ficha antes de enviar</h2>
-    <p class="nota">Ajuste a coluna <strong>Higienizado?</strong> se precisar. É exatamente isto que o colaborador vai ver e assinar.</p>
+    {% if not doc.itens %}<div class="aviso">Nenhum item deste pedido foi baixado do estoque. A ficha registra a retirada com a tabela de itens vazia.</div>{% endif %}
     {{ documento(doc, editavel=True, form_id='form-ficha') }}
   </section>
   <div class="acoes ficha-botoes">
@@ -55,15 +62,18 @@
     <button class="btn" form="form-ficha" name="acao" value="imprimir">🖨️ Imprimir ficha (assinatura no papel)</button>
   </div>
   <p class="nota">Os dois botões registram a retirada do pedido. A ficha fica como “Aguardando assinatura” até o colaborador assinar.</p>
-{% elif colab %}
-  <div class="aviso erro">Este pedido não tem itens baixados no estoque, então não há ficha de EPI para montar.</div>
 {% endif %}
 
 <script>
-  document.getElementById("sel-colab").addEventListener("change", function () {
-    const url = new URL(location.href);
-    if (this.value) url.searchParams.set("colaborador_id", this.value); else url.searchParams.delete("colaborador_id");
-    location.href = url;
+  // trocar quem retirou ou o modelo remonta a ficha
+  [["sel-colab", "colaborador_id"], ["sel-modelo", "modelo_id"]].forEach(([id, param]) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.addEventListener("change", function () {
+      const url = new URL(location.href);
+      if (this.value) url.searchParams.set(param, this.value); else url.searchParams.delete(param);
+      location.href = url;
+    });
   });
 </script>
 {% endblock %}

@@ -321,3 +321,16 @@ CREATE TABLE IF NOT EXISTS fichas_epi (
 CREATE INDEX IF NOT EXISTS idx_fichas_colab ON fichas_epi (colaborador_id);
 CREATE INDEX IF NOT EXISTS idx_fichas_benef ON fichas_epi (beneficiario_id);
 CREATE INDEX IF NOT EXISTS idx_fichas_pedido ON fichas_epi (pedido_id);
+
+-- Modelos de documento (ex.: ficha de EPI): layout fixo, com textos, campos e colunas configuráveis
+CREATE TABLE IF NOT EXISTS modelos_documento (
+    id            SERIAL PRIMARY KEY,
+    nome          TEXT NOT NULL,
+    tipo          TEXT NOT NULL DEFAULT 'ficha_epi',
+    config        TEXT NOT NULL,   -- JSON com os parâmetros do modelo
+    padrao        INTEGER NOT NULL DEFAULT 0,  -- usado automaticamente na retirada de pedidos
+    ativo         INTEGER NOT NULL DEFAULT 1,
+    criado_por    INTEGER REFERENCES usuarios (id),
+    criado_em     TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS')),
+    atualizado_em TEXT
+);
