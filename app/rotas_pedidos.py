@@ -1116,8 +1116,10 @@ def colaborador(pedido_id):
         criar_novo=request.form.get("criar") == "1"), pedido_id, "Colaborador vinculado.")
 
 
+# endpoint próprio para a rota da ressalva: com as duas no mesmo endpoint, url_for("pedidos.finalizar")
+# montava /finalizar-ressalva e o botão normal "Finalizar pedido" caía na ressalva
 @bp.post("/pedidos/<int:pedido_id>/finalizar")
-@bp.post("/pedidos/<int:pedido_id>/finalizar-ressalva")
+@bp.post("/pedidos/<int:pedido_id>/finalizar-ressalva", endpoint="finalizar_ressalva")
 @escrita_required
 def finalizar(pedido_id):
     com_ressalva = (
