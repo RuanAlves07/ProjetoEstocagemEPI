@@ -1,0 +1,98 @@
+{% from '_ficha_documento.html' import documento %}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ titulo }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body { background: #fff; margin: 0; }
+    .barra-impressao { display: flex; gap: .5rem; justify-content: center; padding: .8rem; background: #f1f5f9; border-bottom: 1px solid #dbe2ea; }
+    .folhas { max-width: 820px; margin: 0 auto; padding: 1rem; }
+    /* a tabela só serve para o tfoot reservar, em cada página, o espaço do rodapé fixo */
+    .moldura { width: 100%; border-collapse: collapse; }
+    .moldura > tbody > tr > td, .moldura > tfoot > tr > td { padding: 0; border: 0; }
+    .folha { page-break-after: always; break-after: page; }
+    .folha:last-child { page-break-after: auto; break-after: auto; }
+    .resumo h1 { font-size: 1.2rem; margin: 0 0 .3rem; }
+    .resumo table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .6rem; }
+    .resumo th, .resumo td { border: 1px solid #333; padding: .25rem .4rem; text-align: left; }
+    /* Rodapé com a rubrica: fixo, então o navegador repete em todas as páginas impressas */
+    .rodape-rubrica { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem;
+                      border-top: 1px solid #333; padding-top: .25rem; font: 11px Arial, sans-serif; color: #222; }
+    .rodape-rubrica img { height: 34px; max-width: 150px; object-fit: contain; }
+    .rodape-rubrica .linha-rubrica { display: inline-block; width: 150px; border-bottom: 1px solid #333; height: 30px; }
+    .espaco-rodape { height: 60px; }
+    @media screen { .rodape-rubrica { max-width: 820px; margin: 1rem auto; padding: .4rem 1rem 0; } .espaco-rodape { display: none; } }
+    @media print {
+      @page { size: A4; margin: 12mm 12mm 10mm; }
+      .barra-impressao { display: none; }
+      .folhas { padding: 0; max-width: none; }
+      .rodape-rubrica { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <div class="barra-impressao">
+    <button class="btn primario" onclick="window.print()">🖨️ Imprimir / Salvar em PDF</button>
+    <button class="btn" onclick="history.length > 1 ? history.back() : window.close()">Voltar</button>
+  </div>
+
+  <table class="moldura">
+    <tbody><tr><td>
+      <div class="folhas">
+        {% if relatorio %}
+        <section class="folha resumo ficha-doc">
+          <h1>Relatório de fichas de EPI</h1>
+          <p><strong>{{ colab.nome|upper }}</strong> · Matrícula {{ matricula }}{% if colab.setor %} · {{ colab.setor }}{% endif %}{% if colab.funcao %} · {{ colab.funcao }}{% endif %}</p>
+          <p>Retiradas registradas: <strong>{{ fichas|length }}</strong>{% if recebidas %} · Pedidos dele retirados por outra pessoa: <strong>{{ recebidas|length }}</strong>{% endif %}</p>
+          <table>
+            <thead><tr><th>Data</th><th>Pedido</th><th>Itens</th><th>Para quem</th><th>Situação</th></tr></thead>
+            <tbody>
+            {% for f in fichas %}
+              <tr>
+                <td>{{ f.doc.data_entrega|data_br }}</td>
+                <td>#{{ f.doc.numero }}</td>
+                <td>{% for it in f.doc.itens %}{{ it.quantidade }}× {{ it.descricao }}{{ '; ' if not loop.last }}{% endfor %}</td>
+                <td>{{ f.benef_nome if f.benef_nome and f.beneficiario_id != f.colaborador_id else 'Para si' }}</td>
+                <td>{{ STATUS_FICHA[f.status] }}{% if f.assinado_em %} em {{ f.assinado_em|hora_br }}{% endif %}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5">Nenhuma ficha de EPI emitida para este colaborador.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% if recebidas %}
+          <h2 style="font-size:1rem;margin-top:1rem">Pedidos dele retirados por outra pessoa</h2>
+          <table>
+            <thead><tr><th>Data</th><th>Pedido</th><th>Retirado por</th><th>Situação</th></tr></thead>
+            <tbody>
+            {% for r in recebidas %}
+              <tr><td>{{ r.criado_em|data_br }}</td><td>#{{ r.numero }}</td><td>{{ r.colab_nome }}</td><td>{{ STATUS_FICHA[r.status] }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </section>
+        {% endif %}
+        {% for f in fichas %}
+        <section class="folha">
+          {{ documento(f.doc, assinatura=f.assinatura, papel=f.status == 'assinada_papel') }}
+          {% if f.status == 'assinada' %}
+            <p class="ficha-obs">Assinado eletronicamente em {{ f.assinado_em|hora_br }} após validação de código enviado ao WhatsApp {{ f.whatsapp_numero|whatsapp }} · IP {{ f.assinado_ip or '—' }} · SHA-256 {{ f.documento_hash[:16] }}…</p>
+          {% endif %}
+        </section>
+        {% endfor %}
+      </div>
+    </td></tr></tbody>
+    <tfoot><tr><td><div class="espaco-rodape"></div></td></tr></tfoot>
+  </table>
+
+  <div class="rodape-rubrica">
+    <span>{{ colab_nome|upper }} · Matrícula {{ matricula }}</span>
+    <span>Rubrica: {% if rubrica %}<img src="{{ rubrica }}" alt="Rubrica">{% else %}<span class="linha-rubrica"></span>{% endif %}</span>
+  </div>
+  {% if auto %}<script>window.addEventListener("load", () => setTimeout(() => window.print(), 300));</script>{% endif %}
+</body>
+</html>

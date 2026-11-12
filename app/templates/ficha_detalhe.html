@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% from '_ficha_documento.html' import documento %}
+{% block titulo %}Ficha de EPI #{{ f.doc.numero }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Ficha de EPI · Pedido #{{ f.doc.numero }}
+    <span class="badge {{ {'aguardando': 'amarelo', 'assinada': 'verde', 'assinada_papel': 'verde'}[f.status] }}">{{ STATUS_FICHA[f.status] }}</span>
+  </h1>
+  <div class="acoes">
+    {% if f.pedido_id %}<a class="btn" href="{{ url_for('pedidos.detalhe', pedido_id=f.pedido_id) }}">Pedido</a>{% endif %}
+    <a class="btn" href="{{ url_for('cadastros.colaborador_ficha', colab_id=f.colaborador_id, aba='fichas') }}">Perfil de {{ f.colab_nome }}</a>
+    <a class="btn primario" href="{{ url_for('fichas.imprimir', ficha_id=f.id) }}" target="_blank" rel="noopener">🖨️ Imprimir / PDF</a>
+  </div>
+</div>
+
+<section class="cartao pedido-cabecalho">
+  <div class="dados-pedido">
+    <div><span class="suave">Retirou</span><strong>{{ f.colab_nome }}</strong></div>
+    {% if f.benef_nome and f.beneficiario_id != f.colaborador_id %}<div><span class="suave">Solicitante</span><strong>{{ f.benef_nome }}</strong></div>{% endif %}
+    <div><span class="suave">Emitida</span><strong>{{ f.criado_em|hora_br }}</strong><small class="suave">por {{ f.criado_por_nome }}</small></div>
+    {% if f.whatsapp_enviado_em %}<div><span class="suave">Enviada pelo WhatsApp</span><strong>{{ f.whatsapp_enviado_em|hora_br }}</strong><small class="suave">{{ f.whatsapp_numero|whatsapp }}</small></div>{% endif %}
+    {% if f.status == 'assinada' %}
+      <div><span class="suave">Assinada</span><strong>{{ f.assinado_em|hora_br }}</strong><small class="suave">IP {{ f.assinado_ip or '—' }}</small></div>
+    {% elif f.status == 'assinada_papel' %}
+      <div><span class="suave">Assinada em papel</span><strong>{{ f.assinado_em|hora_br }}</strong><small class="suave">registrado por {{ f.papel_por_nome }}</small></div>
+    {% endif %}
+  </div>
+  {% if f.status == 'assinada' %}
+    <p class="nota" style="margin:.6rem 0 0">Código de integridade do documento (SHA-256): <code style="overflow-wrap:anywhere">{{ f.documento_hash }}</code>{% if f.assinado_aparelho %} · Aparelho: {{ f.assinado_aparelho|aparelho }}{% endif %}</p>
+  {% endif %}
+</section>
+
+{% if pode_editar and f.status != 'assinada' %}
+<section class="cartao">
+  {% if f.status == 'aguardando' %}
+    <h2 style="margin-top:0">Aguardando assinatura</h2>
+    <div class="acoes" style="margin-bottom:.8rem">
+      <form method="post" action="{{ url_for('fichas.reenviar', ficha_id=f.id) }}">
+        {{ csrf() }}
+        <button class="btn" {{ 'disabled' if not f.colab_whatsapp }}>📲 {{ 'Reenviar' if f.whatsapp_enviado_em else 'Enviar' }} pelo WhatsApp{% if f.colab_whatsapp %} ({{ numero_mascarado }}){% endif %}</button>
+      </form>
+    </div>
+  {% endif %}
+  <form method="post" action="{{ url_for('fichas.papel', ficha_id=f.id) }}" enctype="multipart/form-data" class="formulario">
+    {{ csrf() }}
+    <h2 style="margin:0">{{ 'Anexar outra foto da ficha assinada' if f.status == 'assinada_papel' else 'Assinada no papel?' }}</h2>
+    <label>
+      <span class="rotulo-campo">Foto ou PDF da ficha assinada (opcional)</span>
+      <input type="file" name="anexo" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment">
+    </label>
+    <div class="acoes"><button class="btn primario">{{ 'Salvar anexo' if f.status == 'assinada_papel' else 'Marcar como assinada em papel' }}</button></div>
+  </form>
+</section>
+{% endif %}
+
+{% if f.anexo_arquivo %}
+<section class="cartao">
+  <h2 style="margin-top:0">Ficha assinada em papel</h2>
+  <p><a class="btn" href="{{ url_for('fichas.anexo', ficha_id=f.id) }}" target="_blank" rel="noopener">📎 Abrir {{ f.anexo_nome or 'anexo' }}</a></p>
+  {% if not (f.anexo_arquivo|lower).endswith('.pdf') %}
+    <img src="{{ url_for('fichas.anexo', ficha_id=f.id) }}" alt="Ficha assinada em papel" class="ficha-anexo-img">
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="cartao ficha-previa">
+  {{ documento(f.doc, assinatura=f.assinatura, papel=f.status == 'assinada_papel') }}
+</section>
+{% endblock %}

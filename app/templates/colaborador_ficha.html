@@ -16,6 +16,7 @@
   <div class="dados-pedido">
     <div><span class="suave">Matrícula</span><strong>{{ colab.matricula or colab.id }}</strong></div>
     <div><span class="suave">Setor</span><strong>{{ colab.setor or '—' }}</strong></div>
+    <div><span class="suave">WhatsApp</span><strong>{% if colab.whatsapp %}{{ colab.whatsapp|whatsapp }}{% else %}<span class="suave">Não cadastrado</span>{% endif %}</strong></div>
     <div>
       <span class="suave">Cargo / Função</span>
       <strong>
@@ -55,6 +56,9 @@
   </a>
   <a class="{{ 'ativa' if aba == 'ficha' }}" href="{{ url_for('cadastros.colaborador_ficha', colab_id=colab.id, aba='ficha') }}">
     Ficha de EPIs entregues <span class="contador">{{ entregas|length }}</span>
+  </a>
+  <a class="{{ 'ativa' if aba == 'fichas' }}" href="{{ url_for('cadastros.colaborador_ficha', colab_id=colab.id, aba='fichas') }}">
+    Fichas de EPI assinadas <span class="contador">{{ fichas_epi|length }}</span>
   </a>
 </div>
 
@@ -248,10 +252,46 @@
   </div>
 </section>
 
-{% else %}
+{% elif aba == 'ficha' %}
 <section class="cartao">
   <h2>Ficha de EPIs entregues</h2>
   {{ tabela_movs(entregas, mostrar_colab=false, voltar=request.full_path) }}
+</section>
+{% elif aba == 'fichas' %}
+{% set retiradas = fichas_epi|selectattr('retirou')|list %}
+<section class="cartao">
+  <div class="cabecalho" style="margin-bottom:.6rem">
+    <div>
+      <h2 style="margin:0">Fichas de EPI</h2>
+      <p class="nota" style="margin:.2rem 0 0">
+        Retirou EPIs <strong>{{ retiradas|length }}</strong> vez(es){% if fichas_epi|length > retiradas|length %} · <strong>{{ fichas_epi|length - retiradas|length }}</strong> pedido(s) dele retirado(s) por outra pessoa{% endif %}.
+      </p>
+    </div>
+    <a class="btn" href="{{ url_for('fichas.relatorio_colaborador', colab_id=colab.id) }}" target="_blank" rel="noopener">🖨️ Relatório de fichas (com rubrica)</a>
+  </div>
+  <div class="tabela-rolavel">
+    <table>
+      <thead><tr><th>Data</th><th>Pedido</th><th>Vínculo</th><th class="num">Itens</th><th>Situação</th><th class="num"></th></tr></thead>
+      <tbody>
+      {% for fe in fichas_epi %}
+        <tr>
+          <td>{{ fe.criado_em|hora_br }}</td>
+          <td>{% if fe.pedido_id %}<a href="{{ url_for('pedidos.detalhe', pedido_id=fe.pedido_id) }}">#{{ fe.numero }}</a>{% else %}#{{ fe.numero }}{% endif %}</td>
+          <td>
+            {% if not fe.retirou %}Pedido dele, retirado por <strong>{{ fe.colab_nome }}</strong>
+            {% elif fe.beneficiario_id and fe.beneficiario_id != colab.id %}Retirou para <strong>{{ fe.benef_nome }}</strong>
+            {% else %}Retirou para si{% endif %}
+          </td>
+          <td class="num">{{ fe.qtd_itens }}</td>
+          <td><span class="badge {{ 'amarelo' if fe.status == 'aguardando' else 'verde' }}">{{ STATUS_FICHA[fe.status] }}</span></td>
+          <td class="num"><a class="btn pequeno" href="{{ url_for('fichas.detalhe', ficha_id=fe.id) }}">Abrir</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="suave">Nenhuma ficha de EPI ainda. Elas são criadas ao registrar a retirada de um pedido.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endif %}
 {% endblock %}

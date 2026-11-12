@@ -551,3 +551,54 @@ tr.linha-analisar { background: #fffdf5; }
   padding: .9rem 1.1rem;
 }
 
+
+/* ---------- Ficha de EPI (mesmo modelo do RH Gestor) ---------- */
+.ficha-doc { background: #fff; color: #111; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.35; }
+.ficha-previa { overflow-x: auto; }
+.ficha-previa .ficha-doc { min-width: 640px; }
+.ficha-titulo { font-size: 15px; font-style: italic; font-weight: 700; margin: 0 0 .9rem; }
+.ficha-nome { font-size: 15px; font-weight: 700; margin: 0 0 .3rem; }
+.ficha-tabela { width: 100%; border-collapse: collapse; margin-bottom: .35rem; }
+.ficha-tabela th, .ficha-tabela td { border: 1px solid #222; padding: .2rem .35rem; text-align: center; font-size: 11.5px; color: #111; background: #fff; text-transform: none; letter-spacing: 0; }
+.ficha-tabela th { font-weight: 700; white-space: normal; }
+.ficha-itens { margin-top: .6rem; }
+.ficha-itens th { text-align: left; }
+.ficha-itens td { text-align: left; vertical-align: middle; }
+.ficha-itens td.centro { text-align: center; }
+.ficha-itens .ficha-desc { min-width: 150px; }
+.ficha-itens select { font-size: 11.5px; padding: .1rem .2rem; width: auto; }
+.ficha-rubrica { width: 110px; height: 30px; }
+.ficha-rubrica img { display: block; max-height: 28px; max-width: 105px; margin: 0 auto; }
+.ficha-declaracao { font-size: 10.5px; margin-top: .6rem; }
+.ficha-declaracao p { margin: 0 0 .55rem; }
+.ficha-data { text-align: center; font-style: italic; font-size: 11px; margin: 1.2rem 0 .4rem; }
+.ficha-assinatura { width: 60%; margin: 0 auto; text-align: center; }
+.ficha-assinatura-img { height: 70px; display: flex; align-items: flex-end; justify-content: center; border-bottom: 1px solid #222; }
+.ficha-assinatura-img img { max-height: 68px; max-width: 100%; }
+.ficha-assinatura-nome { font-style: italic; font-size: 11px; padding-top: .2rem; }
+.ficha-obs { font-size: 11px; color: #333; margin: .3rem 0; }
+.ficha-botoes { justify-content: flex-end; margin: .2rem 0 .4rem; }
+.ficha-anexo-img { max-width: 100%; max-height: 640px; border: 1px solid var(--borda); border-radius: 8px; }
+.assinar-pagina { max-width: 860px; margin: 0 auto; }
+.assinar-codigo { max-width: 480px; margin: 1rem auto; }
+.campo-codigo { font-size: 1.6rem; letter-spacing: .5rem; text-align: center; font-family: monospace; }
+.assinar-area { text-align: center; }
+.assinar-area h2 { margin: 0; }
+.quadro-assinatura { position: relative; border: 8px solid #e1e9f3; border-radius: 14px; background: #fff; margin: .6rem auto; max-width: 700px; }
+.quadro-assinatura canvas { display: block; width: 100%; height: 260px; touch-action: none; cursor: crosshair; }
+.quadro-botoes { position: absolute; top: .4rem; right: .4rem; display: flex; gap: .3rem; }
+@media (max-width: 768px) {
+  .quadro-assinatura canvas { height: 210px; }
+  /* no celular a ficha encolhe para caber na tela, sem rolagem lateral */
+  .ficha-previa .ficha-doc { min-width: 0; font-size: 10.5px; }
+  .ficha-titulo, .ficha-nome { font-size: 13px; }
+  .ficha-tabela th, .ficha-tabela td { font-size: 9.5px; padding: .15rem .2rem; overflow-wrap: anywhere; }
+  .ficha-itens { table-layout: fixed; }
+  .ficha-itens th:nth-child(3) { width: 26%; }
+  .ficha-itens .ficha-desc { min-width: 0; }
+  .ficha-itens th { hyphens: auto; }
+  .ficha-rubrica { width: auto; }
+  .ficha-declaracao { font-size: 9.5px; }
+  .ficha-assinatura { width: 90%; }
+}
+@media print { .ficha-previa { overflow: visible; } .ficha-previa .ficha-doc { min-width: 0; } }

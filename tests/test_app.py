@@ -1143,3 +1143,183 @@ if __name__ == "__main__":
     unittest.main()
 
 
+
+
+def _png_assinatura():
+    import struct
+    import zlib
+
+    def bloco(tipo, dados):
+        return struct.pack(">I", len(dados)) + tipo + dados + struct.pack(">I", zlib.crc32(tipo + dados) & 0xFFFFFFFF)
+    cru = b"".join(b"\x00" + b"\x00\x00\x00\xff" * 4 for _ in range(4))
+    png = (b"\x89PNG\r\n\x1a\n" + bloco(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 6, 0, 0, 0))
+           + bloco(b"IDAT", zlib.compress(cru)) + bloco(b"IEND", b""))
+    import base64
+    return "data:image/png;base64," + base64.b64encode(png).decode()
+
+
+class TestFichaEPI(Base):
+    def setUp(self):
+        super().setUp()
+        self.setup_admin()
+        self.app.config["WHATSAPP_ENVIADOS"] = []
+        self.app.config["FICHAS_ANEXOS"] = os.path.join(self.dir.name, "fichas")
+        self.post("/colaboradores/novo", {"nome": "Carlos Obra", "setor": "Obras", "funcao": "Pedreiro",
+                                          "whatsapp": "(47) 99999-8888", "cpf": "529.982.247-25",
+                                          "data_nascimento": "1990-04-12"})
+        self.post("/colaboradores/novo", {"nome": "Ana Encarregada", "setor": "Obras", "funcao": "Encarregada"})
+        self.epi = self.criar_epi("Capacete Branco")
+        self.mov("entrada", self.epi, 5)
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE epis SET ca = '987654', validade_ca = '2031-05-01' WHERE id = ?", (self.epi,))
+            self.carlos = db.execute("SELECT id FROM colaboradores WHERE nome = 'Carlos Obra'").fetchone()["id"]
+            self.ana = db.execute("SELECT id FROM colaboradores WHERE nome = 'Ana Encarregada'").fetchone()["id"]
+
+    def pedido_pronto(self):
+        self.post("/pedidos/simular", {"nome": "Carlos Obra", "local": "Acordes", "motivo": "Desgaste",
+                                       "epi": "Capacete Branco"})
+        with self.app.app_context():
+            db = get_db()
+            ped = db.execute("SELECT id FROM pedidos ORDER BY id DESC LIMIT 1").fetchone()["id"]
+            item = db.execute("SELECT id FROM pedido_itens WHERE pedido_id = ?", (ped,)).fetchone()["id"]
+            db.execute("UPDATE pedidos SET colaborador_id = ? WHERE id = ?", (self.carlos, ped))
+            db.execute("UPDATE pedido_itens SET epi_id = ? WHERE id = ?", (self.epi, item))
+        self.post(f"/pedidos/{ped}/iniciar")
+        self.post(f"/pedidos/{ped}/itens/{item}/separar", {"separado": "1"})
+        self.post(f"/pedidos/{ped}/finalizar")
+        return ped
+
+    def ficha(self, ficha_id=None):
+        with self.app.app_context():
+            sql = "SELECT * FROM fichas_epi " + ("WHERE id = ?" if ficha_id else "ORDER BY id DESC LIMIT 1")
+            return dict(get_db().execute(sql, (ficha_id,) if ficha_id else ()).fetchone())
+
+    def test_cadastro_whatsapp_cpf_e_nascimento(self):
+        with self.app.app_context():
+            c = get_db().execute("SELECT whatsapp, cpf, data_nascimento FROM colaboradores WHERE id = ?",
+                                 (self.carlos,)).fetchone()
+        self.assertEqual((c["whatsapp"], c["cpf"], c["data_nascimento"]), ("5547999998888", "52998224725", "1990-04-12"))
+        r = self.post("/colaboradores/novo", {"nome": "X", "cpf": "111.111.111-11", "whatsapp": "123"},
+                      follow_redirects=True)
+        html = r.get_data(as_text=True)
+        self.assertIn("CPF inválido", html)
+        self.assertIn("WhatsApp com DDD", html)
+
+    def test_previa_mostra_ficha_do_colaborador(self):
+        ped = self.pedido_pronto()
+        html = self.c.get(f"/pedidos/{ped}/ficha").get_data(as_text=True)
+        self.assertIn("Controle de Entrega de EPI", html)
+        self.assertIn("CARLOS OBRA", html)
+        self.assertIn("529.982.247-25", html)
+        self.assertIn("987654", html)  # CA do item
+        self.assertIn("01/05/2031", html)  # validade do CA
+        self.assertIn("Enviar ficha de EPI", html)
+
+    def test_envio_codigo_e_assinatura_pelo_whatsapp(self):
+        ped = self.pedido_pronto()
+        r = self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "enviar",
+                                                 f"hig_{self.ficha_mov_id(ped)}": "NAO"})
+        self.assertEqual(r.status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT status FROM pedidos WHERE id = ?", (ped,)).fetchone()["status"],
+                             "retirado")
+        f = self.ficha()
+        self.assertEqual(f["status"], "aguardando")
+        self.assertIn('"higienizado": "NÃO"', f["documento"])
+        msg = self.app.config["WHATSAPP_ENVIADOS"][-1]
+        self.assertEqual(msg["numero"], "5547999998888")
+        token = re.search(r"/assinar/([\w-]+)", msg["texto"]).group(1)
+
+        cel = self.app.test_client()
+        pagina = cel.get(f"/assinar/{token}").get_data(as_text=True)
+        self.assertIn("Enviar código pelo WhatsApp", pagina)
+        self.assertNotIn("529.982.247-25", pagina)  # dados só depois do código
+        self.assertEqual(len(self.app.config["WHATSAPP_ENVIADOS"]), 1)  # abrir o link não dispara nada
+
+        # assinar sem validar o código é recusado
+        self.post(f"/assinar/{token}/assinar", {"assinatura": _png_assinatura()}, client=cel)
+        self.assertEqual(self.ficha()["status"], "aguardando")
+
+        self.post(f"/assinar/{token}/codigo", client=cel)
+        codigo = re.search(r"\b(\d{5})\b", self.app.config["WHATSAPP_ENVIADOS"][-1]["texto"]).group(1)
+        errado = "00000" if codigo != "00000" else "11111"
+        r = self.post(f"/assinar/{token}/validar", {"codigo": errado}, client=cel, follow_redirects=True)
+        self.assertIn("Código incorreto", r.get_data(as_text=True))
+        r = self.post(f"/assinar/{token}/validar", {"codigo": codigo}, client=cel, follow_redirects=True)
+        html = r.get_data(as_text=True)
+        self.assertIn("Faça sua assinatura abaixo", html)
+        self.assertIn("529.982.247-25", html)
+
+        self.post(f"/assinar/{token}/assinar", {"assinatura": "data:image/png;base64,naoeimagem"}, client=cel)
+        self.assertEqual(self.ficha()["status"], "aguardando")
+        r = self.post(f"/assinar/{token}/assinar", {"assinatura": _png_assinatura()}, client=cel, follow_redirects=True)
+        self.assertIn("Ficha assinada", r.get_data(as_text=True))
+        f = self.ficha()
+        self.assertEqual(f["status"], "assinada")
+        self.assertTrue(f["assinatura"].startswith("data:image/png;base64,"))
+        self.assertTrue(f["assinado_em"])
+
+        perfil = self.c.get(f"/colaboradores/{self.carlos}?aba=fichas").get_data(as_text=True)
+        self.assertIn("Assinada pelo WhatsApp", perfil)
+        relatorio = self.c.get(f"/colaboradores/{self.carlos}/fichas/relatorio").get_data(as_text=True)
+        self.assertIn('alt="Rubrica"', relatorio)
+        self.assertIn("rodape-rubrica", relatorio)
+
+    def ficha_mov_id(self, ped):
+        with self.app.app_context():
+            return get_db().execute("SELECT m.id FROM movimentacoes m JOIN pedidos p ON p.grupo = m.grupo "
+                                    "WHERE p.id = ?", (ped,)).fetchone()["id"]
+
+    def test_codigo_esgota_tentativas_e_link_invalido(self):
+        ped = self.pedido_pronto()
+        self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "enviar"})
+        token = re.search(r"/assinar/([\w-]+)", self.app.config["WHATSAPP_ENVIADOS"][-1]["texto"]).group(1)
+        cel = self.app.test_client()
+        self.assertEqual(cel.get("/assinar/token-que-nao-existe").status_code, 404)
+        self.post(f"/assinar/{token}/codigo", client=cel)
+        codigo = re.search(r"\b(\d{5})\b", self.app.config["WHATSAPP_ENVIADOS"][-1]["texto"]).group(1)
+        errado = "00000" if codigo != "00000" else "11111"
+        for _ in range(5):
+            self.post(f"/assinar/{token}/validar", {"codigo": errado}, client=cel)
+        r = self.post(f"/assinar/{token}/validar", {"codigo": codigo}, client=cel, follow_redirects=True)
+        self.assertIn("Muitas tentativas", r.get_data(as_text=True))
+        # reenviar a ficha gera link novo e invalida o anterior
+        self.post(f"/fichas/{self.ficha()['id']}/enviar")
+        self.assertEqual(cel.get(f"/assinar/{token}").status_code, 404)
+
+    def test_outra_pessoa_retira_e_assina_em_papel(self):
+        ped = self.pedido_pronto()
+        r = self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.ana), "acao": "imprimir"})
+        self.assertIn("/imprimir", r.headers["Location"])
+        f = self.ficha()
+        self.assertEqual((f["colaborador_id"], f["beneficiario_id"]), (self.ana, self.carlos))
+        self.assertIn("Carlos Obra", self.c.get(r.headers["Location"]).get_data(as_text=True))
+
+        # Ana não tem WhatsApp: o envio é recusado antes de registrar qualquer coisa
+        ped2 = self.pedido_pronto()
+        r = self.post(f"/pedidos/{ped2}/ficha", {"colaborador_id": str(self.ana), "acao": "enviar"},
+                      follow_redirects=True)
+        self.assertIn("não tem WhatsApp", r.get_data(as_text=True))
+
+        import io
+        self.post(f"/fichas/{f['id']}/papel", {"anexo": (io.BytesIO(b"%PDF-1.4 teste"), "ficha.pdf")},
+                  content_type="multipart/form-data")
+        f = self.ficha(f["id"])
+        self.assertEqual(f["status"], "assinada_papel")
+        self.assertEqual(self.c.get(f"/fichas/{f['id']}/anexo").data, b"%PDF-1.4 teste")
+
+        perfil_carlos = self.c.get(f"/colaboradores/{self.carlos}?aba=fichas").get_data(as_text=True)
+        self.assertIn("retirado por <strong>Ana Encarregada</strong>", perfil_carlos)
+        perfil_ana = self.c.get(f"/colaboradores/{self.ana}?aba=fichas").get_data(as_text=True)
+        self.assertIn("Retirou para <strong>Carlos Obra</strong>", perfil_ana)
+
+    def test_consulta_nao_emite_ficha(self):
+        ped = self.pedido_pronto()
+        self.post("/usuarios/novo", {"nome": "Ver", "login": "ver", "perfil": "consulta",
+                                     "senha": "senha1234", "confirmacao": "senha1234"})
+        outro = self.app.test_client()
+        self.post("/login", {"login": "ver", "senha": "senha1234"}, client=outro)
+        self.assertEqual(outro.get(f"/pedidos/{ped}/ficha").status_code, 403)
+        self.assertEqual(self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir"},
+                                   client=outro).status_code, 403)

@@ -8,7 +8,7 @@ from flask import (Blueprint, Response, abort, flash, g, jsonify, redirect, rend
                    request, url_for)
 from werkzeug.security import generate_password_hash
 
-from . import caepi, email_service, estoque, pedidos
+from . import caepi, email_service, estoque, pedidos, whatsapp
 from .auth import (
     CATALOGO_PERMISSOES,
     SENHA_MIN,
@@ -828,6 +828,17 @@ def gerar_proxima_matricula(db=None):
 def _ler_colaborador(form):
     dados = {k: limpar(form.get(k)) for k in ("nome", "matricula", "setor", "funcao")}
     erros = [] if dados["nome"] else ["Informe o nome do colaborador."]
+    zap = limpar(form.get("whatsapp"))
+    dados["whatsapp"] = whatsapp.normalizar_numero(zap) if zap else None
+    if zap and not dados["whatsapp"]:
+        dados["whatsapp"] = zap  # devolve o que foi digitado para corrigir
+        erros.append("Informe o WhatsApp com DDD (ex.: 47 99999-8888).")
+    cpf = re.sub(r"\D", "", form.get("cpf") or "")
+    dados["cpf"] = cpf or None
+    if cpf and not whatsapp.cpf_valido(cpf):
+        erros.append("CPF inválido. Confira os números digitados.")
+    nasc = parse_data(form.get("data_nascimento"))
+    dados["data_nascimento"] = nasc.isoformat() if nasc else None
     return dados, erros
 
 
@@ -843,8 +854,8 @@ def colaborador_novo():
         if not erros:
             try:
                 cur = db.execute(
-                    "INSERT INTO colaboradores (nome, matricula, setor, funcao) "
-                    "VALUES (:nome, :matricula, :setor, :funcao)", dados)
+                    "INSERT INTO colaboradores (nome, matricula, setor, funcao, whatsapp, cpf, data_nascimento) "
+                    "VALUES (:nome, :matricula, :setor, :funcao, :whatsapp, :cpf, :data_nascimento)", dados)
                 novo_id = cur.lastrowid
                 if not dados.get("matricula") and novo_id:
                     db.execute("UPDATE colaboradores SET matricula = ? WHERE id = ?", (str(novo_id), novo_id))
@@ -875,7 +886,8 @@ def colaborador_editar(colab_id):
         if not erros:
             try:
                 db.execute("UPDATE colaboradores SET nome=:nome, matricula=:matricula, setor=:setor, "
-                           "funcao=:funcao, ativo=:ativo WHERE id=:id", dados)
+                           "funcao=:funcao, whatsapp=:whatsapp, cpf=:cpf, data_nascimento=:data_nascimento, "
+                           "ativo=:ativo WHERE id=:id", dados)
                 flash("Colaborador atualizado.", "ok")
                 return redirect(url_for("cadastros.colaborador_ficha", colab_id=colab_id))
             except sqlite3.IntegrityError:
@@ -1054,7 +1066,7 @@ def colaborador_ficha(colab_id):
     db = get_db()
     colab = db.execute("SELECT * FROM colaboradores WHERE id = ?", (colab_id,)).fetchone() or abort(404)
     aba = request.args.get("aba", "padrao")
-    if aba not in ("padrao", "solicitados", "ficha"):
+    if aba not in ("padrao", "solicitados", "ficha", "fichas"):
         aba = "padrao"
     epis = estoque.epis_com_saldo(db, somente_ativos=True)
     padrao_ids = _padrao_ids_colaborador(db, colab)
@@ -1112,6 +1124,7 @@ def colaborador_ficha(colab_id):
     )
     padrao_ids_expandidos = _expandir_padrao_ids_com_estoque(db, padrao_ids)
     solicitados = _solicitados_fora_do_padrao(db, colab_id, padrao_ids_expandidos)
+    from . import fichas
     from .movimentos import consultar_movimentos
     entregas = consultar_movimentos(db, {"colaborador_id": colab_id, "tipo": "saida"}, limite=None)
     return render_template(
@@ -1127,6 +1140,8 @@ def colaborador_ficha(colab_id):
         cargos=_cargos(db),
         solicitados=solicitados,
         entregas=entregas,
+        fichas_epi=fichas.fichas_do_colaborador(db, colab_id),
+        STATUS_FICHA=fichas.STATUS_FICHA,
         hoje_iso=hoje().isoformat(),
     )
 
@@ -1635,6 +1650,8 @@ _HISTORICO_USUARIO = (
     ("pedidos", "cancelado_por"),
     ("pedidos", "solicitante_usuario_id"),
     ("colaborador_epis_solicitados", "usuario_id"),
+    ("fichas_epi", "criado_por"),
+    ("fichas_epi", "papel_por"),
 )
 
 

@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% from '_ficha_documento.html' import documento %}
+{% block titulo %}Assinatura da ficha de EPI{% endblock %}
+{% block conteudo %}
+<div class="assinar-pagina">
+{% if not f %}
+  <section class="cartao" style="text-align:center">
+    <h1>Link inválido ou expirado</h1>
+    <p class="nota">Este link de assinatura não vale mais. Peça ao almoxarifado para reenviar a ficha de EPI.</p>
+  </section>
+{% elif f.status != 'aguardando' %}
+  <section class="cartao destaque-pronto" style="text-align:center">
+    <h1>✅ Ficha assinada</h1>
+    <p>Obrigado, {{ f.colab_nome }}. A ficha de EPI do pedido #{{ f.doc.numero }} foi assinada{% if f.assinado_em %} em {{ f.assinado_em|hora_br }}{% endif %}.</p>
+    <p class="nota">Você já pode fechar esta página.</p>
+  </section>
+{% elif not liberada %}
+  <section class="cartao assinar-codigo">
+    <h1>Solicitação de assinatura de documento</h1>
+    <p><strong>Nome:</strong> {{ f.colab_nome }}<br><strong>Documento:</strong> Ficha de EPI · Pedido #{{ f.doc.numero }}</p>
+    {% if codigo_enviado %}
+      <p>Enviamos um código de 5 dígitos para o WhatsApp <strong>{{ numero_mascarado }}</strong>. Digite abaixo para ver e assinar a ficha.</p>
+      <form method="post" action="{{ url_for('fichas.publica_validar', token=token) }}" class="formulario">
+        {{ csrf() }}
+        <label>Código de validação
+          <input name="codigo" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="one-time-code" required autofocus class="campo-codigo" placeholder="00000">
+        </label>
+        <button class="btn primario">Confirmar código</button>
+      </form>
+      <form method="post" action="{{ url_for('fichas.publica_codigo', token=token) }}" style="margin-top:.6rem">
+        {{ csrf() }}
+        <button class="btn">Não recebi, enviar outro código</button>
+      </form>
+    {% else %}
+      <p>Para confirmar que é você, vamos enviar um código de 5 dígitos para o WhatsApp <strong>{{ numero_mascarado }}</strong>.</p>
+      <form method="post" action="{{ url_for('fichas.publica_codigo', token=token) }}">
+        {{ csrf() }}
+        <button class="btn primario" style="width:100%">Enviar código pelo WhatsApp</button>
+      </form>
+    {% endif %}
+  </section>
+{% else %}
+  <section class="cartao">
+    <p style="margin:0"><strong>Nome:</strong> {{ f.colab_nome }}<br><strong>Data da solicitação:</strong> {{ (f.whatsapp_enviado_em or f.criado_em)|hora_br }}</p>
+  </section>
+  <section class="cartao ficha-previa">
+    {{ documento(f.doc) }}
+  </section>
+  <section class="cartao assinar-area">
+    <h2>Faça sua assinatura abaixo</h2>
+    <p class="nota">Você pode usar o mouse ou tocar na tela.</p>
+    <div class="quadro-assinatura">
+      <canvas id="quadro" aria-label="Área para assinatura"></canvas>
+      <div class="quadro-botoes">
+        <button type="button" class="btn pequeno" id="btn-desfazer" title="Desfazer o último traço">↶</button>
+        <button type="button" class="btn pequeno" id="btn-limpar" title="Apagar tudo">🗑️</button>
+      </div>
+    </div>
+    <p class="nota" id="aviso-assinatura">Para continuar, faça a sua assinatura na área indicada.</p>
+    <form method="post" action="{{ url_for('fichas.publica_assinar', token=token) }}" id="form-assinar">
+      {{ csrf() }}
+      <input type="hidden" name="assinatura" id="campo-assinatura">
+      <button class="btn primario" id="btn-assinar" disabled>Enviar e assinar</button>
+    </form>
+  </section>
+  <script>
+  (function () {
+    const canvas = document.getElementById("quadro");
+    const ctx = canvas.getContext("2d");
+    const botao = document.getElementById("btn-assinar");
+    const tracos = [];
+    let atual = null;
+
+    function ajustar() {
+      const r = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      desenhar();
+    }
+    function tracar(c) {
+      c.lineWidth = 2.4; c.lineCap = "round"; c.lineJoin = "round"; c.strokeStyle = "#111";
+      for (const t of tracos) {
+        c.beginPath();
+        t.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
+        if (t.length === 1) c.lineTo(t[0].x + .1, t[0].y + .1);
+        c.stroke();
+      }
+    }
+    function desenhar() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      tracar(ctx);
+      botao.disabled = !tracos.length;
+      document.getElementById("aviso-assinatura").hidden = !!tracos.length;
+    }
+    // recorta a imagem no contorno dos traços, para a assinatura e a rubrica ocuparem o espaço todo
+    function recortada() {
+      const pts = tracos.flat(), margem = 6, escala = 2;
+      const x0 = Math.max(0, Math.min(...pts.map(p => p.x)) - margem), y0 = Math.max(0, Math.min(...pts.map(p => p.y)) - margem);
+      const x1 = Math.max(...pts.map(p => p.x)) + margem, y1 = Math.max(...pts.map(p => p.y)) + margem;
+      const saida = document.createElement("canvas");
+      saida.width = Math.round((x1 - x0) * escala);
+      saida.height = Math.round((y1 - y0) * escala);
+      const c = saida.getContext("2d");
+      c.setTransform(escala, 0, 0, escala, -x0 * escala, -y0 * escala);
+      tracar(c);
+      return saida.toDataURL("image/png");
+    }
+    function ponto(e) {
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    canvas.addEventListener("pointerdown", e => { canvas.setPointerCapture(e.pointerId); atual = [ponto(e)]; tracos.push(atual); desenhar(); });
+    canvas.addEventListener("pointermove", e => { if (atual) { atual.push(ponto(e)); desenhar(); } });
+    ["pointerup", "pointercancel"].forEach(ev => canvas.addEventListener(ev, () => { atual = null; }));
+    document.getElementById("btn-desfazer").addEventListener("click", () => { tracos.pop(); desenhar(); });
+    document.getElementById("btn-limpar").addEventListener("click", () => { tracos.length = 0; desenhar(); });
+    document.getElementById("form-assinar").addEventListener("submit", e => {
+      if (!tracos.length) { e.preventDefault(); return; }
+      document.getElementById("campo-assinatura").value = recortada();
+      botao.disabled = true;
+      botao.textContent = "Enviando…";
+    });
+    window.addEventListener("resize", ajustar);
+    ajustar();
+  })();
+  </script>
+{% endif %}
+</div>
+{% endblock %}

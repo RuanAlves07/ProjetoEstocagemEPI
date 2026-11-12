@@ -20,6 +20,18 @@
       <input name="funcao" list="lista-cargos" value="{{ colab.funcao or '' }}" placeholder="Selecione ou digite o cargo (ex.: Pedreiro, Motorista…)">
     </label>
     <datalist id="lista-cargos">{% for cg in cargos %}<option value="{{ cg }}">{% endfor %}</datalist>
+    <div class="linha">
+      <label style="flex:1">WhatsApp
+        <input name="whatsapp" type="tel" inputmode="tel" value="{{ colab.whatsapp|whatsapp if colab.whatsapp else '' }}" placeholder="(47) 99999-8888">
+        <small class="nota">Usado para enviar a ficha de EPI para assinatura.</small>
+      </label>
+      <label style="flex:1">CPF
+        <input name="cpf" inputmode="numeric" value="{{ colab.cpf|cpf if colab.cpf else '' }}" placeholder="000.000.000-00" maxlength="14">
+      </label>
+      <label style="flex:1">Data de nascimento
+        <input name="data_nascimento" type="date" value="{{ colab.data_nascimento or '' }}">
+      </label>
+    </div>
     {% if not novo %}<label class="check"><input type="checkbox" name="ativo" value="1" {{ 'checked' if colab.ativo }}> Colaborador ativo</label>{% endif %}
     <div class="acoes">
       <button class="btn primario">Salvar</button>

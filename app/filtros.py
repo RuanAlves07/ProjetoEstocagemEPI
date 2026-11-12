@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 from flask import g
 
+from . import whatsapp
 from .db import get_db
 from .estoque import TIPOS
 from .pedidos import STATUS as STATUS_PEDIDO, mapa_complementos, numero_exibicao
@@ -99,6 +100,7 @@ def _numero_pedido(pedido_id):
 def registrar(app):
     app.jinja_env.filters.update(data_br=_data_br, hora_br=_hora_br, num=_num, dinheiro=_dinheiro,
                                  tempo_atras=_tempo_atras, obs_pedido=_obs_pedido, duracao=_duracao,
-                                 aparelho=_aparelho, numero_pedido=_numero_pedido)
+                                 aparelho=_aparelho, numero_pedido=_numero_pedido,
+                                 cpf=whatsapp.formatar_cpf, whatsapp=whatsapp.formatar_numero)
     app.jinja_env.globals["TIPOS"] = TIPOS
     app.jinja_env.globals["STATUS_PEDIDO"] = STATUS_PEDIDO

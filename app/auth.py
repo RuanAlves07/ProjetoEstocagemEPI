@@ -69,6 +69,11 @@ ROTAS_PUBLICAS = {
     "push.inscrever",
     "push.desinscrever",
     "push.testar",
+    # link da ficha de EPI enviado ao colaborador pelo WhatsApp (protegido por token e código)
+    "fichas.publica",
+    "fichas.publica_codigo",
+    "fichas.publica_validar",
+    "fichas.publica_assinar",
 }
 # A API usa chave própria (X-API-Key) e o formulário público pode ser enviado sem sessão prévia
 CSRF_ISENTAS = {
@@ -175,6 +180,12 @@ def _permissao_exigida_rota(endpoint, metodo):
         return ("gerenciar_pedidos", "editar_epis")
     if endpoint == "pedidos.solicitar_gestor":
         return "solicitar_fora_funcao"
+    if endpoint in ("fichas.detalhe", "fichas.imprimir", "fichas.anexo"):
+        return ("ver_pedidos", "ver_colaboradores")
+    if endpoint == "fichas.relatorio_colaborador":
+        return "ver_colaboradores"
+    if endpoint.startswith("fichas."):
+        return "gerenciar_pedidos"
     if endpoint in ("pedidos.lista", "pedidos.detalhe", "pedidos.exportar_csv", "pedidos.novos"):
         return "ver_pedidos"
     if endpoint.startswith("pedidos."):
@@ -690,7 +701,7 @@ def contexto():
         pode_editar_ctx = "editar_fornecedores" in perms
     elif ep.startswith(("cadastros.colab", "cadastros.obra")) or ep == "cadastros.cargos_padrao":
         pode_editar_ctx = "editar_colaboradores" in perms
-    elif ep.startswith("pedidos."):
+    elif ep.startswith(("pedidos.", "fichas.")):
         pode_editar_ctx = "gerenciar_pedidos" in perms
     elif ep.startswith("movimentos."):
         pode_editar_ctx = "registrar_movimentos" in perms

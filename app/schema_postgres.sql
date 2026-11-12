@@ -63,9 +63,15 @@ CREATE TABLE IF NOT EXISTS colaboradores (
     matricula  TEXT UNIQUE,
     setor      TEXT,
     funcao     TEXT,
+    whatsapp   TEXT,
+    cpf        TEXT,
+    data_nascimento TEXT,
     ativo      INTEGER NOT NULL DEFAULT 1,
     criado_em  TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS cpf TEXT;
+ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS data_nascimento TEXT;
 
 CREATE TABLE IF NOT EXISTS fornecedores (
     id                     SERIAL PRIMARY KEY,
@@ -282,3 +288,36 @@ CREATE TABLE IF NOT EXISTS push_inscricoes (
 ALTER TABLE push_inscricoes ADD COLUMN IF NOT EXISTS apelido TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_inscricoes (usuario_id);
+
+-- Ficha de EPI da retirada de um pedido, assinada pelo colaborador que retirou (WhatsApp ou papel)
+CREATE TABLE IF NOT EXISTS fichas_epi (
+    id                  SERIAL PRIMARY KEY,
+    pedido_id           INTEGER REFERENCES pedidos (id),
+    colaborador_id      INTEGER NOT NULL REFERENCES colaboradores (id),  -- quem retirou e assina
+    beneficiario_id     INTEGER REFERENCES colaboradores (id),           -- para quem o pedido foi feito
+    status              TEXT NOT NULL DEFAULT 'aguardando'
+                        CHECK (status IN ('aguardando', 'assinada', 'assinada_papel')),
+    documento           TEXT NOT NULL,   -- JSON com os dados e itens congelados no momento da retirada
+    documento_hash      TEXT NOT NULL,   -- SHA-256 do documento, mostrado junto da assinatura
+    token_hash          TEXT UNIQUE,     -- link enviado pelo WhatsApp (guardamos só o hash)
+    link_expira_em      TEXT,
+    codigo_hash         TEXT,
+    codigo_expira_em    TEXT,
+    codigo_tentativas   INTEGER NOT NULL DEFAULT 0,
+    codigo_enviado_em   TEXT,
+    whatsapp_numero     TEXT,
+    whatsapp_enviado_em TEXT,
+    assinatura          TEXT,            -- imagem PNG (data URL) da assinatura
+    assinado_em         TEXT,
+    assinado_ip         TEXT,
+    assinado_aparelho   TEXT,
+    anexo_arquivo       TEXT,            -- foto/PDF da ficha assinada em papel, em instance/fichas/
+    anexo_nome          TEXT,
+    papel_por           INTEGER REFERENCES usuarios (id),
+    criado_por          INTEGER NOT NULL REFERENCES usuarios (id),
+    criado_em           TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_fichas_colab ON fichas_epi (colaborador_id);
+CREATE INDEX IF NOT EXISTS idx_fichas_benef ON fichas_epi (beneficiario_id);
+CREATE INDEX IF NOT EXISTS idx_fichas_pedido ON fichas_epi (pedido_id);

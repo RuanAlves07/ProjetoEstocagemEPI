@@ -12,6 +12,7 @@ from .auth import admin_required, escrita_required, usuario_tem_permissao
 from .cadastros import _csv_response
 from .db import get_db
 from .estoque import ErroValidacao
+from .fichas import STATUS_FICHA
 from .movimentos import _destino_seguro, consultar_movimentos
 from .util import hoje, limpar, to_int
 
@@ -1026,6 +1027,8 @@ def detalhe(pedido_id):
         if pedido["grupo"] else []
     return render_template(
         "pedido.html", p=pedido, movs=movs, STATUS=pedidos.STATUS,
+        fichas=db.execute("SELECT id, status FROM fichas_epi WHERE pedido_id = ? ORDER BY id", (pedido_id,)).fetchall(),
+        STATUS_FICHA=STATUS_FICHA,
         epis=estoque.epis_com_saldo(db),
         colaboradores=db.execute(
             "SELECT id, nome, matricula FROM colaboradores WHERE ativo = 1 ORDER BY nome COLLATE NOCASE").fetchall(),

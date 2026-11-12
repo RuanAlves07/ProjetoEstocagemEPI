@@ -267,15 +267,22 @@
     {% endif %}
   </p>
   {% if pode_editar %}
-  <form method="post" action="{{ url_for('pedidos.retirar', pedido_id=p.id) }}" class="formulario">
-    {{ csrf() }}
-    <h2>Registrar retirada</h2>
-    <div class="linha">
-      <label>Quem retirou <input name="retirado_por_nome" required value="{{ p.solicitante }}"></label>
-      <label>Descrição (cargo/função, empresa, obra…) <input name="retirado_descricao" placeholder="Ex.: Encarregado da obra X"></label>
-    </div>
-    <div class="acoes"><button class="btn primario">Marcar como retirado</button></div>
-  </form>
+  {% if p.grupo %}
+  <div class="acoes" style="margin:.6rem 0">
+    <a class="btn primario" href="{{ url_for('fichas.preparar', pedido_id=p.id) }}">📝 Registrar retirada com ficha de EPI</a>
+  </div>
+  {% endif %}
+  <details class="editar-item" {{ 'open' if not p.grupo }}>
+    <summary>{{ 'Registrar retirada sem ficha de EPI' if p.grupo else 'Registrar retirada' }}</summary>
+    <form method="post" action="{{ url_for('pedidos.retirar', pedido_id=p.id) }}" class="formulario">
+      {{ csrf() }}
+      <div class="linha">
+        <label>Quem retirou <input name="retirado_por_nome" required value="{{ p.solicitante }}"></label>
+        <label>Descrição (cargo/função, empresa, obra…) <input name="retirado_descricao" placeholder="Ex.: Encarregado da obra X"></label>
+      </div>
+      <div class="acoes"><button class="btn {{ 'primario' if not p.grupo }}">Marcar como retirado</button></div>
+    </form>
+  </details>
   {% endif %}
 </section>
 {% elif p.status == 'retirado' %}
@@ -283,6 +290,12 @@
   <h2>Retirada {% if p.ressalva_observacao %}<span class="badge amarelo">⚠️ Com ressalva</span>{% endif %}</h2>
   <p><strong>{{ p.retirado_por_nome }}</strong>{% if p.retirado_descricao %} — {{ p.retirado_descricao }}{% endif %}<br>
     em {{ p.retirado_em|hora_br }}{% if p.grupo %} · <a href="{{ url_for('movimentos.comprovante', grupo=p.grupo) }}">Comprovante</a>{% endif %}</p>
+  {% for fe in fichas %}
+    <p style="margin:.4rem 0 0">
+      <a class="btn pequeno" href="{{ url_for('fichas.detalhe', ficha_id=fe.id) }}">📝 Ficha de EPI</a>
+      <span class="badge {{ 'amarelo' if fe.status == 'aguardando' else 'verde' }}">{{ STATUS_FICHA[fe.status] }}</span>
+    </p>
+  {% endfor %}
 </section>
 {% elif p.status == 'cancelado' %}
 <div class="aviso erro">Pedido cancelado em {{ p.cancelado_em|hora_br }}: {{ p.cancelado_motivo }}</div>

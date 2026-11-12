@@ -51,6 +51,13 @@ Compatível tanto com **SQLite local** (`instance/epi.sqlite`) quanto com **Post
 3. **Checklist de separação e baixa automática**: ao marcar todos os itens separados e clicar em **Finalizar pedido**, o sistema valida o saldo e o CA, dá **baixa automática no estoque** e muda o status para **Pronto para retirada**.
 4. **Registro de retirada e comprovante**: registra quem retirou (próprio colaborador, encarregado ou portador), data/hora e emite o comprovante de entrega.
 
+**Ficha de EPI com assinatura (`Registrar retirada com ficha de EPI`)**
+- Na retirada de um pedido pronto, abre a prévia da ficha (mesmo modelo do RH Gestor): escolha o **colaborador que retirou**, ajuste a coluna *Higienizado?* e clique em **Enviar ficha de EPI** (WhatsApp) ou **Imprimir ficha** (assinatura no papel). Os dois botões registram a retirada.
+- Pelo WhatsApp o colaborador recebe um link (vale 7 dias); ao abrir, pede um **código de 5 dígitos** (vale 15 min, 5 tentativas), vê a ficha e assina na tela. Ficam guardados data/hora, IP, aparelho e o SHA-256 do documento.
+- Ficha impressa: depois de colher a assinatura, use **Marcar como assinada em papel** e anexe a foto ou o PDF (guardados em `instance/fichas/`).
+- No perfil do colaborador, a aba **Fichas de EPI assinadas** mostra quantas vezes ele retirou, para quem, e os pedidos dele retirados por outra pessoa. O **Relatório de fichas** imprime todas as fichas com a rubrica do colaborador no rodapé de todas as páginas.
+- Configuração do envio (no `.env` do servidor): `EVOLUTION_API_URL` (ex.: `http://192.168.230.253:8080`), `EVOLUTION_API_KEY` e `EVOLUTION_INSTANCIA`. Opcional: `EPI_FICHA_EMPRESA` (padrão *ABECKER EMPREENDIMENTOS IMOBILIARIOS LTDA*) e `EPI_BASE_URL` para o endereço do link (ex.: `https://epi.abecker.com.br`).
+
 **Finalizar com ressalva → pendência "Aguardando estoque"**
 - Quando algum item não pode ser entregue, o pedido é finalizado com ressalva (baixa só do que foi separado) e, por padrão, os itens que faltaram viram um **pedido complementar** ligado ao original.
 - Esses complementos ficam na fileira **Aguardando estoque** da aba Pedidos, com a situação de cada item (disponível / aguardando). Quando houver saldo para tudo, o card fica verde (**Estoque disponível — pode separar**) e sobe para o topo da fileira; ao registrar uma entrada de estoque, o sistema avisa quais pendências já podem ser separadas.

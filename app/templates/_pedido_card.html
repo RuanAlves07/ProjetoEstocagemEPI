@@ -76,7 +76,7 @@
       </form>
       {% endif %}
     {% else %}
-      <a class="btn {{ 'primario' if p.status in ('em_separacao', 'pronto') and pode_editar }}" href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">
+      <a class="btn {{ 'primario' if p.status in ('em_separacao', 'pronto') and pode_editar }}" href="{{ url_for('fichas.preparar', pedido_id=p.id) if p.status == 'pronto' and pode_editar and p.grupo else url_for('pedidos.detalhe', pedido_id=p.id) }}">
         {{ {'em_separacao': 'Continuar separação', 'pronto': 'Registrar retirada de pedido'}.get(p.status, 'Abrir') if pode_editar else 'Abrir' }}
       </a>
     {% endif %}

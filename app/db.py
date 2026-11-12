@@ -17,6 +17,7 @@ _TABELAS_COM_ID = (
     "recuperacao_senha",
     "emails_enviados",
     "push_inscricoes",
+    "fichas_epi",
 )
 
 
@@ -409,6 +410,11 @@ def _migrar(conn):
     colunas_push = {r["name"] for r in conn.execute("PRAGMA table_info(push_inscricoes)")}
     if "apelido" not in colunas_push:
         conn.execute("ALTER TABLE push_inscricoes ADD COLUMN apelido TEXT")
+
+    colunas_colab = {r["name"] for r in conn.execute("PRAGMA table_info(colaboradores)")}
+    for coluna in ("whatsapp", "cpf", "data_nascimento"):
+        if coluna not in colunas_colab:
+            conn.execute(f"ALTER TABLE colaboradores ADD COLUMN {coluna} TEXT")
 
     # Sincroniza os 22 EPIs e 3 Uniformes oficiais do formulário público se houver catálogo carregado
     _sincronizar_catalogo_formulario_oficial(conn)

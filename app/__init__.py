@@ -55,7 +55,7 @@ def create_app(config=None):
 
     db.init_app(app)
 
-    from . import auth, cadastros, movimentos, painel, filtros, rotas_pedidos, rotas_push
+    from . import auth, cadastros, fichas, movimentos, painel, filtros, rotas_pedidos, rotas_push
     filtros.registrar(app)
     app.register_blueprint(auth.bp)
     app.register_blueprint(painel.bp)
@@ -63,6 +63,7 @@ def create_app(config=None):
     app.register_blueprint(movimentos.bp)
     app.register_blueprint(rotas_pedidos.bp)
     app.register_blueprint(rotas_push.bp)
+    app.register_blueprint(fichas.bp)
 
     @app.route("/favicon.ico")
     def favicon():

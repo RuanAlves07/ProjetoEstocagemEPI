@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% from '_ficha_documento.html' import documento %}
+{% block titulo %}Ficha de EPI · Pedido #{{ p.id|numero_pedido }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Registrar retirada · Pedido #{{ p.id|numero_pedido }}</h1>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('pedidos.detalhe', pedido_id=p.id) }}">← Voltar ao pedido</a>
+  </div>
+</div>
+
+<section class="cartao">
+  <form method="post" action="{{ url_for('fichas.emitir', pedido_id=p.id) }}" id="form-ficha" class="formulario">
+    {{ csrf() }}
+    <div class="linha">
+      <label style="flex:2">
+        <span class="rotulo-campo">Colaborador que retirou <span class="obrigatorio">*</span></span>
+        <select name="colaborador_id" id="sel-colab" required>
+          <option value="">Selecione o colaborador…</option>
+          {% for c in colaboradores %}
+            <option value="{{ c.id }}" {{ 'selected' if colab and c.id == colab.id }}>{{ c.nome }}{% if c.matricula %} · {{ c.matricula }}{% endif %}{% if c.id == p.colaborador_id %} (solicitante){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label style="flex:2">
+        <span class="rotulo-campo">Observação da retirada</span>
+        <input name="retirado_descricao" placeholder="Ex.: Retirou para a equipe da obra X">
+      </label>
+    </div>
+    <p class="nota" style="margin:0">Pedido feito por <strong>{{ p.solicitante }}</strong>{% if p.colaborador_nome and p.colaborador_nome != p.solicitante %} para <strong>{{ p.colaborador_nome }}</strong>{% endif %}. Se outra pessoa retirou, selecione quem retirou: a ficha fica no cadastro de quem retirou e também aparece no cadastro de quem pediu.</p>
+
+    {% if colab %}
+      {% if not colab.whatsapp %}
+        <div class="aviso">{{ colab.nome }} não tem WhatsApp no cadastro. <a href="{{ url_for('cadastros.colaborador_editar', colab_id=colab.id) }}">Cadastrar o número</a> ou use <strong>Imprimir ficha</strong> para colher a assinatura no papel.</div>
+      {% elif not whatsapp_ativo %}
+        <div class="aviso">O envio por WhatsApp ainda não está configurado no servidor. Use <strong>Imprimir ficha</strong> por enquanto.</div>
+      {% endif %}
+      {% if not colab.cpf or not colab.data_nascimento %}
+        <p class="nota">Faltam {{ 'CPF' if not colab.cpf }}{{ ' e ' if not colab.cpf and not colab.data_nascimento }}{{ 'data de nascimento' if not colab.data_nascimento }} no cadastro de {{ colab.nome }}; a ficha sai com “—” nesses campos.</p>
+      {% endif %}
+    {% endif %}
+  </form>
+</section>
+
+{% if colab and doc %}
+  <section class="cartao ficha-previa">
+    <h2 style="margin-top:0">Confira a ficha antes de enviar</h2>
+    <p class="nota">Ajuste a coluna <strong>Higienizado?</strong> se precisar. É exatamente isto que o colaborador vai ver e assinar.</p>
+    {{ documento(doc, editavel=True, form_id='form-ficha') }}
+  </section>
+  <div class="acoes ficha-botoes">
+    <button class="btn primario" form="form-ficha" name="acao" value="enviar"
+            {{ 'disabled' if not colab.whatsapp or not whatsapp_ativo }}>📲 Enviar ficha de EPI</button>
+    <button class="btn" form="form-ficha" name="acao" value="imprimir">🖨️ Imprimir ficha (assinatura no papel)</button>
+  </div>
+  <p class="nota">Os dois botões registram a retirada do pedido. A ficha fica como “Aguardando assinatura” até o colaborador assinar.</p>
+{% elif colab %}
+  <div class="aviso erro">Este pedido não tem itens baixados no estoque, então não há ficha de EPI para montar.</div>
+{% endif %}
+
+<script>
+  document.getElementById("sel-colab").addEventListener("change", function () {
+    const url = new URL(location.href);
+    if (this.value) url.searchParams.set("colaborador_id", this.value); else url.searchParams.delete("colaborador_id");
+    location.href = url;
+  });
+</script>
+{% endblock %}
