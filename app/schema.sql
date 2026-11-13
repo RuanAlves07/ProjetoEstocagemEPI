@@ -312,3 +312,11 @@ CREATE TABLE IF NOT EXISTS modelos_documento (
     criado_em     TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     atualizado_em TEXT
 );
+
+-- Itens genéricos do formulário criados pela tela (somam-se às listas fixas de pedidos.py, na ordem do id)
+CREATE TABLE IF NOT EXISTS itens_genericos_formulario (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome      TEXT NOT NULL UNIQUE,
+    tipo      TEXT NOT NULL DEFAULT 'epi' CHECK (tipo IN ('epi', 'uniforme')),
+    criado_em TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);

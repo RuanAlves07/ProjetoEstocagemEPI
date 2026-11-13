@@ -370,6 +370,39 @@
     </div>
   </form>
 
+  <!-- ITENS GENÉRICOS DO FORMULÁRIO (agrupam os produtos do estoque) -->
+  <section class="cartao editor-bloco" id="bloco-genericos">
+    <div class="editor-badge-topo">🏷️ Criar item genérico do formulário</div>
+    <p class="nota" style="margin-top:0">
+      O item genérico é a opção que o colaborador vê no formulário (ex.: <em>REPELENTE DE INSETOS</em>). Os produtos do estoque
+      se ligam a ele pelo campo <strong>Nome genérico no Formulário</strong> do EPI, e ele pode entrar no padrão dos cargos.
+      Depois de criado, o item não pode ser renomeado nem excluído; para tirá-lo do formulário, desmarque-o na pergunta 4 ou 5.
+    </p>
+    <form method="post" action="{{ url_for('pedidos.form_adicionar_generico') }}" class="formulario">
+      {{ csrf() }}
+      <div class="linha">
+        <label style="flex:2">
+          <span class="rotulo-campo">Nome do item genérico <span class="obrigatorio">*</span></span>
+          <input type="text" name="nome" required minlength="3" placeholder="Ex.: REPELENTE DE INSETOS">
+        </label>
+        <label style="flex:1">
+          <span>Em qual pergunta exibir?</span>
+          <select name="tipo_secao">
+            <option value="epi">4. Equipamento de Proteção Individual (EPI)</option>
+            <option value="vestimenta">5. Vestimenta / Uniforme</option>
+          </select>
+        </label>
+      </div>
+      <div class="acoes"><button type="submit" class="btn primario">+ Criar item genérico</button></div>
+    </form>
+    {% if genericos_criados %}
+    <p class="nota" style="margin-bottom:.3rem"><strong>Itens genéricos criados além dos originais:</strong></p>
+    <ul class="lista-genericos">
+      {% for gi in genericos_criados %}<li>{{ gi.nome }} <small class="suave">· {{ 'Vestimenta' if gi.tipo == 'uniforme' else 'EPI' }} · {{ gi.criado_em|data_br }}</small></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
   <!-- BLOCO RÁPIDO PARA CADASTRAR NOVO EPI OU VESTIMENTA DIRETO NO FORMULÁRIO -->
   <section class="cartao editor-bloco" id="bloco-novo-item-forms" style="margin-bottom:2.5rem">
     <div class="editor-badge-topo">➕ Cadastrar Novo Equipamento (EPI) ou Vestimenta Direto no Formulário</div>

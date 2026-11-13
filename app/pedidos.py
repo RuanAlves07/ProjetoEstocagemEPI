@@ -99,8 +99,11 @@ MOTIVOS_FORMULARIO = [
 ]
 TAMANHOS_UNIFORME = ["M", "G", "GG", "G1", "G2", "G3", "G4", "G5"]
 
-# Itens genéricos oficiais do formulário público (/solicitar) e do seletor "Nome genérico no Formulário"
-ITENS_GENERICOS_EPI_FORMULARIO = [
+# Itens genéricos oficiais do formulário público (/solicitar) e do seletor "Nome genérico no Formulário".
+# O id de cada item é a posição na lista (EPI 90000+i, uniforme 91000+i) e fica gravado no padrão por cargo,
+# então estas listas fixas nunca mudam: itens novos são cadastrados em itens_genericos_formulario e entram
+# no fim da lista (ver atualizar_itens_genericos).
+_GENERICOS_FIXOS_EPI = (
     "ABAFADOR TIPO CONCHA 18DB",
     "ABAFADOR TIPO CONCHA 26DB",
     "AVENTAL DE RASPA SEM EMENDA 1X0,6",
@@ -123,19 +126,61 @@ ITENS_GENERICOS_EPI_FORMULARIO = [
     "SAPATÃO BIDENSIDADE NOBUCK",
     "SAPATÃO CANO BAIXO C/ ELASTICO BICO PVC",
     "BOTINA CANO MÉDIO BIDENSIDADE C/ BICO PVC",
-]
+)
 
-ITENS_GENERICOS_UNIFORME_FORMULARIO = [
+_GENERICOS_FIXOS_UNIFORME = (
     "CALÇA AZUL MARINHO BRIM C/ FAIXA REFLETIVA",
     "CAMISETA MANGA CURTA",
     "CAMISETA MANGA LONGA",
-]
+)
 
+# Atualizadas no lugar (mesmo objeto) para quem importou a lista enxergar os itens cadastrados
+ITENS_GENERICOS_EPI_FORMULARIO = list(_GENERICOS_FIXOS_EPI)
+ITENS_GENERICOS_UNIFORME_FORMULARIO = list(_GENERICOS_FIXOS_UNIFORME)
 TODOS_ITENS_GENERICOS_FORMULARIO = ITENS_GENERICOS_EPI_FORMULARIO + ITENS_GENERICOS_UNIFORME_FORMULARIO
+
+GENERICOS_INICIAIS = (("REPELENTE DE INSETOS", "epi"),)
+
+
+def atualizar_itens_genericos(db):
+    """Recarrega do banco os itens genéricos cadastrados, na ordem em que foram criados (o id depende dela)."""
+    epi, uniforme = list(_GENERICOS_FIXOS_EPI), list(_GENERICOS_FIXOS_UNIFORME)
+    for r in db.execute("SELECT nome, tipo FROM itens_genericos_formulario ORDER BY id"):
+        (uniforme if r["tipo"] == "uniforme" else epi).append(r["nome"])
+    if epi != ITENS_GENERICOS_EPI_FORMULARIO or uniforme != ITENS_GENERICOS_UNIFORME_FORMULARIO:
+        ITENS_GENERICOS_EPI_FORMULARIO[:] = epi
+        ITENS_GENERICOS_UNIFORME_FORMULARIO[:] = uniforme
+        TODOS_ITENS_GENERICOS_FORMULARIO[:] = epi + uniforme
+
+
+def garantir_genericos_iniciais(conn):
+    for nome, tipo in GENERICOS_INICIAIS:
+        if not conn.execute("SELECT 1 FROM itens_genericos_formulario WHERE nome = ?", (nome,)).fetchone():
+            conn.execute("INSERT INTO itens_genericos_formulario (nome, tipo) VALUES (?, ?)", (nome, tipo))
+    if hasattr(conn, "commit"):
+        conn.commit()
+    atualizar_itens_genericos(conn)
+
+
+def criar_item_generico(db, nome, tipo):
+    """Cadastra um item genérico novo no formulário (não dá para excluir: o id dele depende da ordem)."""
+    nome = " ".join((nome or "").split()).upper()
+    tipo = "uniforme" if tipo == "uniforme" else "epi"
+    if len(nome) < 3:
+        raise ErroValidacao("Informe o nome do item genérico.")
+    atualizar_itens_genericos(db)
+    limite = 1000 - len(ITENS_GENERICOS_EPI_FORMULARIO if tipo == "epi" else ITENS_GENERICOS_UNIFORME_FORMULARIO)
+    if limite <= 0:
+        raise ErroValidacao("Limite de itens genéricos atingido.")
+    if normalizar(nome) in {normalizar(n) for n in TODOS_ITENS_GENERICOS_FORMULARIO}:
+        raise ErroValidacao(f"“{nome}” já é um item genérico do formulário.")
+    db.execute("INSERT INTO itens_genericos_formulario (nome, tipo) VALUES (?, ?)", (nome, tipo))
+    atualizar_itens_genericos(db)
+    return nome
 
 
 def catalogo_itens_genericos_formulario(db=None):
-    """Retorna os 22 EPIs e 3 Uniformes genéricos oficiais do formulário, com categoria formal e saldo somado de estoque."""
+    """Retorna os EPIs e Uniformes genéricos do formulário, com categoria formal e saldo somado de estoque."""
     from .caepi import inferir_categoria_e_unidade
     itens = []
     for idx, nome_gen in enumerate(ITENS_GENERICOS_EPI_FORMULARIO):

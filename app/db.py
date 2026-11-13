@@ -181,6 +181,7 @@ def init_db():
         _garantir_base_caepi_inicial(conn)
         _garantir_obras_iniciais(conn)
         _garantir_modelo_ficha(conn)
+        _garantir_genericos_formulario(conn)
         return
     conn.execute("PRAGMA journal_mode = WAL")
     with open(os.path.join(os.path.dirname(__file__), "schema.sql"), encoding="utf-8") as f:
@@ -190,6 +191,13 @@ def init_db():
     _garantir_base_caepi_inicial(conn)
     _garantir_obras_iniciais(conn)
     _garantir_modelo_ficha(conn)
+    _garantir_genericos_formulario(conn)
+
+
+def _garantir_genericos_formulario(conn):
+    """Itens genéricos cadastrados pelo sistema (ex.: repelente) e carga dos cadastrados na tela do formulário."""
+    from . import pedidos
+    pedidos.garantir_genericos_iniciais(conn)
 
 
 def _garantir_modelo_ficha(conn):
@@ -425,7 +433,7 @@ def _migrar(conn):
         if coluna not in colunas_colab:
             conn.execute(f"ALTER TABLE colaboradores ADD COLUMN {coluna} TEXT")
 
-    # Sincroniza os 22 EPIs e 3 Uniformes oficiais do formulário público se houver catálogo carregado
+    # Sincroniza os EPIs e Uniformes genéricos oficiais do formulário público se houver catálogo carregado
     _sincronizar_catalogo_formulario_oficial(conn)
 
     # Migra categorias existentes para os novos nomes formais e padronizados

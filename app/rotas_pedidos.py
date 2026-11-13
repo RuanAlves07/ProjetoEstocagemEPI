@@ -19,6 +19,17 @@ from .util import hoje, limpar, to_int
 bp = Blueprint("pedidos", __name__)
 
 
+@bp.before_app_request
+def _carregar_itens_genericos():
+    """Cada processo do servidor recarrega os itens genéricos cadastrados (outro processo pode ter criado um)."""
+    if request.endpoint == "static":
+        return
+    try:
+        pedidos.atualizar_itens_genericos(get_db())
+    except Exception:
+        current_app.logger.exception("Falha ao carregar os itens genéricos do formulário")
+
+
 def _voltar_form(padrao=None):
     """Destino do campo "voltar". Ignora /pedidos/novos: os cards do aviso são montados por essa
     rota JSON, e voltar para ela mostraria o JSON em vez da página."""
@@ -136,7 +147,7 @@ def _separar_epis_e_vestimentas(epis, agrupar_por_nome=False, incluir_genericos_
     """Separa os itens ativos do estoque em (epis_protecao, vestimentas) como no formulário oficial.
     Quando agrupar_por_nome=True, usa o nome generalizado do formulário (nome_formulario se preenchido)
     e evita repetir o mesmo produto várias vezes quando cadastrado em múltiplos tamanhos/modelos/CAs.
-    Quando incluir_genericos_oficiais=True, garante que os 22 EPIs e 3 Uniformes genéricos oficiais
+    Quando incluir_genericos_oficiais=True, garante que os EPIs e Uniformes genéricos do formulário
     estejam presentes no formulário mesmo sem precisarem existir como linhas avulsas na aba EPIs.
     """
     termos_epi_protecao = ("capa de chuva", "avental", "perneira", "jardineira", "colete")
@@ -738,7 +749,21 @@ def personalizar_formulario():
         obras_ativas=pedidos.obras_ativas(db),
         epis_protecao=epis_protecao,
         vestimentas=vestimentas,
+        genericos_criados=db.execute("SELECT nome, tipo, criado_em FROM itens_genericos_formulario ORDER BY id").fetchall(),
     )
+
+
+@bp.post("/solicitar/personalizar/generico/novo")
+def form_adicionar_generico():
+    """Cria um item genérico do formulário: agrupa os produtos do estoque pelo “Nome genérico no Formulário”."""
+    tipo = "uniforme" if request.form.get("tipo_secao") == "vestimenta" else "epi"
+    try:
+        nome = pedidos.criar_item_generico(get_db(), request.form.get("nome"), tipo)
+        flash(f"Item genérico “{nome}” criado. Inclua-o no padrão dos cargos (Colaboradores › EPIs padrão por cargo) "
+              "e vincule os produtos do estoque a ele pelo campo “Nome genérico no Formulário”.", "ok")
+    except (ErroValidacao, sqlite3.IntegrityError) as e:
+        flash(str(e), "erro")
+    return redirect(url_for("pedidos.personalizar_formulario") + "#bloco-genericos")
 
 
 @bp.post("/solicitar/personalizar/epi/novo")

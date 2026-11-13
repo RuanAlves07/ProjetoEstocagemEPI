@@ -602,6 +602,31 @@ class TestFormularioPorCargo(BasePedidos):
         r = anon.post("/solicitar", data={**self.pedido_base, "epi": ["Luva G"]}, follow_redirects=True)
         self.assertIn("não fazem parte do padrão do seu cargo", r.get_data(as_text=True))
 
+    def test_repelente_e_item_generico_criado_na_tela(self):
+        # o repelente já vem cadastrado, logo depois dos itens fixos (o id não muda os ids já gravados)
+        self.assertEqual(pedidos.ITENS_GENERICOS_EPI_FORMULARIO[22], "REPELENTE DE INSETOS")
+        self.assertEqual(pedidos.ITENS_GENERICOS_EPI_FORMULARIO[0], "ABAFADOR TIPO CONCHA 18DB")
+        self.assertIn("REPELENTE DE INSETOS", self.c.get("/colaboradores/cargos?cargo=Pedreiro").get_data(as_text=True))
+
+        r = self.post("/solicitar/personalizar/generico/novo", {"nome": "  cinto  paraquedista ", "tipo_secao": "epi"},
+                      follow_redirects=True)
+        self.assertIn("Item genérico “CINTO PARAQUEDISTA” criado", r.get_data(as_text=True))
+        r = self.post("/solicitar/personalizar/generico/novo", {"nome": "Repelente de insetos", "tipo_secao": "epi"},
+                      follow_redirects=True)
+        self.assertIn("já é um item genérico", r.get_data(as_text=True))
+        self.post("/solicitar/personalizar/generico/novo", {"nome": "Japona térmica", "tipo_secao": "vestimenta"})
+        self.assertEqual(pedidos.ITENS_GENERICOS_EPI_FORMULARIO[23], "CINTO PARAQUEDISTA")
+        self.assertEqual(pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO[3], "JAPONA TÉRMICA")
+        html = self.c.get("/solicitar/personalizar").get_data(as_text=True)
+        self.assertIn("CINTO PARAQUEDISTA", html)
+        self.assertIn("JAPONA TÉRMICA", html)
+
+        # no padrão do cargo, o colaborador consegue pedir o repelente pelo formulário público
+        self.definir_cargo(self.joao, "Pedreiro", [self.luva, 90022])
+        anon = self.app.test_client()
+        r_ok = anon.post("/solicitar", data={**self.pedido_base, "epi": ["REPELENTE DE INSETOS"]}, follow_redirects=True)
+        self.assertIn("enviada com sucesso", r_ok.get_data(as_text=True))
+
     def test_publico_recusa_item_generico_fora_do_padrao_do_cargo(self):
         # 1. Configura cargo "Pedreiro" para o colaborador João apenas com "LUVA DE ALGODAO MESCLA 6 FIOS" (id sintético 90009)
         with self.app.app_context():
