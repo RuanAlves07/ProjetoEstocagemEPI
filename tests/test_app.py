@@ -1398,3 +1398,69 @@ class TestModelosDocumento(BaseFicha):
             self.assertEqual(get_db().execute("SELECT status FROM pedidos WHERE id = ?", (ped,)).fetchone()[0],
                              "retirado")
         self.assertEqual(self.ficha()["pedido_id"], ped)
+
+
+class TestImportarColaboradores(Base):
+    CSV = (
+        "Matricula;Nome;Celular;Nome Empresa;Nome Setor;Nome Cargo;Regional;Data Nascimento;CPF\n"
+        "5900002;ADILSON GIESE;47 99270-5632;CMB;Rocada;Lider de Jardinagem;;19/12/1975;890.554.629-34\n"
+        ";CARLOS EVANGELISTA;47 9919-1806;CMB;Maquinas Pesadas;Operador de Escavadeira III;;07/08/1987;061.727.039-27\n"
+        "5900003;FULANO CPF RUIM;123;CMB;Obras;Servente;;31/02/1990;111.111.111-11\n"
+        ";;;CMB;;;;;\n"
+        "5900002;REPETIDO;;CMB;;;;;\n"
+    )
+
+    def setUp(self):
+        super().setUp()
+        self.setup_admin()
+        self.antigo = self.criar_colab("Adilson Giese", setor="")
+
+    def enviar(self, texto, codificacao="utf-8"):
+        from io import BytesIO
+        return self.post("/colaboradores/importar",
+                         {"arquivo": (BytesIO(texto.encode(codificacao)), "colaboradores.csv")},
+                         content_type="multipart/form-data")
+
+    def colab(self, nome):
+        with self.app.app_context():
+            return get_db().execute("SELECT * FROM colaboradores WHERE nome = ?", (nome,)).fetchone()
+
+    def test_previa_e_confirmacao(self):
+        self.assertIn("Importar colaboradores", self.c.get("/colaboradores").get_data(as_text=True))
+        r = self.enviar(self.CSV)
+        html = r.get_data(as_text=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Colunas ignoradas: Nome Empresa, Regional", html)
+        self.assertIn("2 novo(s)", html)
+        self.assertIn("1 a atualizar", html)
+        self.assertIn("1 não será(ão) importado(s)", html)
+        self.assertIn("CPF “111.111.111-11” é inválido", html)
+        self.assertIn("31/02/1990", html)
+        self.assertIsNone(self.colab("CARLOS EVANGELISTA"))  # a prévia não grava nada
+
+        conteudo = re.search(r'<textarea name="conteudo" hidden>(.*?)</textarea>', html, re.S).group(1)
+        import html as html_mod
+        r = self.post("/colaboradores/importar", {"confirmar": "1", "conteudo": html_mod.unescape(conteudo)})
+        self.assertEqual(r.status_code, 302)
+
+        adilson = self.colab("Adilson Giese")  # encontrado pelo nome: mantém o nome, ganha os dados do RH
+        self.assertEqual(adilson["id"], self.antigo)
+        self.assertEqual((adilson["matricula"], adilson["setor"], adilson["funcao"]),
+                         ("5900002", "Rocada", "Lider de Jardinagem"))
+        self.assertEqual((adilson["whatsapp"], adilson["cpf"], adilson["data_nascimento"]),
+                         ("5547992705632", "89055462934", "1975-12-19"))
+        carlos = self.colab("CARLOS EVANGELISTA")
+        self.assertIsNone(carlos["matricula"])
+        self.assertEqual(carlos["whatsapp"], "554799191806")
+        fulano = self.colab("FULANO CPF RUIM")
+        self.assertEqual((fulano["cpf"], fulano["whatsapp"], fulano["data_nascimento"]), (None, None, None))
+        self.assertIsNone(self.colab("REPETIDO"))
+
+        # importar de novo não duplica (Carlos, sem matrícula, é achado pelo CPF)
+        html = self.enviar(self.CSV, "cp1252").get_data(as_text=True)
+        self.assertIn("0 novo(s)", html)
+        self.assertIn("0 a atualizar", html)
+
+    def test_arquivo_sem_coluna_nome(self):
+        html = self.enviar("a;b\n1;2\n").get_data(as_text=True)
+        self.assertIn("Não achei a coluna “Nome”", html)

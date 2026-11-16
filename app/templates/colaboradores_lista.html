@@ -5,7 +5,8 @@
   <h1>Colaboradores</h1>
   <div class="acoes">
     <a class="btn" href="{{ url_for('cadastros.cargos_padrao') }}">⚙️ Padrão de EPIs por Cargo</a>
-    {% if pode_editar %}<a class="btn primario" href="{{ url_for('cadastros.colaborador_novo') }}">Novo colaborador</a>{% endif %}
+    {% if pode_editar %}<a class="btn" href="{{ url_for('cadastros.colaboradores_importar') }}">📥 Importar colaboradores</a>
+    <a class="btn primario" href="{{ url_for('cadastros.colaborador_novo') }}">Novo colaborador</a>{% endif %}
   </div>
 </div>
 

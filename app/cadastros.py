@@ -8,7 +8,7 @@ from flask import (Blueprint, Response, abort, flash, g, jsonify, redirect, rend
                    request, url_for)
 from werkzeug.security import generate_password_hash
 
-from . import caepi, email_service, estoque, pedidos, whatsapp
+from . import caepi, email_service, estoque, importacao_colaboradores, pedidos, whatsapp
 from .auth import (
     CATALOGO_PERMISSOES,
     SENHA_MIN,
@@ -867,6 +867,37 @@ def colaborador_novo():
             flash(e, "erro")
     return render_template("colaborador_form.html", colab=dados, novo=True,
                            setores=_setores(), cargos=_cargos(db))
+
+
+@bp.route("/colaboradores/importar", methods=["GET", "POST"])
+@escrita_required
+def colaboradores_importar():
+    """Importa colaboradores de um CSV: o envio do arquivo mostra a prévia; a confirmação grava."""
+    db = get_db()
+    if request.method == "GET":
+        return render_template("colaboradores_importar.html", analise=None)
+    ic = importacao_colaboradores
+    try:
+        if request.form.get("confirmar") == "1":
+            texto = request.form.get("conteudo") or ""
+            resumo = ic.aplicar(db, ic.analisar(db, texto))
+            partes = [f"{resumo['novo']} cadastrado(s)", f"{resumo['atualizar']} atualizado(s)"]
+            if resumo["igual"]:
+                partes.append(f"{resumo['igual']} sem mudança")
+            if resumo["erro"]:
+                partes.append(f"{resumo['erro']} linha(s) não importada(s)")
+            flash("Importação concluída: " + ", ".join(partes) + ".", "ok")
+            return redirect(url_for("cadastros.colaboradores_lista"))
+        arquivo = request.files.get("arquivo")
+        if not arquivo or not arquivo.filename:
+            raise ic.ErroArquivo("Escolha o arquivo CSV com os colaboradores.")
+        texto = ic.decodificar(arquivo.read())
+        analise = ic.analisar(db, texto)
+    except ic.ErroArquivo as e:
+        flash(str(e), "erro")
+        return render_template("colaboradores_importar.html", analise=None)
+    return render_template("colaboradores_importar.html", analise=analise, conteudo=texto,
+                           nome_arquivo=arquivo.filename, ROTULOS=ic.ROTULOS)
 
 
 @bp.route("/colaboradores/<int:colab_id>/editar", methods=["GET", "POST"])

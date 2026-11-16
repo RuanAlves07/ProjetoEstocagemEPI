@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import csrf with context %}
+{% block titulo %}Importar colaboradores{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Importar colaboradores</h1>
+  <div class="acoes"><a class="btn" href="{{ url_for('cadastros.colaboradores_lista') }}">← Colaboradores</a></div>
+</div>
+
+{% if not analise %}
+<section class="cartao estreito-card">
+  <form method="post" enctype="multipart/form-data" class="formulario">
+    {{ csrf() }}
+    <label>Arquivo CSV
+      <input type="file" name="arquivo" accept=".csv,text/csv" required>
+    </label>
+    <p class="nota">A primeira linha precisa ter os títulos das colunas. São usadas
+      <strong>Matrícula, Nome, Celular, Setor, Cargo, Data Nascimento e CPF</strong>
+      (ex.: “Nome Setor”, “Nome Cargo”); as outras colunas, como Nome Empresa e Regional, são ignoradas.
+      O separador pode ser ponto e vírgula ou vírgula.</p>
+    <p class="nota">Quem já está cadastrado é encontrado pela matrícula, pelo CPF ou pelo nome e só tem atualizados
+      os campos preenchidos no arquivo. Antes de gravar aparece uma prévia para conferir.</p>
+    <div class="acoes"><button class="btn primario">Ver prévia</button></div>
+  </form>
+</section>
+{% else %}
+{% set r = analise.resumo %}
+<section class="cartao">
+  <h2 style="margin-top:0">Prévia de {{ nome_arquivo }}</h2>
+  <p>
+    <span class="badge verde">{{ r.novo }} novo(s)</span>
+    <span class="badge amarelo">{{ r.atualizar }} a atualizar</span>
+    <span class="badge">{{ r.igual }} sem mudança</span>
+    {% if r.erro %}<span class="badge vermelho">{{ r.erro }} não será(ão) importado(s)</span>{% endif %}
+    {% if r.avisos %}<span class="badge amarelo">{{ r.avisos }} com aviso</span>{% endif %}
+  </p>
+  {% if analise.ignoradas %}<p class="nota">Colunas ignoradas: {{ analise.ignoradas|join(', ') }}.</p>{% endif %}
+  <form method="post" class="acoes">
+    {{ csrf() }}
+    <input type="hidden" name="confirmar" value="1">
+    <textarea name="conteudo" hidden>{{ conteudo }}</textarea>
+    {% if r.novo or r.atualizar %}
+      <button class="btn primario">Confirmar importação</button>
+    {% else %}
+      <span class="suave">Nada para gravar: todos já estão atualizados.</span>
+    {% endif %}
+    <a class="btn" href="{{ url_for('cadastros.colaboradores_importar') }}">Escolher outro arquivo</a>
+  </form>
+</section>
+
+<section class="cartao"><div class="tabela-rolavel"><table>
+  <thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>Matrícula</th><th>Setor</th><th>Cargo</th><th>WhatsApp</th><th>CPF</th><th>Nascimento</th></tr></thead>
+  <tbody>
+  {% for ln in analise.linhas %}
+    {% set d = ln.dados %}
+    <tr>
+      <td>{{ ln.linha }}</td>
+      <td>
+        {% if ln.acao == 'novo' %}<span class="badge verde">Novo</span>
+        {% elif ln.acao == 'atualizar' %}<span class="badge amarelo">Atualizar</span>
+        {% elif ln.acao == 'igual' %}<span class="badge">Sem mudança</span>
+        {% else %}<span class="badge vermelho">Não importa</span>{% endif %}
+      </td>
+      <td>
+        {% if ln.colab %}<a href="{{ url_for('cadastros.colaborador_ficha', colab_id=ln.colab.id) }}">{{ d.nome }}</a>{% else %}{{ d.nome or '—' }}{% endif %}
+        {% if ln.erro %}<br><small class="erro-texto">{{ ln.erro }}</small>{% endif %}
+        {% for a in ln.avisos %}<br><small class="suave">⚠️ {{ a }}</small>{% endfor %}
+        {% if ln.mudancas %}<br><small class="suave">Muda: {% for campo, antes, depois in ln.mudancas %}{{ ROTULOS[campo] }}{% if antes %} ({{ antes }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}</small>{% endif %}
+      </td>
+      <td>{{ d.matricula or '—' }}</td>
+      <td>{{ d.setor or '—' }}</td>
+      <td>{{ d.funcao or '—' }}</td>
+      <td style="white-space:nowrap">{{ d.whatsapp|whatsapp if d.whatsapp else '—' }}</td>
+      <td style="white-space:nowrap">{{ d.cpf|cpf if d.cpf else '—' }}</td>
+      <td style="white-space:nowrap">{{ d.data_nascimento|data_br if d.data_nascimento else '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div></section>
+{% endif %}
+{% endblock %}
