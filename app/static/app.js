@@ -38,6 +38,56 @@ document.addEventListener('click', function (ev) {
   }
 });
 
+// ---------------------------------------------------------------- Máscaras de campo
+
+// <input data-mascara="telefone|cpf">: formata enquanto digita e mantém o cursor no mesmo dígito
+(function () {
+  const mascaras = {
+    telefone: function (d) {
+      if (d.length > 11 && d.startsWith('55')) d = d.slice(2);   // colado com o DDI: +55 47 99999-8888
+      d = d.slice(0, 11);
+      if (!d) return '';
+      if (d.length <= 2) return '(' + d;
+      const meio = d.length === 11 ? 5 : 4;
+      const resto = d.slice(2);
+      return '(' + d.slice(0, 2) + ') ' + (resto.length > meio ? resto.slice(0, meio) + '-' + resto.slice(meio) : resto);
+    },
+    cpf: function (d) {
+      d = d.slice(0, 11);
+      return d.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+              .replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
+    },
+  };
+
+  function aplicar(campo, apagando) {
+    const formatar = mascaras[campo.dataset.mascara];
+    if (!formatar) return;
+    let cursor = campo.selectionStart == null ? campo.value.length : campo.selectionStart;
+    // Backspace logo depois de "(", ")", " " ou "-" não apaga dígito: apaga o dígito anterior
+    if (apagando && campo.value.replace(/\D/g, '') === (campo.dataset.digitos || '')) {
+      const antes = campo.value.slice(0, cursor).replace(/\d(?=\D*$)/, '');
+      campo.value = antes + campo.value.slice(cursor);
+      cursor = antes.length;
+    }
+    const digitosAntes = campo.value.slice(0, cursor).replace(/\D/g, '').length;
+    const novo = formatar(campo.value.replace(/\D/g, ''));
+    campo.dataset.digitos = novo.replace(/\D/g, '');
+    if (novo === campo.value) return;
+    campo.value = novo;
+    if (document.activeElement !== campo) return;
+    let pos = 0, vistos = 0;
+    while (pos < novo.length && vistos < digitosAntes) { if (/\d/.test(novo[pos])) vistos++; pos++; }
+    campo.setSelectionRange(pos, pos);
+  }
+
+  document.addEventListener('input', function (ev) {
+    if (ev.target.matches && ev.target.matches('input[data-mascara]')) {
+      aplicar(ev.target, ev.inputType === 'deleteContentBackward');
+    }
+  });
+  document.querySelectorAll('input[data-mascara]').forEach(aplicar);
+})();
+
 // ---------------------------------------------------------------- Pedidos
 
 // "Mais tarde" volta para a página em que o usuário está
