@@ -1497,3 +1497,17 @@ class TestExcluirEPI(Base):
         with self.app.app_context():
             self.assertIsNotNone(get_db().execute("SELECT 1 FROM epis WHERE id = ?", (epi,)).fetchone())
         self.assertIn("não pode ser excluído", self.c.get(f"/epis/{epi}").get_data(as_text=True))
+
+
+class TestCargoNoCadastro(Base):
+    def test_cargo_e_escolhido_da_lista_de_cargos(self):
+        self.setup_admin()
+        with self.app.app_context():
+            get_db().execute("INSERT INTO cargo_epis_padrao (cargo, epi_id) VALUES ('Soldador', 1)")
+        html = self.c.get("/colaboradores/novo").get_data(as_text=True)
+        self.assertIn('<select name="funcao">', html)
+        self.assertIn('<option value="Soldador"', html)
+        self.post("/colaboradores/novo", {"nome": "Ana", "funcao": "Soldador"})
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT funcao FROM colaboradores WHERE nome = 'Ana'").fetchone()[0],
+                             "Soldador")

@@ -38,8 +38,10 @@
     <summary>{{ 'Trocar cargo / função do colaborador' if colab.funcao else '⚠️ Alocar cargo / função para puxar os EPIs padrão automaticamente' }}</summary>
     <form method="post" action="{{ url_for('cadastros.colaborador_cargo', colab_id=colab.id) }}" class="linha-form">
       {{ csrf() }}
-      <input name="funcao" list="lista-cargos-ficha" value="{{ colab.funcao or '' }}" placeholder="Selecione ou digite o cargo (ex.: Pedreiro, Motorista…)" required style="min-width:260px">
-      <datalist id="lista-cargos-ficha">{% for cg in cargos %}<option value="{{ cg }}">{% endfor %}</datalist>
+      <select name="funcao" required style="min-width:260px" aria-label="Cargo / Função">
+        <option value="">Selecione o cargo…</option>
+        {% for cg in cargos %}<option value="{{ cg }}" {{ 'selected' if cg == colab.funcao }}>{{ cg }}</option>{% endfor %}
+      </select>
       <button class="btn primario pequeno">Alocar cargo e puxar padrão</button>
       <a class="btn pequeno" href="{{ url_for('cadastros.cargos_padrao', cargo=colab.funcao or '') }}">Gerenciar todos os cargos</a>
     </form>

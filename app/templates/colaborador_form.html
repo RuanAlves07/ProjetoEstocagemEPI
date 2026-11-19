@@ -17,9 +17,13 @@
     </div>
     <datalist id="setores">{% for s in setores %}<option value="{{ s }}">{% endfor %}</datalist>
     <label>Cargo / Função
-      <input name="funcao" list="lista-cargos" value="{{ colab.funcao or '' }}" placeholder="Selecione ou digite o cargo (ex.: Pedreiro, Motorista…)">
+      <select name="funcao">
+        <option value="">— Sem cargo —</option>
+        {% for cg in cargos %}<option value="{{ cg }}" {{ 'selected' if cg == colab.funcao }}>{{ cg }}</option>{% endfor %}
+        {% if colab.funcao and colab.funcao not in cargos %}<option value="{{ colab.funcao }}" selected>{{ colab.funcao }}</option>{% endif %}
+      </select>
+      <small class="nota">Os cargos vêm da aba <a href="{{ url_for('cadastros.cargos_padrao') }}">Padrão de EPIs por cargo</a>; cadastre lá um cargo novo.</small>
     </label>
-    <datalist id="lista-cargos">{% for cg in cargos %}<option value="{{ cg }}">{% endfor %}</datalist>
     <div class="linha">
       <label style="flex:1">WhatsApp
         <input name="whatsapp" type="tel" inputmode="tel" data-mascara="telefone" value="{{ colab.whatsapp|whatsapp if colab.whatsapp else '' }}" placeholder="(47) 99999-8888">
