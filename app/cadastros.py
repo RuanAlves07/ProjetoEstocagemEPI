@@ -434,6 +434,28 @@ def epi_editar(epi_id):
                            itens_form_uniforme=pedidos.ITENS_GENERICOS_UNIFORME_FORMULARIO)
 
 
+@bp.post("/epis/<int:epi_id>/excluir")
+@escrita_required
+def epi_excluir(epi_id):
+    """Exclui um EPI que nunca foi movimentado. Com histórico (entradas, entregas...) ele só pode ser inativado,
+    senão o saldo, os relatórios e as fichas perderiam a referência."""
+    db = get_db()
+    epi = db.execute("SELECT id, nome, tamanho FROM epis WHERE id = ?", (epi_id,)).fetchone() or abort(404)
+    nome = epi["nome"] + (f" ({epi['tamanho']})" if epi["tamanho"] else "")
+    movs = db.execute("SELECT COUNT(*) FROM movimentacoes WHERE epi_id = ?", (epi_id,)).fetchone()[0]
+    if movs:
+        flash(f"“{nome}” tem {movs} movimentação(ões) no histórico e não pode ser excluído. "
+              "Para tirá-lo de uso, edite o EPI e desmarque “EPI ativo”.", "erro")
+        return redirect(url_for("cadastros.epi_detalhe", epi_id=epi_id))
+    # itens de pedido voltam a "não identificado"; padrões, solicitações e apelidos do EPI saem junto
+    db.execute("UPDATE pedido_itens SET epi_id = NULL, separado = 0 WHERE epi_id = ?", (epi_id,))
+    for tabela in ("epi_apelidos", "cargo_epis_padrao", "colaborador_epis_padrao", "colaborador_epis_solicitados"):
+        db.execute(f"DELETE FROM {tabela} WHERE epi_id = ?", (epi_id,))
+    db.execute("DELETE FROM epis WHERE id = ?", (epi_id,))
+    flash(f"EPI “{nome}” excluído.", "ok")
+    return redirect(url_for("cadastros.epis_lista"))
+
+
 @bp.get("/epis/<int:epi_id>")
 def epi_detalhe(epi_id):
     db = get_db()
@@ -453,7 +475,9 @@ def epi_detalhe(epi_id):
         )
         and e["id"] != epi_id
     ]
-    return render_template("epi_detalhe.html", epi=epi, movs=movs, outros_tamanhos=outros_tamanhos)
+    tem_historico = bool(db.execute("SELECT 1 FROM movimentacoes WHERE epi_id = ? LIMIT 1", (epi_id,)).fetchone())
+    return render_template("epi_detalhe.html", epi=epi, movs=movs, outros_tamanhos=outros_tamanhos,
+                           tem_historico=tem_historico)
 
 
 # ---------------------------------------------------------- fornecedores

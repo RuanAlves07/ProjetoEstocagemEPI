@@ -195,7 +195,7 @@ def _permissao_exigida_rota(endpoint, metodo):
         return "gerenciar_pedidos"
     if endpoint in ("cadastros.epis_lista", "cadastros.epi_detalhe", "cadastros.epis_csv", "cadastros.api_caepi"):
         return "ver_epis"
-    if endpoint in ("cadastros.epi_novo", "cadastros.epi_editar", "cadastros.epis_sincronizar_caepi"):
+    if endpoint in ("cadastros.epi_novo", "cadastros.epi_editar", "cadastros.epi_excluir", "cadastros.epis_sincronizar_caepi"):
         return "editar_epis"
     if endpoint in ("cadastros.fornecedores_lista", "cadastros.fornecedor_detalhe"):
         return "ver_fornecedores"

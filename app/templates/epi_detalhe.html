@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import status, ca, tabela_movs with context %}
+{% from '_macros.html' import status, ca, tabela_movs, csrf with context %}
 {% block titulo %}{{ epi.nome }}{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
@@ -9,7 +9,17 @@
       <a class="btn primario" href="{{ url_for('movimentos.movimentar', tipo='saida', epi_id=epi.id) }}">Entregar</a>
       <a class="btn" href="{{ url_for('movimentos.movimentar', tipo='entrada', epi_id=epi.id) }}">Entrada</a>
     {% endif %}
-    {% if pode_editar %}<a class="btn" href="{{ url_for('cadastros.epi_editar', epi_id=epi.id) }}">Editar</a>{% endif %}
+    {% if pode_editar %}<a class="btn" href="{{ url_for('cadastros.epi_editar', epi_id=epi.id) }}">Editar</a>
+      {% if tem_historico %}
+        <button type="button" class="btn perigo-suave" disabled
+                title="Este EPI tem movimentações no histórico. Para tirá-lo de uso, edite e desmarque “EPI ativo”.">Excluir</button>
+      {% else %}
+        <form method="post" action="{{ url_for('cadastros.epi_excluir', epi_id=epi.id) }}" data-nome="{{ epi.nome }}"
+              onsubmit="return confirm('Excluir o EPI “' + this.dataset.nome + '”? Ele também sai dos padrões por cargo e dos pedidos em que foi identificado. Não dá para desfazer.')">
+          {{ csrf() }}<button class="btn perigo-suave">Excluir</button>
+        </form>
+      {% endif %}
+    {% endif %}
   </div>
 </div>
 <div class="indicadores">

@@ -1464,3 +1464,36 @@ class TestImportarColaboradores(Base):
     def test_arquivo_sem_coluna_nome(self):
         html = self.enviar("a;b\n1;2\n").get_data(as_text=True)
         self.assertIn("Não achei a coluna “Nome”", html)
+
+
+class TestExcluirEPI(Base):
+    def setUp(self):
+        super().setUp()
+        self.setup_admin()
+
+    def test_exclui_epi_sem_historico_e_limpa_vinculos(self):
+        epi = self.criar_epi("Luva Teste")
+        colab = self.criar_colab()
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO cargo_epis_padrao (cargo, epi_id) VALUES ('Pedreiro', ?)", (epi,))
+            db.execute("INSERT INTO colaborador_epis_padrao (colaborador_id, epi_id) VALUES (?, ?)", (colab, epi))
+            db.execute("INSERT INTO epi_apelidos (chave, epi_id) VALUES ('luva|', ?)", (epi,))
+        html = self.c.get(f"/epis/{epi}").get_data(as_text=True)
+        self.assertIn(f"/epis/{epi}/excluir", html)
+        r = self.post(f"/epis/{epi}/excluir")
+        self.assertEqual(r.status_code, 302)
+        with self.app.app_context():
+            db = get_db()
+            self.assertIsNone(db.execute("SELECT 1 FROM epis WHERE id = ?", (epi,)).fetchone())
+            for t in ("cargo_epis_padrao", "colaborador_epis_padrao", "epi_apelidos"):
+                self.assertIsNone(db.execute(f"SELECT 1 FROM {t} WHERE epi_id = ?", (epi,)).fetchone(), t)
+
+    def test_epi_com_movimentacao_nao_e_excluido(self):
+        epi = self.criar_epi("Luva Usada")
+        self.mov("entrada", epi, 10)
+        self.assertNotIn(f"/epis/{epi}/excluir", self.c.get(f"/epis/{epi}").get_data(as_text=True))
+        self.post(f"/epis/{epi}/excluir")
+        with self.app.app_context():
+            self.assertIsNotNone(get_db().execute("SELECT 1 FROM epis WHERE id = ?", (epi,)).fetchone())
+        self.assertIn("não pode ser excluído", self.c.get(f"/epis/{epi}").get_data(as_text=True))
