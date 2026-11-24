@@ -16,6 +16,8 @@
   </div>
 </div>
 
+{% include '_card_fotos_pendentes.html' %}
+
 <div class="indicadores indicadores-painel">
   <a class="indicador {{ 'alerta' if pedidos_a_atender }}" href="{{ url_for('pedidos.lista') }}">
     <span class="valor">{{ pedidos_a_atender }}</span>

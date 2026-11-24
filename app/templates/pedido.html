@@ -280,7 +280,7 @@
   {% for fe in fichas %}
     <p style="margin:.4rem 0 0">
       <a class="btn pequeno" href="{{ url_for('fichas.detalhe', ficha_id=fe.id) }}">📝 Ficha de EPI</a>
-      <span class="badge {{ 'amarelo' if fe.status == 'aguardando' else 'verde' }}">{{ STATUS_FICHA[fe.status] }}</span>
+      {% set sit = situacao_ficha(fe) %}<span class="badge {{ sit[1] }}">{{ sit[0] }}</span>
     </p>
   {% endfor %}
 </section>

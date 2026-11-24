@@ -285,7 +285,7 @@
             {% else %}Retirou para si{% endif %}
           </td>
           <td class="num">{{ fe.qtd_itens }}</td>
-          <td><span class="badge {{ 'amarelo' if fe.status == 'aguardando' else 'verde' }}">{{ STATUS_FICHA[fe.status] }}</span></td>
+          <td><span class="badge {{ fe.situacao[1] }}">{{ fe.situacao[0] }}</span></td>
           <td class="num"><a class="btn pequeno" href="{{ url_for('fichas.detalhe', ficha_id=fe.id) }}">Abrir</a></td>
         </tr>
       {% else %}

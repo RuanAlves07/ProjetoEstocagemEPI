@@ -428,6 +428,13 @@ def _migrar(conn):
     if "apelido" not in colunas_push:
         conn.execute("ALTER TABLE push_inscricoes ADD COLUMN apelido TEXT")
 
+    colunas_ficha = {r["name"] for r in conn.execute("PRAGMA table_info(fichas_epi)")}
+    for coluna, tipo in (("fotos_exigidas", "INTEGER NOT NULL DEFAULT 0"), ("foto_colaborador", "TEXT"),
+                         ("foto_sacola", "TEXT"), ("fotos_por", "INTEGER REFERENCES usuarios (id)"),
+                         ("fotos_em", "TEXT")):
+        if coluna not in colunas_ficha:
+            conn.execute(f"ALTER TABLE fichas_epi ADD COLUMN {coluna} {tipo}")
+
     colunas_colab = {r["name"] for r in conn.execute("PRAGMA table_info(colaboradores)")}
     for coluna in ("whatsapp", "cpf", "data_nascimento"):
         if coluna not in colunas_colab:

@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
 {% from '_macros.html' import csrf with context %}
 {% from '_ficha_documento.html' import documento %}
+{% from '_fotos_entrega.html' import campos_fotos %}
 {% block titulo %}Ficha de EPI #{{ f.doc.numero }}{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
   <h1>Ficha de EPI · Pedido #{{ f.doc.numero }}
-    <span class="badge {{ {'aguardando': 'amarelo', 'assinada': 'verde', 'assinada_papel': 'verde'}[f.status] }}">{{ STATUS_FICHA[f.status] }}</span>
+    <span class="badge {{ f.situacao[1] }}">{{ f.situacao[0] }}</span>
   </h1>
   <div class="acoes">
     {% if f.pedido_id %}<a class="btn" href="{{ url_for('pedidos.detalhe', pedido_id=f.pedido_id) }}">Pedido</a>{% endif %}
@@ -30,6 +31,23 @@
     <p class="nota" style="margin:.6rem 0 0">Código de integridade do documento (SHA-256): <code style="overflow-wrap:anywhere">{{ f.documento_hash }}</code>{% if f.assinado_aparelho %} · Aparelho: {{ f.assinado_aparelho|aparelho }}{% endif %}</p>
   {% endif %}
 </section>
+
+{% if f.fotos_exigidas and (f.fotos_faltando or pode_editar) %}
+<section class="cartao {{ 'card-fotos' if f.fotos_faltando }}" id="fotos">
+  <h2 style="margin-top:0">📸 Fotos da entrega
+    {% if f.fotos_faltando %}<span class="badge amarelo">Faltam {{ f.fotos_faltando|length }}</span>{% else %}<span class="badge verde">Completas</span>{% endif %}</h2>
+  {% if f.fotos_faltando %}
+    <p class="nota" style="margin-top:0">Obrigatórias para concluir a ficha.{% if f.separado_por_nome %} Separado por <strong>{{ f.separado_por_nome }}</strong>{% if g.usuario and f.separado_por == g.usuario.id %} (você){% endif %}.{% endif %}</p>
+  {% endif %}
+  {% if pode_editar %}
+  <form method="post" action="{{ url_for('fichas.fotos', ficha_id=f.id) }}" enctype="multipart/form-data" class="formulario">
+    {{ csrf() }}
+    {{ campos_fotos(ficha=f) }}
+    <div class="acoes"><button class="btn primario">Salvar fotos</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
 
 {% if pode_editar and f.status != 'assinada' %}
 <section class="cartao">
@@ -65,6 +83,6 @@
 {% endif %}
 
 <section class="cartao ficha-previa">
-  {{ documento(f.doc, assinatura=f.assinatura, papel=f.status == 'assinada_papel') }}
+  {{ documento(f.doc, assinatura=f.assinatura, papel=f.status == 'assinada_papel', ficha=f) }}
 </section>
 {% endblock %}

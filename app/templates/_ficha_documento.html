@@ -1,6 +1,6 @@
 {# Documento da ficha de EPI, no layout do RH Gestor; textos, campos e colunas vêm do modelo (doc.layout).
    editavel: mostra a coluna "Higienizado?" como seleção, ligada ao formulário form_id. #}
-{% macro documento(doc, assinatura=None, editavel=False, form_id='', papel=False) %}
+{% macro documento(doc, assinatura=None, editavel=False, form_id='', papel=False, ficha=None) %}
 {% set L = layout_ficha(doc) %}
 <div class="ficha-doc">
   <h2 class="ficha-titulo">{{ L.titulo }}</h2>
@@ -57,5 +57,20 @@
     <div class="ficha-assinatura-nome">{{ L.assinatura_nome }}</div>
     {% if papel and not assinatura %}<small class="ficha-obs">Assinado em papel</small>{% endif %}
   </div>
+  {% if ficha and ficha.fotos_exigidas %}
+  <div class="ficha-fotos">
+    <h3 class="ficha-fotos-titulo">Registro fotográfico da entrega</h3>
+    <div class="ficha-fotos-grade">
+      {% for campo, rotulo in [('foto_sacola', 'Sacola de EPI entregue'), ('foto_colaborador', 'Colaborador com a sacola de EPI')] %}
+      <figure class="ficha-foto ficha-foto-{{ campo }}">
+        {% if ficha[campo] %}<img src="{{ url_for('fichas.foto', ficha_id=ficha.id, campo=campo) }}" alt="{{ rotulo }}">
+        {% else %}<div class="ficha-foto-vazia">Foto pendente</div>{% endif %}
+        <figcaption>{{ rotulo }}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    {% if ficha.fotos_em %}<p class="ficha-obs">Fotos registradas em {{ ficha.fotos_em|hora_br }}{% if ficha.fotos_por_nome %} por {{ ficha.fotos_por_nome }}{% endif %}.</p>{% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endmacro %}

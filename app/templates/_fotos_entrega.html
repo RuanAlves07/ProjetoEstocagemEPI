@@ -1,0 +1,21 @@
+{# Campos das 2 fotos da entrega. form_id liga os campos a um formulário que está em outro lugar da página. #}
+{% macro campos_fotos(form_id='', ficha=None) %}
+<div class="fotos-entrega">
+  {% for campo, rotulo, dica in [
+      ('foto_colaborador', 'Colaborador com a sacola de EPI', 'Foto de quem retirou segurando a sacola com os equipamentos.'),
+      ('foto_sacola', 'Sacola de EPI em destaque', 'Foto de perto da sacola, mostrando os itens entregues.')] %}
+  <label class="foto-campo">
+    <span class="rotulo-campo">{{ rotulo }}{% if ficha and ficha[campo] %} <span class="badge verde">✓ enviada</span>{% endif %}</span>
+    <small class="suave">{{ dica }}</small>
+    {% if ficha and ficha[campo] %}
+      <img class="foto-previa" src="{{ url_for('fichas.foto', ficha_id=ficha.id, campo=campo) }}" alt="{{ rotulo }}">
+    {% else %}
+      <img class="foto-previa" alt="Prévia: {{ rotulo }}" hidden>
+    {% endif %}
+    <input type="file" name="{{ campo }}" accept="image/*" capture="environment" data-foto
+           {% if form_id %}form="{{ form_id }}"{% endif %}>
+    {% if ficha and ficha[campo] %}<small class="suave">Escolha outra foto só se quiser trocar esta.</small>{% endif %}
+  </label>
+  {% endfor %}
+</div>
+{% endmacro %}

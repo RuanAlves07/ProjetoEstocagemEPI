@@ -292,6 +292,11 @@ CREATE TABLE IF NOT EXISTS fichas_epi (
     anexo_arquivo       TEXT,            -- foto/PDF da ficha assinada em papel, em instance/fichas/
     anexo_nome          TEXT,
     papel_por           INTEGER REFERENCES usuarios (id),
+    fotos_exigidas      INTEGER NOT NULL DEFAULT 0,  -- 1 = ficha precisa das 2 fotos da entrega (fichas novas)
+    foto_colaborador    TEXT,            -- foto do colaborador com a sacola de EPI, em instance/fichas/
+    foto_sacola         TEXT,            -- foto da sacola de EPI em destaque, em instance/fichas/
+    fotos_por           INTEGER REFERENCES usuarios (id),
+    fotos_em            TEXT,
     criado_por          INTEGER NOT NULL REFERENCES usuarios (id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );

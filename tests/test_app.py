@@ -1511,3 +1511,75 @@ class TestCargoNoCadastro(Base):
         with self.app.app_context():
             self.assertEqual(get_db().execute("SELECT funcao FROM colaboradores WHERE nome = 'Ana'").fetchone()[0],
                              "Soldador")
+
+
+class TestFotosEntrega(BaseFicha):
+    PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+           b"\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82")
+
+    def foto(self, nome="foto.png"):
+        from io import BytesIO
+        return (BytesIO(self.PNG), nome)
+
+    def test_retirada_sem_fotos_fica_pendente_e_aparece_no_card(self):
+        ped = self.pedido_pronto()
+        r = self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir"},
+                      content_type="multipart/form-data")
+        self.assertEqual(r.status_code, 302)
+        f = self.ficha()
+        self.assertEqual((f["fotos_exigidas"], f["foto_colaborador"], f["foto_sacola"]), (1, None, None))
+        painel = self.c.get("/").get_data(as_text=True)
+        self.assertIn("Fotos da entrega pendentes", painel)
+        self.assertIn("separado por você", painel)
+        self.assertIn("Fotos da entrega pendentes", self.c.get("/pedidos").get_data(as_text=True))
+        detalhe = self.c.get(f"/fichas/{f['id']}").get_data(as_text=True)
+        self.assertIn("Pendente: assinatura e fotos", detalhe)
+        self.assertIn("Foto pendente", detalhe)
+
+        # uma foto por vez; a segunda conclui as fotos
+        self.post(f"/fichas/{f['id']}/fotos", {"foto_sacola": self.foto()}, content_type="multipart/form-data")
+        self.assertIn("Ainda falta", self.c.get(f"/fichas/{f['id']}").get_data(as_text=True))
+        self.post(f"/fichas/{f['id']}/fotos", {"foto_colaborador": self.foto()}, content_type="multipart/form-data")
+        f = self.ficha(f["id"])
+        self.assertTrue(f["foto_colaborador"] and f["foto_sacola"])
+        self.assertNotIn("Fotos da entrega pendentes", self.c.get("/").get_data(as_text=True))
+        r = self.c.get(f"/fichas/{f['id']}/foto/foto_sacola")
+        self.assertEqual((r.status_code, r.mimetype), (200, "image/png"))
+        r.close()
+        self.assertEqual(self.c.get(f"/fichas/{f['id']}/foto/outra").status_code, 404)
+        imprimir = self.c.get(f"/fichas/{f['id']}/imprimir").get_data(as_text=True)
+        self.assertIn("Registro fotográfico da entrega", imprimir)
+        self.assertIn(f"/fichas/{f['id']}/foto/foto_colaborador", imprimir)
+
+        # assinada em papel + fotos = concluída
+        self.post(f"/fichas/{f['id']}/papel", {}, content_type="multipart/form-data")
+        self.assertIn("Assinada em papel · concluída", self.c.get(f"/fichas/{f['id']}").get_data(as_text=True))
+
+    def test_fotos_tiradas_na_tela_da_retirada(self):
+        ped = self.pedido_pronto()
+        self.assertIn('name="foto_sacola"', self.c.get(f"/pedidos/{ped}/ficha").get_data(as_text=True))
+        self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir",
+                                            "foto_colaborador": self.foto(), "foto_sacola": self.foto("s.jpg")},
+                  content_type="multipart/form-data")
+        f = self.ficha()
+        self.assertTrue(f["foto_colaborador"].endswith(".png") and f["foto_sacola"].endswith(".jpg"))
+        self.assertNotIn("Fotos da entrega pendentes", self.c.get("/").get_data(as_text=True))
+
+    def test_arquivo_que_nao_e_foto_e_recusado(self):
+        ped = self.pedido_pronto()
+        self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir"},
+                  content_type="multipart/form-data")
+        f = self.ficha()
+        from io import BytesIO
+        self.post(f"/fichas/{f['id']}/fotos", {"foto_sacola": (BytesIO(b"%PDF"), "x.pdf")},
+                  content_type="multipart/form-data")
+        self.assertIsNone(self.ficha(f["id"])["foto_sacola"])
+
+    def test_ficha_antiga_nao_exige_fotos(self):
+        ped = self.pedido_pronto()
+        self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir"})
+        f = self.ficha()
+        with self.app.app_context():
+            get_db().execute("UPDATE fichas_epi SET fotos_exigidas = 0 WHERE id = ?", (f["id"],))
+        self.assertNotIn("Fotos da entrega pendentes", self.c.get("/").get_data(as_text=True))
+        self.assertNotIn("Registro fotográfico", self.c.get(f"/fichas/{f['id']}").get_data(as_text=True))

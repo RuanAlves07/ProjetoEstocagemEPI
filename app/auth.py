@@ -181,7 +181,7 @@ def _permissao_exigida_rota(endpoint, metodo):
         return ("gerenciar_pedidos", "editar_epis")
     if endpoint == "pedidos.solicitar_gestor":
         return "solicitar_fora_funcao"
-    if endpoint in ("fichas.detalhe", "fichas.imprimir", "fichas.anexo"):
+    if endpoint in ("fichas.detalhe", "fichas.imprimir", "fichas.anexo", "fichas.foto"):
         return ("ver_pedidos", "ver_colaboradores")
     if endpoint == "fichas.relatorio_colaborador":
         return "ver_colaboradores"

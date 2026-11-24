@@ -56,7 +56,7 @@
                 <td>#{{ f.doc.numero }}</td>
                 <td>{% for it in f.doc.itens %}{{ it.quantidade }}× {{ it.descricao }}{{ '; ' if not loop.last }}{% endfor %}</td>
                 <td>{{ f.benef_nome if f.benef_nome and f.beneficiario_id != f.colaborador_id else 'Para si' }}</td>
-                <td>{{ STATUS_FICHA[f.status] }}{% if f.assinado_em %} em {{ f.assinado_em|hora_br }}{% endif %}</td>
+                <td>{{ f.situacao[0] }}{% if f.assinado_em %} · assinada em {{ f.assinado_em|hora_br }}{% endif %}</td>
               </tr>
             {% else %}
               <tr><td colspan="5">Nenhuma ficha de EPI emitida para este colaborador.</td></tr>
@@ -78,7 +78,7 @@
         {% endif %}
         {% for f in fichas %}
         <section class="folha">
-          {{ documento(f.doc, assinatura=f.assinatura, papel=f.status == 'assinada_papel') }}
+          {{ documento(f.doc, assinatura=f.assinatura, papel=f.status == 'assinada_papel', ficha=f) }}
           {% if f.status == 'assinada' %}
             <p class="ficha-obs">Assinado eletronicamente em {{ f.assinado_em|hora_br }} após validação de código enviado ao WhatsApp {{ f.whatsapp_numero|whatsapp }} · IP {{ f.assinado_ip or '—' }} · SHA-256 {{ f.documento_hash[:16] }}…</p>
           {% endif %}

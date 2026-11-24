@@ -28,6 +28,14 @@ ANEXO_MAX_BYTES = 10 * 1024 * 1024
 ANEXO_TIPOS = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
                ".pdf": "application/pdf"}
 
+FOTO_MAX_BYTES = 10 * 1024 * 1024
+FOTO_TIPOS = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+# fotos obrigatórias da entrega, tiradas por quem separou (ou outra pessoa do almoxarifado)
+FOTOS_ENTREGA = (
+    ("foto_colaborador", "Colaborador com a sacola de EPI"),
+    ("foto_sacola", "Sacola de EPI em destaque"),
+)
+
 STATUS_FICHA = {
     "aguardando": "Aguardando assinatura",
     "assinada": "Assinada pelo WhatsApp",
@@ -128,27 +136,91 @@ def _documento_json(doc):
     return json.dumps(doc, ensure_ascii=False, sort_keys=True)
 
 
+def fotos_faltando(f):
+    """Rótulos das fotos da entrega que ainda faltam (vazio quando a ficha não exige fotos)."""
+    if not f["fotos_exigidas"]:
+        return []
+    return [rotulo for campo, rotulo in FOTOS_ENTREGA if not f[campo]]
+
+
+def pendencias(f):
+    """O que falta para a ficha ficar concluída: assinatura do colaborador e/ou fotos da entrega."""
+    faltam = []
+    if f["status"] == "aguardando":
+        faltam.append("assinatura")
+    if fotos_faltando(f):
+        faltam.append("fotos")
+    return faltam
+
+
+def situacao(f):
+    """(rótulo, classe do badge) da ficha para listas e cabeçalhos."""
+    faltam = pendencias(f)
+    if not faltam:
+        return STATUS_FICHA.get(f["status"], f["status"]) + (" · concluída" if f["fotos_exigidas"] else ""), "verde"
+    if "assinatura" not in faltam:  # já assinada, só faltam as fotos
+        return STATUS_FICHA.get(f["status"], f["status"]) + " · faltam as fotos", "amarelo"
+    return "Pendente: " + " e ".join(faltam), "amarelo"
+
+
+@bp.app_template_global("situacao_ficha")
+def _situacao_ficha_global(f):
+    return situacao(f)
+
+
+@bp.app_template_global("fotos_pendentes")
+def _fotos_pendentes_global():
+    return fichas_com_fotos_pendentes(get_db())
+
+
 def carregar_ficha(db, ficha_id):
     f = db.execute(
         """SELECT f.*, c.nome AS colab_nome, c.whatsapp AS colab_whatsapp, b.nome AS benef_nome,
-                  u.nome AS criado_por_nome, up.nome AS papel_por_nome
+                  u.nome AS criado_por_nome, up.nome AS papel_por_nome, uf.nome AS fotos_por_nome,
+                  p.finalizado_por AS separado_por, us.nome AS separado_por_nome
            FROM fichas_epi f
            JOIN colaboradores c ON c.id = f.colaborador_id
            LEFT JOIN colaboradores b ON b.id = f.beneficiario_id
            JOIN usuarios u ON u.id = f.criado_por
            LEFT JOIN usuarios up ON up.id = f.papel_por
+           LEFT JOIN usuarios uf ON uf.id = f.fotos_por
+           LEFT JOIN pedidos p ON p.id = f.pedido_id
+           LEFT JOIN usuarios us ON us.id = p.finalizado_por
            WHERE f.id = ?""", (ficha_id,)).fetchone()
     if not f:
         return None
     f = dict(f)
     f["doc"] = json.loads(f["documento"])
+    f["fotos_faltando"] = fotos_faltando(f)
+    f["pendencias"] = pendencias(f)
+    f["situacao"] = situacao(f)
     return f
+
+
+def fichas_com_fotos_pendentes(db):
+    """Fichas de retiradas que ainda não têm as 2 fotos da entrega (card do almoxarifado)."""
+    linhas = db.execute(
+        """SELECT f.id, f.pedido_id, f.status, f.criado_em, f.fotos_exigidas, f.foto_colaborador, f.foto_sacola,
+                  c.nome AS colab_nome, p.finalizado_por AS separado_por, us.nome AS separado_por_nome
+           FROM fichas_epi f
+           JOIN colaboradores c ON c.id = f.colaborador_id
+           LEFT JOIN pedidos p ON p.id = f.pedido_id
+           LEFT JOIN usuarios us ON us.id = p.finalizado_por
+           WHERE f.fotos_exigidas = 1 AND (f.foto_colaborador IS NULL OR f.foto_sacola IS NULL)
+           ORDER BY f.id""").fetchall()
+    resultado = []
+    for r in linhas:
+        r = dict(r)
+        r["fotos_faltando"] = fotos_faltando(r)
+        resultado.append(r)
+    return resultado
 
 
 def fichas_do_colaborador(db, colab_id):
     """Fichas em que o colaborador retirou ou em que o pedido era para ele (retirado por outra pessoa)."""
     linhas = db.execute(
         """SELECT f.id, f.pedido_id, f.status, f.criado_em, f.assinado_em, f.documento,
+                  f.fotos_exigidas, f.foto_colaborador, f.foto_sacola,
                   f.colaborador_id, f.beneficiario_id, c.nome AS colab_nome, b.nome AS benef_nome
            FROM fichas_epi f
            JOIN colaboradores c ON c.id = f.colaborador_id
@@ -162,6 +234,7 @@ def fichas_do_colaborador(db, colab_id):
         r["numero"] = doc.get("numero")
         r["qtd_itens"] = sum(int(i.get("quantidade") or 0) for i in doc.get("itens", []))
         r["retirou"] = r["colaborador_id"] == colab_id
+        r["situacao"] = situacao(r)
         resultado.append(r)
     return resultado
 
@@ -232,10 +305,18 @@ def emitir(pedido_id):
         return redirect(url_for("pedidos.detalhe", pedido_id=pedido_id))
     texto = _documento_json(doc)
     cur = db.execute(
-        """INSERT INTO fichas_epi (pedido_id, colaborador_id, beneficiario_id, documento, documento_hash, criado_por)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO fichas_epi (pedido_id, colaborador_id, beneficiario_id, documento, documento_hash, criado_por,
+                                  fotos_exigidas)
+           VALUES (?, ?, ?, ?, ?, ?, 1)""",
         (pedido_id, colab["id"], pedido["colaborador_id"], texto, _hash(texto), g.usuario["id"]))
     ficha_id = cur.lastrowid
+    erros_foto = gravar_fotos(db, ficha_id, request.files)
+    for e in erros_foto:
+        flash(e, "erro")
+    faltam_fotos = fotos_faltando(carregar_ficha(db, ficha_id))
+    if faltam_fotos:
+        flash("Faltam as fotos da entrega (" + ", ".join(faltam_fotos).lower() + "). "
+              "Elas ficam pendentes no card “Fotos da entrega” para quem separou o pedido.", "alerta")
     try:
         email_service.notificar_evento_pedido(db, pedido_id, "retirado", ator_nome=g.usuario["nome"])
     except Exception:
@@ -277,7 +358,7 @@ def _enviar_link(db, ficha_id):
 @bp.get("/fichas/<int:ficha_id>")
 def detalhe(ficha_id):
     f = carregar_ficha(get_db(), ficha_id) or abort(404)
-    return render_template("ficha_detalhe.html", f=f, STATUS_FICHA=STATUS_FICHA,
+    return render_template("ficha_detalhe.html", f=f, STATUS_FICHA=STATUS_FICHA, FOTOS_ENTREGA=FOTOS_ENTREGA,
                            numero_mascarado=whatsapp.formatar_numero(f["colab_whatsapp"]))
 
 
@@ -303,6 +384,80 @@ def reenviar(ficha_id):
         else:
             flash(f"Não foi possível enviar: {erro}", "erro")
     return redirect(url_for("fichas.detalhe", ficha_id=ficha_id))
+
+
+def _salvar_foto(ficha_id, campo, arquivo):
+    """Grava a foto em instance/fichas/ e devolve o nome do arquivo. Levanta ErroValidacao se for inválida."""
+    ext = os.path.splitext(arquivo.filename or "")[1].lower()
+    if ext not in FOTO_TIPOS:
+        raise ErroValidacao("Envie as fotos da entrega em JPG, PNG ou WEBP.")
+    conteudo = arquivo.read(FOTO_MAX_BYTES + 1)
+    if len(conteudo) > FOTO_MAX_BYTES:
+        raise ErroValidacao("A foto passa de 10 MB. Tire outra foto ou reduza o tamanho.")
+    if not conteudo:
+        raise ErroValidacao("A foto chegou vazia. Tente de novo.")
+    nome = f"ficha_{ficha_id}_{campo}_{secrets.token_hex(6)}{ext}"
+    with open(os.path.join(_pasta_anexos(), nome), "wb") as saida:
+        saida.write(conteudo)
+    return nome
+
+
+def gravar_fotos(db, ficha_id, arquivos):
+    """Grava as fotos da entrega enviadas (uma ou as duas). Uma foto nova substitui a anterior. Devolve os erros."""
+    f = db.execute("SELECT * FROM fichas_epi WHERE id = ?", (ficha_id,)).fetchone()
+    erros, novas = [], {}
+    for campo, rotulo in FOTOS_ENTREGA:
+        arquivo = arquivos.get(campo)
+        if not arquivo or not arquivo.filename:
+            continue
+        try:
+            novas[campo] = _salvar_foto(ficha_id, campo, arquivo)
+        except ErroValidacao as e:
+            erros.append(f"{rotulo}: {e}")
+    if novas:
+        sets = ", ".join(f"{campo} = ?" for campo in novas)
+        db.execute(f"UPDATE fichas_epi SET {sets}, fotos_por = ?, fotos_em = ? WHERE id = ?",
+                   (*novas.values(), g.usuario["id"], _agora(), ficha_id))
+        for campo in novas:
+            if f[campo]:
+                try:
+                    os.remove(os.path.join(_pasta_anexos(), os.path.basename(f[campo])))
+                except OSError:
+                    pass
+    return erros
+
+
+@bp.post("/fichas/<int:ficha_id>/fotos")
+@escrita_required
+def fotos(ficha_id):
+    db = get_db()
+    carregar_ficha(db, ficha_id) or abort(404)
+    if not any(request.files.get(campo) and request.files[campo].filename for campo, _ in FOTOS_ENTREGA):
+        flash("Escolha ou tire as fotos da entrega antes de enviar.", "erro")
+        return redirect(url_for("fichas.detalhe", ficha_id=ficha_id))
+    for e in gravar_fotos(db, ficha_id, request.files):
+        flash(e, "erro")
+    f = carregar_ficha(db, ficha_id)
+    if f["fotos_faltando"]:
+        flash("Foto salva. Ainda falta: " + ", ".join(f["fotos_faltando"]).lower() + ".", "alerta")
+    elif not f["pendencias"]:
+        flash("Fotos da entrega salvas. A ficha está concluída.", "ok")
+    else:
+        flash("Fotos da entrega salvas. Falta a assinatura do colaborador.", "ok")
+    return redirect(url_for("fichas.detalhe", ficha_id=ficha_id))
+
+
+@bp.get("/fichas/<int:ficha_id>/foto/<campo>")
+def foto(ficha_id, campo):
+    if campo not in dict(FOTOS_ENTREGA):
+        abort(404)
+    f = carregar_ficha(get_db(), ficha_id) or abort(404)
+    if not f[campo]:
+        abort(404)
+    caminho = os.path.join(_pasta_anexos(), os.path.basename(f[campo]))
+    if not os.path.exists(caminho):
+        abort(404)
+    return send_file(caminho, mimetype=FOTO_TIPOS.get(os.path.splitext(caminho)[1].lower()))
 
 
 def _pasta_anexos():

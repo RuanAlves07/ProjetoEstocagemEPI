@@ -38,6 +38,44 @@ document.addEventListener('click', function (ev) {
   }
 });
 
+// ---------------------------------------------------------------- Fotos da entrega
+// Reduz a foto do celular (até 1600 px, JPEG) antes de enviar e mostra a prévia ao lado do campo.
+(function () {
+  const LADO_MAX = 1600;
+
+  async function reduzir(arquivo) {
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(arquivo, { imageOrientation: "from-image" });
+    } catch (e) {
+      return arquivo; // formato que o navegador não abre (ex.: HEIC): vai como está
+    }
+    const escala = Math.min(1, LADO_MAX / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * escala);
+    canvas.height = Math.round(bitmap.height * escala);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(ok => canvas.toBlob(ok, "image/jpeg", 0.85));
+    if (!blob) return arquivo;
+    const nome = (arquivo.name || "foto").replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], nome, { type: "image/jpeg" });
+  }
+
+  document.addEventListener("change", async e => {
+    const campo = e.target;
+    if (!campo.matches("input[type=file][data-foto]") || !campo.files.length) return;
+    const original = campo.files[0];
+    const previa = campo.closest(".foto-campo")?.querySelector("img.foto-previa");
+    if (previa) { previa.src = URL.createObjectURL(original); previa.hidden = false; }
+    const reduzida = await reduzir(original);
+    if (reduzida !== original) {
+      const dt = new DataTransfer();
+      dt.items.add(reduzida);
+      campo.files = dt.files;
+    }
+  });
+})();
+
 // ---------------------------------------------------------------- Máscaras de campo
 
 // <input data-mascara="telefone|cpf">: formata enquanto digita e mantém o cursor no mesmo dígito

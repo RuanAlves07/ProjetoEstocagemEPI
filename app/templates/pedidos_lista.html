@@ -86,6 +86,7 @@
   </details>
 </div>
 {% endif %}
+{% include '_card_fotos_pendentes.html' %}
 <div class="abas">
   <a class="{{ 'ativa' if aba == 'abertos' }}" href="{{ url_for('pedidos.lista') }}">{% set em_andamento = pedidos_a_atender - (qtd_aguardando or 0) %}Em andamento{% if em_andamento > 0 %} <span class="contador">{{ em_andamento }}</span>{% endif %}</a>
   <a class="{{ 'ativa' if aba == 'aguardando' }}" href="{{ url_for('pedidos.lista', aba='aguardando') }}"

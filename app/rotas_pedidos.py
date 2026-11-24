@@ -1052,7 +1052,8 @@ def detalhe(pedido_id):
         if pedido["grupo"] else []
     return render_template(
         "pedido.html", p=pedido, movs=movs, STATUS=pedidos.STATUS,
-        fichas=db.execute("SELECT id, status FROM fichas_epi WHERE pedido_id = ? ORDER BY id", (pedido_id,)).fetchall(),
+        fichas=db.execute("SELECT id, status, fotos_exigidas, foto_colaborador, foto_sacola FROM fichas_epi "
+                          "WHERE pedido_id = ? ORDER BY id", (pedido_id,)).fetchall(),
         STATUS_FICHA=STATUS_FICHA,
         epis=estoque.epis_com_saldo(db),
         colaboradores=db.execute(

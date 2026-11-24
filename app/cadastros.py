@@ -1707,6 +1707,7 @@ _HISTORICO_USUARIO = (
     ("colaborador_epis_solicitados", "usuario_id"),
     ("fichas_epi", "criado_por"),
     ("fichas_epi", "papel_por"),
+    ("fichas_epi", "fotos_por"),
 )
 
 

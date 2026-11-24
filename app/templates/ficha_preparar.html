@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% from '_macros.html' import csrf with context %}
 {% from '_ficha_documento.html' import documento %}
+{% from '_fotos_entrega.html' import campos_fotos %}
 {% block titulo %}Ficha de EPI · Pedido #{{ p.id|numero_pedido }}{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
@@ -11,7 +12,7 @@
 </div>
 
 <section class="cartao">
-  <form method="post" action="{{ url_for('fichas.emitir', pedido_id=p.id) }}" id="form-ficha" class="formulario">
+  <form method="post" action="{{ url_for('fichas.emitir', pedido_id=p.id) }}" id="form-ficha" class="formulario" enctype="multipart/form-data">
     {{ csrf() }}
     <div class="linha">
       <label style="flex:2">
@@ -56,12 +57,18 @@
     {% if not doc.itens %}<div class="aviso">Nenhum item deste pedido foi baixado do estoque. A ficha registra a retirada com a tabela de itens vazia.</div>{% endif %}
     {{ documento(doc, editavel=True, form_id='form-ficha') }}
   </section>
+  <section class="cartao">
+    <h2 style="margin-top:0">📸 Fotos da entrega</h2>
+    <p class="nota" style="margin-top:0">São obrigatórias para concluir a ficha. Se estiver com o celular aqui, tire agora;
+      se não, elas ficam pendentes no card “Fotos da entrega” para quem separou o pedido.</p>
+    {{ campos_fotos(form_id='form-ficha') }}
+  </section>
   <div class="acoes ficha-botoes">
     <button class="btn primario" form="form-ficha" name="acao" value="enviar"
             {{ 'disabled' if not colab.whatsapp or not whatsapp_ativo }}>📲 Enviar ficha de EPI</button>
     <button class="btn" form="form-ficha" name="acao" value="imprimir">🖨️ Imprimir ficha (assinatura no papel)</button>
   </div>
-  <p class="nota">Os dois botões registram a retirada do pedido. A ficha fica como “Aguardando assinatura” até o colaborador assinar.</p>
+  <p class="nota">Os dois botões registram a retirada do pedido. A ficha só fica concluída quando tiver a assinatura do colaborador e as 2 fotos da entrega.</p>
 {% endif %}
 
 <script>

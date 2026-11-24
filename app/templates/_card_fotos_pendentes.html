@@ -1,0 +1,23 @@
+{# Card das fichas que ainda não têm as 2 fotos da entrega. Quem separou o pedido vê as dele primeiro, em destaque. #}
+{% if tem_perm('gerenciar_pedidos') %}
+{% set pendentes = fotos_pendentes() %}
+{% if pendentes %}
+{% set uid = usuario.id if usuario else None %}
+{% set minhas = pendentes|selectattr('separado_por', 'equalto', uid)|list %}
+<section class="cartao card-fotos" id="card-fotos">
+  <h2 style="margin:0">📸 Fotos da entrega pendentes <span class="contador">{{ pendentes|length }}</span></h2>
+  <p class="nota" style="margin:.2rem 0 0">Cada retirada precisa de 2 fotos: o colaborador com a sacola e a sacola em destaque.
+    {% if minhas %}<strong>{{ minhas|length }} {{ 'é sua' if minhas|length == 1 else 'são suas' }}</strong> (você separou).{% endif %}</p>
+  <ul>
+    {% for fp in (minhas + pendentes|rejectattr('separado_por', 'equalto', uid)|list) %}
+    <li class="{{ 'minha' if fp.separado_por == uid }}">
+      <span>Pedido #{{ fp.pedido_id|numero_pedido if fp.pedido_id else '—' }} · {{ fp.colab_nome }}
+        <small class="suave">· {{ fp.criado_em|hora_br }}{% if fp.separado_por_nome %} · separado por {{ 'você' if fp.separado_por == uid else fp.separado_por_nome }}{% endif %}
+          · falta: {{ fp.fotos_faltando|join(', ')|lower }}</small></span>
+      <a class="btn pequeno primario" href="{{ url_for('fichas.detalhe', ficha_id=fp.id) }}#fotos">📸 Tirar fotos</a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
