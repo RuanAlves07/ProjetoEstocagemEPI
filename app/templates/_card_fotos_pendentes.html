@@ -13,7 +13,7 @@
     <li class="{{ 'minha' if fp.separado_por == uid }}">
       <span>Pedido #{{ fp.pedido_id|numero_pedido if fp.pedido_id else '—' }} · {{ fp.colab_nome }}
         <small class="suave">· {{ fp.criado_em|hora_br }}{% if fp.separado_por_nome %} · separado por {{ 'você' if fp.separado_por == uid else fp.separado_por_nome }}{% endif %}
-          · falta: {{ fp.fotos_faltando|join(', ')|lower }}</small></span>
+          · falta: {{ fp.fotos_faltando|join('; ') }}</small></span>
       <a class="btn pequeno primario" href="{{ url_for('fichas.detalhe', ficha_id=fp.id) }}#fotos">📸 Tirar fotos</a>
     </li>
     {% endfor %}

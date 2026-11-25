@@ -1,0 +1,61 @@
+{# Termo de responsabilidade de quem levou o pedido para o destinatário (ficha com portador). #}
+{% macro termo_documento(f) %}
+<div class="ficha-doc termo-doc">
+  <h2 class="ficha-titulo">TERMO DE RESPONSABILIDADE PELA RETIRADA DE EPI</h2>
+  <table class="ficha-tabela">
+    <tr><th>Quem retirou</th><th>Matrícula</th><th>CPF</th><th>Setor / Função</th></tr>
+    <tr><td>{{ f.portador_nome|upper }}</td><td>{{ f.portador_matricula or '—' }}</td><td>{{ f.portador_cpf|cpf if f.portador_cpf else '—' }}</td>
+        <td>{{ f.portador_setor or '—' }}{% if f.portador_funcao %} / {{ f.portador_funcao }}{% endif %}</td></tr>
+  </table>
+  <table class="ficha-tabela">
+    <tr><th>Destinatário</th><th>Matrícula</th><th>Pedido</th><th>Data da retirada</th></tr>
+    <tr><td>{{ f.colab_nome|upper }}</td><td>{{ f.doc.colaborador.matricula or '—' }}</td><td>#{{ f.doc.numero }}</td>
+        <td>{{ (f.termo_assinado_em or f.criado_em)|hora_br }}</td></tr>
+  </table>
+  <table class="ficha-tabela ficha-itens">
+    <thead><tr><th class="ficha-desc">Item</th><th>CA</th><th>Qtd.</th></tr></thead>
+    <tbody>
+    {% for it in f.doc.itens %}
+      <tr><td class="ficha-desc">{{ it.descricao|upper }}</td><td>{{ it.ca or '—' }}</td><td class="centro">{{ it.quantidade }} {{ it.unidade or '' }}</td></tr>
+    {% else %}
+      <tr><td colspan="3" class="centro">Nenhum item foi baixado do estoque neste pedido.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="ficha-declaracao">
+    <p>Eu, {{ f.portador_nome|upper }}, declaro que retirei no RH os itens de EPI listados acima, do pedido #{{ f.doc.numero }},
+      para entregar a {{ f.colab_nome|upper }}. Fico responsável pela guarda e pela entrega desses itens até que o destinatário
+      os receba, e me comprometo a devolvê-los ao RH caso não consiga entregar.</p>
+  </div>
+  <div class="ficha-assinatura">
+    <div class="ficha-assinatura-img">{% if f.termo_assinatura %}<img src="{{ f.termo_assinatura }}" alt="Assinatura de {{ f.portador_nome }}">{% endif %}</div>
+    <div class="ficha-assinatura-nome">{{ f.portador_nome|upper }}</div>
+    {% if f.termo_assinado_em %}<small class="ficha-obs">Assinado na tela do RH em {{ f.termo_assinado_em|hora_br }}</small>{% endif %}
+  </div>
+  <p class="ficha-obs termo-entrega">
+    {% if f.status == 'assinada' %}✅ Entrega confirmada por {{ f.colab_nome }} ao assinar a ficha de EPI em {{ f.assinado_em|hora_br }}.
+    {% elif f.status == 'assinada_papel' %}✅ Entrega confirmada: ficha de EPI assinada em papel por {{ f.colab_nome }}.
+    {% else %}Entrega ainda não confirmada por {{ f.colab_nome }}.{% endif %}
+  </p>
+  {{ fotos_entrega(f) }}
+</div>
+{% endmacro %}
+
+{# Registro fotográfico da entrega: a sacola em destaque e quem retirou segurando a sacola. #}
+{% macro fotos_entrega(ficha) %}
+{% if ficha and ficha.fotos_exigidas %}
+<div class="ficha-fotos">
+  <h3 class="ficha-fotos-titulo">Registro fotográfico da entrega</h3>
+  <div class="ficha-fotos-grade">
+    {% for campo, rotulo in [('foto_sacola', 'Sacola de EPI entregue'), ('foto_colaborador', 'Quem retirou, com a sacola de EPI')] %}
+    <figure class="ficha-foto ficha-foto-{{ campo }}">
+      {% if ficha[campo] %}<img src="{{ url_for('fichas.foto', ficha_id=ficha.id, campo=campo) }}" alt="{{ rotulo }}">
+      {% else %}<div class="ficha-foto-vazia">Foto pendente</div>{% endif %}
+      <figcaption>{{ rotulo }}</figcaption>
+    </figure>
+    {% endfor %}
+  </div>
+  {% if ficha.fotos_em %}<p class="ficha-obs">Fotos registradas em {{ ficha.fotos_em|hora_br }}{% if ficha.fotos_por_nome %} por {{ ficha.fotos_por_nome }}{% endif %}.</p>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}

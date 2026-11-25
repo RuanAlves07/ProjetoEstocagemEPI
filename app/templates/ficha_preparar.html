@@ -16,7 +16,7 @@
     {{ csrf() }}
     <div class="linha">
       <label style="flex:2">
-        <span class="rotulo-campo">Colaborador que retirou <span class="obrigatorio">*</span></span>
+        <span class="rotulo-campo">Para quem é o pedido (assina a ficha) <span class="obrigatorio">*</span></span>
         <select name="colaborador_id" id="sel-colab" required>
           <option value="">Selecione o colaborador…</option>
           {% for c in colaboradores %}
@@ -37,7 +37,44 @@
         <input name="retirado_descricao" placeholder="Ex.: Retirou para a equipe da obra X">
       </label>
     </div>
-    <p class="nota" style="margin:0">Pedido feito por <strong>{{ p.solicitante }}</strong>{% if p.colaborador_nome and p.colaborador_nome != p.solicitante %} para <strong>{{ p.colaborador_nome }}</strong>{% endif %}. Se outra pessoa retirou, selecione quem retirou: a ficha fica no cadastro de quem retirou e também aparece no cadastro de quem pediu.</p>
+    <p class="nota" style="margin:0">Pedido feito por <strong>{{ p.solicitante }}</strong>{% if p.colaborador_nome and p.colaborador_nome != p.solicitante %} para <strong>{{ p.colaborador_nome }}</strong>{% endif %}.</p>
+
+    {% if colab %}
+    <fieldset class="quem-retira">
+      <legend class="rotulo-campo">Quem está retirando agora?</legend>
+      <label class="check"><input type="radio" name="quem_retira" value="destinatario" checked> {{ colab.nome }} está retirando</label>
+      <label class="check"><input type="radio" name="quem_retira" value="outro"> Outra pessoa vai levar até {{ colab.nome }}</label>
+    </fieldset>
+
+    <div id="bloco-portador" class="bloco-portador" hidden>
+      <label>
+        <span class="rotulo-campo">Quem está levando <span class="obrigatorio">*</span></span>
+        <select name="portador_id" id="sel-portador">
+          <option value="">Selecione quem está levando…</option>
+          {% for c in colaboradores if c.id != colab.id %}
+            <option value="{{ c.id }}">{{ c.nome }}{% if c.matricula %} · {{ c.matricula }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="termo-previa">
+        <strong>Termo de responsabilidade pela retirada</strong>
+        <p>Eu, <strong id="termo-nome">_____</strong>, declaro que retirei no RH os itens de EPI do pedido #{{ p.id|numero_pedido }}
+          listados na ficha abaixo, para entregar a <strong>{{ colab.nome }}</strong>. Fico responsável pela guarda e pela entrega
+          desses itens até que {{ colab.nome }} os receba, e me comprometo a devolvê-los ao RH caso não consiga entregar.</p>
+      </div>
+      <span class="rotulo-campo">Assinatura de quem está levando <span class="obrigatorio">*</span></span>
+      <p class="nota" style="margin:0">Peça para a pessoa assinar aqui na tela, com o dedo ou o mouse.</p>
+      <div class="quadro-assinatura" data-assinatura="termo-assinatura">
+        <canvas aria-label="Área para a assinatura do termo"></canvas>
+        <div class="quadro-botoes">
+          <button type="button" class="btn pequeno" data-desfazer title="Desfazer o último traço">↶</button>
+          <button type="button" class="btn pequeno" data-limpar title="Apagar tudo">🗑️</button>
+        </div>
+      </div>
+      <input type="hidden" name="termo_assinatura" id="termo-assinatura">
+      <p class="nota" style="margin:0">{{ colab.nome }} recebe a ficha {{ 'pelo WhatsApp' if colab.whatsapp else 'impressa, junto com os itens' }} e assina quando os itens chegarem: a assinatura dele confirma a entrega.</p>
+    </div>
+    {% endif %}
 
     {% if colab %}
       {% if not colab.whatsapp %}
@@ -72,6 +109,33 @@
 {% endif %}
 
 <script>
+  // quem está retirando: o próprio destinatário ou outra pessoa (que assina o termo de responsabilidade)
+  (function () {
+    const bloco = document.getElementById("bloco-portador");
+    if (!bloco) return;
+    const sel = document.getElementById("sel-portador");
+    const form = document.getElementById("form-ficha");
+    function atualizar() {
+      const outro = form.querySelector("[name=quem_retira]:checked").value === "outro";
+      bloco.hidden = !outro;
+      sel.required = outro;
+      window.dispatchEvent(new Event("resize")); // o quadro de assinatura mede o tamanho ao aparecer
+    }
+    form.addEventListener("change", e => { if (e.target.name === "quem_retira") atualizar(); });
+    sel.addEventListener("change", () => {
+      document.getElementById("termo-nome").textContent = sel.value ? sel.selectedOptions[0].text.split(" · ")[0] : "_____";
+    });
+    document.querySelectorAll("button[form=form-ficha]").forEach(b => b.addEventListener("click", e => {
+      const outro = form.querySelector("[name=quem_retira]:checked").value === "outro";
+      if (outro && !document.getElementById("termo-assinatura").value) {
+        e.preventDefault();
+        alert("Quem está levando precisa assinar o termo de responsabilidade.");
+        bloco.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }));
+    atualizar();
+  })();
+
   // trocar quem retirou ou o modelo remonta a ficha
   [["sel-colab", "colaborador_id"], ["sel-modelo", "modelo_id"]].forEach(([id, param]) => {
     const sel = document.getElementById(id);

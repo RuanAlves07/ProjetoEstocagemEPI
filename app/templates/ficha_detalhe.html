@@ -2,6 +2,7 @@
 {% from '_macros.html' import csrf with context %}
 {% from '_ficha_documento.html' import documento %}
 {% from '_fotos_entrega.html' import campos_fotos %}
+{% from '_termo_documento.html' import termo_documento %}
 {% block titulo %}Ficha de EPI #{{ f.doc.numero }}{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
@@ -17,7 +18,12 @@
 
 <section class="cartao pedido-cabecalho">
   <div class="dados-pedido">
-    <div><span class="suave">Retirou</span><strong>{{ f.colab_nome }}</strong></div>
+    {% if f.portador_id %}
+      <div><span class="suave">Destinatário (assina a ficha)</span><strong>{{ f.colab_nome }}</strong></div>
+      <div><span class="suave">Levado por</span><strong>{{ f.portador_nome }}</strong><small class="suave">assinou o termo{% if f.termo_assinado_em %} em {{ f.termo_assinado_em|hora_br }}{% endif %}</small></div>
+    {% else %}
+      <div><span class="suave">Retirou</span><strong>{{ f.colab_nome }}</strong></div>
+    {% endif %}
     {% if f.benef_nome and f.beneficiario_id != f.colaborador_id %}<div><span class="suave">Solicitante</span><strong>{{ f.benef_nome }}</strong></div>{% endif %}
     <div><span class="suave">Emitida</span><strong>{{ f.criado_em|hora_br }}</strong><small class="suave">por {{ f.criado_por_nome }}</small></div>
     {% if f.whatsapp_enviado_em %}<div><span class="suave">Enviada pelo WhatsApp</span><strong>{{ f.whatsapp_enviado_em|hora_br }}</strong><small class="suave">{{ f.whatsapp_numero|whatsapp }}</small></div>{% endif %}
@@ -31,6 +37,20 @@
     <p class="nota" style="margin:.6rem 0 0">Código de integridade do documento (SHA-256): <code style="overflow-wrap:anywhere">{{ f.documento_hash }}</code>{% if f.assinado_aparelho %} · Aparelho: {{ f.assinado_aparelho|aparelho }}{% endif %}</p>
   {% endif %}
 </section>
+
+{% if f.portador_id and f.problema_em %}
+<section class="cartao {{ 'aviso erro' if not f.problema_resolvido_em }}" style="{{ '' if f.problema_resolvido_em else 'margin-bottom:1rem' }}">
+  <h2 style="margin-top:0">{{ '✔️ Aviso resolvido' if f.problema_resolvido_em else '⚠️ O destinatário avisou um problema na entrega' }}</h2>
+  <p style="margin:.2rem 0"><strong>{{ f.problema_texto }}</strong> · {{ f.problema_em|hora_br }}</p>
+  <p class="nota" style="margin:.2rem 0">Quem levou: <strong>{{ f.portador_nome }}</strong>, responsável pelos itens pelo termo assinado.
+    {% if f.problema_resolvido_em %}Resolvido em {{ f.problema_resolvido_em|hora_br }}.{% endif %}</p>
+  {% if pode_editar and not f.problema_resolvido_em %}
+  <form method="post" action="{{ url_for('fichas.resolver_problema', ficha_id=f.id) }}">
+    {{ csrf() }}<button class="btn pequeno">Marcar como resolvido</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
 
 {% if f.fotos_exigidas and (f.fotos_faltando or pode_editar) %}
 <section class="cartao {{ 'card-fotos' if f.fotos_faltando }}" id="fotos">
@@ -52,7 +72,7 @@
 {% if pode_editar and f.status != 'assinada' %}
 <section class="cartao">
   {% if f.status == 'aguardando' %}
-    <h2 style="margin-top:0">Aguardando assinatura</h2>
+    <h2 style="margin-top:0">{{ 'Aguardando ' ~ f.colab_nome ~ ' receber e assinar' if f.portador_id else 'Aguardando assinatura' }}</h2>
     <div class="acoes" style="margin-bottom:.8rem">
       <form method="post" action="{{ url_for('fichas.reenviar', ficha_id=f.id) }}">
         {{ csrf() }}
@@ -85,4 +105,9 @@
 <section class="cartao ficha-previa">
   {{ documento(f.doc, assinatura=f.assinatura, papel=f.status == 'assinada_papel', ficha=f) }}
 </section>
+{% if f.portador_id %}
+<section class="cartao ficha-previa">
+  {{ termo_documento(f) }}
+</section>
+{% endif %}
 {% endblock %}

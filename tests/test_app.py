@@ -1583,3 +1583,101 @@ class TestFotosEntrega(BaseFicha):
             get_db().execute("UPDATE fichas_epi SET fotos_exigidas = 0 WHERE id = ?", (f["id"],))
         self.assertNotIn("Fotos da entrega pendentes", self.c.get("/").get_data(as_text=True))
         self.assertNotIn("Registro fotográfico", self.c.get(f"/fichas/{f['id']}").get_data(as_text=True))
+
+
+class TestRetiradaPorOutraPessoa(BaseFicha):
+    def retirar_por_ana(self, ped, **extra):
+        return self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "enviar",
+                                                   "quem_retira": "outro", "portador_id": str(self.ana),
+                                                   "termo_assinatura": _png_assinatura(), **extra})
+
+    def liberar_link(self):
+        token = re.search(r"/assinar/([\w-]+)", self.app.config["WHATSAPP_ENVIADOS"][-1]["texto"]).group(1)
+        cel = self.app.test_client()
+        self.post(f"/assinar/{token}/codigo", client=cel)
+        codigo = re.search(r"\b(\d{5})\b", self.app.config["WHATSAPP_ENVIADOS"][-1]["texto"]).group(1)
+        self.post(f"/assinar/{token}/validar", {"codigo": codigo}, client=cel)
+        return token, cel
+
+    def test_termo_e_obrigatorio_e_portador_nao_pode_ser_o_destinatario(self):
+        ped = self.pedido_pronto()
+        self.assertIn("Quem está retirando agora?", self.c.get(f"/pedidos/{ped}/ficha").get_data(as_text=True))
+        self.retirar_por_ana(ped, termo_assinatura="")
+        self.retirar_por_ana(ped, portador_id=str(self.carlos))
+        with self.app.app_context():
+            db = get_db()
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM fichas_epi").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT status FROM pedidos WHERE id = ?", (ped,)).fetchone()[0], "pronto")
+
+    def test_fluxo_completo_com_problema_e_confirmacao(self):
+        ped = self.pedido_pronto()
+        self.retirar_por_ana(ped)
+        f = self.ficha()
+        self.assertEqual((f["colaborador_id"], f["portador_id"]), (self.carlos, self.ana))
+        self.assertTrue(f["termo_assinatura"].startswith("data:image/png"))
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT retirado_por_nome FROM pedidos WHERE id = ?", (ped,)).fetchone()[0],
+                             "Ana Encarregada")
+        msg = self.app.config["WHATSAPP_ENVIADOS"][-1]
+        self.assertEqual(msg["numero"], "5547999998888")  # vai para o destinatário
+        self.assertIn("foi retirado por Ana Encarregada", msg["texto"])
+
+        painel = self.c.get("/").get_data(as_text=True)
+        self.assertIn("Entregas aguardando confirmação", painel)
+        detalhe = self.c.get(f"/fichas/{f['id']}").get_data(as_text=True)
+        self.assertIn("TERMO DE RESPONSABILIDADE PELA RETIRADA DE EPI", detalhe)
+        self.assertIn("Em trânsito", detalhe)
+        self.assertIn("Levou para", self.c.get(f"/colaboradores/{self.ana}?aba=fichas").get_data(as_text=True))
+        self.assertIn("TERMO DE RESPONSABILIDADE", self.c.get(f"/fichas/{f['id']}/imprimir").get_data(as_text=True))
+
+        token, cel = self.liberar_link()
+        pagina = cel.get(f"/assinar/{token}").get_data(as_text=True)
+        self.assertIn("Você recebeu os itens?", pagina)
+        self.post(f"/assinar/{token}/problema", {"motivo": "faltou", "detalhe": "faltou o capacete"}, client=cel)
+        f = self.ficha(f["id"])
+        self.assertEqual(f["problema_texto"], "Faltou item: faltou o capacete")
+        self.assertIn("faltou o capacete", self.c.get("/").get_data(as_text=True))
+        self.assertIn("não recebeu ou faltou item", self.c.get(f"/fichas/{f['id']}").get_data(as_text=True))
+
+        r = self.post(f"/assinar/{token}/assinar", {"assinatura": _png_assinatura()}, client=cel, follow_redirects=True)
+        self.assertIn("Ficha assinada", r.get_data(as_text=True))
+        f = self.ficha(f["id"])
+        self.assertEqual(f["status"], "assinada")
+        self.assertIsNotNone(f["problema_resolvido_em"])
+        self.assertNotIn("Entregas aguardando confirmação", self.c.get("/").get_data(as_text=True))
+        self.assertIn("Entrega confirmada por Carlos Obra", self.c.get(f"/fichas/{f['id']}").get_data(as_text=True))
+
+    def test_problema_resolvido_pelo_rh(self):
+        ped = self.pedido_pronto()
+        self.retirar_por_ana(ped)
+        token, cel = self.liberar_link()
+        self.post(f"/assinar/{token}/problema", {"motivo": "nao_recebi"}, client=cel)
+        f = self.ficha()
+        self.post(f"/fichas/{f['id']}/problema/resolver")
+        self.assertIsNotNone(self.ficha(f["id"])["problema_resolvido_em"])
+
+    def test_lembrete_depois_de_3_dias_uma_vez(self):
+        ped = self.pedido_pronto()
+        self.retirar_por_ana(ped)
+        f = self.ficha()
+        enviados = len(self.app.config["WHATSAPP_ENVIADOS"])
+        self.c.get("/")
+        self.assertEqual(len(self.app.config["WHATSAPP_ENVIADOS"]), enviados)  # ainda no prazo
+        with self.app.app_context():
+            get_db().execute("UPDATE fichas_epi SET criado_em = datetime('now', 'localtime', '-4 days') WHERE id = ?",
+                             (f["id"],))
+        self.c.get("/")
+        self.c.get("/pedidos")
+        novos = self.app.config["WHATSAPP_ENVIADOS"][enviados:]
+        self.assertEqual(len(novos), 1)
+        self.assertIn("ainda não foi confirmada", novos[0]["texto"])
+        self.assertIsNotNone(self.ficha(f["id"])["lembrete_em"])
+        self.assertIn("atrasada", self.c.get("/").get_data(as_text=True))
+
+    def test_retirada_pelo_proprio_destinatario_nao_tem_termo(self):
+        ped = self.pedido_pronto()
+        self.post(f"/pedidos/{ped}/ficha", {"colaborador_id": str(self.carlos), "acao": "imprimir",
+                                            "quem_retira": "destinatario", "portador_id": str(self.ana)})
+        f = self.ficha()
+        self.assertIsNone(f["portador_id"])
+        self.assertNotIn("TERMO DE RESPONSABILIDADE", self.c.get(f"/fichas/{f['id']}").get_data(as_text=True))

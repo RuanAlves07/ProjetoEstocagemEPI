@@ -1,0 +1,22 @@
+{# Pedidos levados por outra pessoa que o destinatário ainda não confirmou. Problemas e atrasos vêm primeiro. #}
+{% if tem_perm('gerenciar_pedidos') %}
+{% set transito = entregas_em_transito() %}
+{% if transito %}
+<section class="cartao card-fotos card-transito" id="card-transito">
+  <h2 style="margin:0">🚚 Entregas aguardando confirmação <span class="contador">{{ transito|length }}</span></h2>
+  <p class="nota" style="margin:.2rem 0 0">Pedidos levados por outra pessoa. A entrega é confirmada quando o destinatário assina a ficha.
+    Depois de 3 dias sem confirmação, o link é reenviado ao destinatário uma vez.</p>
+  <ul>
+    {% for t in transito %}
+    <li class="{{ 'transito-problema' if t.problema else ('transito-atrasada' if t.atrasada) }}">
+      <span>Pedido #{{ t.pedido_id|numero_pedido if t.pedido_id else '—' }} · para <strong>{{ t.colab_nome }}</strong>, levado por {{ t.portador_nome }}
+        <small class="suave">· há {{ t.dias }} dia(s){% if t.lembrete_em %} · lembrete enviado{% endif %}{% if not t.colab_whatsapp %} · sem WhatsApp (ficha em papel){% endif %}</small>
+        {% if t.problema %}<br><span class="badge vermelho">⚠️ {{ t.problema_texto }}</span>
+        {% elif t.atrasada %} <span class="badge amarelo">atrasada</span>{% endif %}</span>
+      <a class="btn pequeno" href="{{ url_for('fichas.detalhe', ficha_id=t.id) }}">Abrir ficha</a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}

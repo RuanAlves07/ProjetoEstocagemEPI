@@ -75,6 +75,7 @@ ROTAS_PUBLICAS = {
     "fichas.publica_codigo",
     "fichas.publica_validar",
     "fichas.publica_assinar",
+    "fichas.publica_problema",
 }
 # A API usa chave própria (X-API-Key) e o formulário público pode ser enviado sem sessão prévia
 CSRF_ISENTAS = {

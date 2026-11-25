@@ -280,7 +280,9 @@
           <td>{{ fe.criado_em|hora_br }}</td>
           <td>{% if fe.pedido_id %}<a href="{{ url_for('pedidos.detalhe', pedido_id=fe.pedido_id) }}">#{{ fe.numero }}</a>{% else %}#{{ fe.numero }}{% endif %}</td>
           <td>
-            {% if not fe.retirou %}Pedido dele, retirado por <strong>{{ fe.colab_nome }}</strong>
+            {% if fe.levou %}Levou para <strong>{{ fe.colab_nome }}</strong> (termo de responsabilidade)
+            {% elif fe.retirou and fe.portador_id %}Recebeu por meio de <strong>{{ fe.portador_nome }}</strong>
+            {% elif not fe.retirou %}Pedido dele, retirado por <strong>{{ fe.colab_nome }}</strong>
             {% elif fe.beneficiario_id and fe.beneficiario_id != colab.id %}Retirou para <strong>{{ fe.benef_nome }}</strong>
             {% else %}Retirou para si{% endif %}
           </td>

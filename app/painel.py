@@ -4,7 +4,7 @@ import csv
 import io
 import re
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, render_template, request
 
 from . import estoque, pedidos
 from .cadastros import _csv_response
@@ -295,9 +295,18 @@ def _montar_relatorio_tamanhos(db, de_iso, ate_iso, epis_saldo, filtro_subtipo="
     return linhas, grades_subtipo, tamanhos_ordenados
 
 
+def _lembrar_entregas(db):
+    from .fichas import lembrar_entregas_atrasadas
+    try:
+        lembrar_entregas_atrasadas(db)
+    except Exception:
+        current_app.logger.exception("Falha ao verificar entregas sem confirmação")
+
+
 @bp.get("/")
 def inicio():
     db = get_db()
+    _lembrar_entregas(db)
     epis = estoque.epis_com_saldo(db)
     ordem = {"zerado": 0, "repor": 1}
     repor = sorted((e for e in epis if e["status"] != "ok"),

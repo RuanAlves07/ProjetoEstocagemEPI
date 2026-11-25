@@ -431,7 +431,9 @@ def _migrar(conn):
     colunas_ficha = {r["name"] for r in conn.execute("PRAGMA table_info(fichas_epi)")}
     for coluna, tipo in (("fotos_exigidas", "INTEGER NOT NULL DEFAULT 0"), ("foto_colaborador", "TEXT"),
                          ("foto_sacola", "TEXT"), ("fotos_por", "INTEGER REFERENCES usuarios (id)"),
-                         ("fotos_em", "TEXT")):
+                         ("fotos_em", "TEXT"), ("portador_id", "INTEGER REFERENCES colaboradores (id)"),
+                         ("termo_assinatura", "TEXT"), ("termo_assinado_em", "TEXT"), ("problema_texto", "TEXT"),
+                         ("problema_em", "TEXT"), ("problema_resolvido_em", "TEXT"), ("lembrete_em", "TEXT")):
         if coluna not in colunas_ficha:
             conn.execute(f"ALTER TABLE fichas_epi ADD COLUMN {coluna} {tipo}")
 

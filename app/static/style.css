@@ -639,3 +639,16 @@ tr.linha-analisar { background: #fffdf5; }
   .ficha-assinatura { width: 90%; }
 }
 @media print { .ficha-previa { overflow: visible; } .ficha-previa .ficha-doc { min-width: 0; } }
+
+/* Retirada por outra pessoa: termo de responsabilidade e acompanhamento da entrega */
+.quem-retira { border: 1px solid var(--borda); border-radius: 10px; padding: .6rem .9rem; display: flex; flex-wrap: wrap; gap: .4rem 1.4rem; margin: .8rem 0 0; }
+.quem-retira legend { padding: 0 .3rem; }
+.bloco-portador { border: 1px solid #f0cf7a; background: #fffbef; border-radius: 10px; padding: .9rem; display: flex; flex-direction: column; gap: .6rem; margin-top: .8rem; }
+.bloco-portador[hidden] { display: none; }
+.termo-previa { background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: .7rem .9rem; font-size: .92rem; }
+.termo-previa p { margin: .3rem 0 0; }
+.card-transito { border-left-color: #3b82f6; }
+.card-transito li.transito-problema { background: #fdeaea; border-radius: 6px; padding: .35rem .5rem; }
+.card-transito li.transito-atrasada { background: #fff7e0; border-radius: 6px; padding: .35rem .5rem; }
+.termo-entrega { font-weight: 600; margin-top: .6rem; }
+.recebimento .acoes .btn { flex: 1 1 200px; }

@@ -281,6 +281,7 @@
     <p style="margin:.4rem 0 0">
       <a class="btn pequeno" href="{{ url_for('fichas.detalhe', ficha_id=fe.id) }}">📝 Ficha de EPI</a>
       {% set sit = situacao_ficha(fe) %}<span class="badge {{ sit[1] }}">{{ sit[0] }}</span>
+      {% if fe.portador_id %}<small class="suave">· levado por {{ fe.portador_nome }}</small>{% endif %}
     </p>
   {% endfor %}
 </section>

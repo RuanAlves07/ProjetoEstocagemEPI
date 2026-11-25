@@ -942,6 +942,12 @@ def _opcoes_inventario(epis):
 @bp.get("/pedidos")
 def lista():
     db = get_db()
+    if usuario_tem_permissao("gerenciar_pedidos"):
+        from .fichas import lembrar_entregas_atrasadas
+        try:
+            lembrar_entregas_atrasadas(db)
+        except Exception:
+            current_app.logger.exception("Falha ao verificar entregas sem confirmação")
     aba = request.args.get("aba", "abertos")
     if aba not in ("abertos", "aguardando", "retirados", "cancelados"):
         aba = "abertos"
@@ -1052,8 +1058,9 @@ def detalhe(pedido_id):
         if pedido["grupo"] else []
     return render_template(
         "pedido.html", p=pedido, movs=movs, STATUS=pedidos.STATUS,
-        fichas=db.execute("SELECT id, status, fotos_exigidas, foto_colaborador, foto_sacola FROM fichas_epi "
-                          "WHERE pedido_id = ? ORDER BY id", (pedido_id,)).fetchall(),
+        fichas=db.execute("SELECT f.*, pt.nome AS portador_nome FROM fichas_epi f "
+                          "LEFT JOIN colaboradores pt ON pt.id = f.portador_id "
+                          "WHERE f.pedido_id = ? ORDER BY f.id", (pedido_id,)).fetchall(),
         STATUS_FICHA=STATUS_FICHA,
         epis=estoque.epis_com_saldo(db),
         colaboradores=db.execute(

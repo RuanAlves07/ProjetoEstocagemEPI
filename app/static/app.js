@@ -38,6 +38,76 @@ document.addEventListener('click', function (ev) {
   }
 });
 
+// ---------------------------------------------------------------- Quadro de assinatura
+// <div class="quadro-assinatura" data-assinatura="id-do-campo-oculto"> com um <canvas> e botões
+// [data-desfazer] / [data-limpar]. A imagem (PNG recortada no contorno dos traços) vai para o campo oculto
+// a cada traço; o evento "assinatura" avisa a página (detail.vazio) para liberar o botão de envio.
+(function () {
+  function iniciar(caixa) {
+    const canvas = caixa.querySelector("canvas");
+    const campo = document.getElementById(caixa.dataset.assinatura);
+    const ctx = canvas.getContext("2d");
+    const tracos = [];
+    let atual = null;
+
+    function tracar(c) {
+      c.lineWidth = 2.4; c.lineCap = "round"; c.lineJoin = "round"; c.strokeStyle = "#111";
+      for (const t of tracos) {
+        c.beginPath();
+        t.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
+        if (t.length === 1) c.lineTo(t[0].x + .1, t[0].y + .1);
+        c.stroke();
+      }
+    }
+    function recortada() {
+      const pts = tracos.flat(), margem = 6, escala = 2;
+      const x0 = Math.max(0, Math.min(...pts.map(p => p.x)) - margem), y0 = Math.max(0, Math.min(...pts.map(p => p.y)) - margem);
+      const x1 = Math.max(...pts.map(p => p.x)) + margem, y1 = Math.max(...pts.map(p => p.y)) + margem;
+      const saida = document.createElement("canvas");
+      saida.width = Math.round((x1 - x0) * escala);
+      saida.height = Math.round((y1 - y0) * escala);
+      const c = saida.getContext("2d");
+      c.setTransform(escala, 0, 0, escala, -x0 * escala, -y0 * escala);
+      tracar(c);
+      return saida.toDataURL("image/png");
+    }
+    function desenhar() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      tracar(ctx);
+    }
+    function mudou() {
+      desenhar();
+      if (campo) campo.value = tracos.length ? recortada() : "";
+      caixa.dispatchEvent(new CustomEvent("assinatura", { bubbles: true, detail: { vazio: !tracos.length } }));
+    }
+    function ajustar() {
+      const r = canvas.getBoundingClientRect();
+      if (!r.width) return; // ainda escondido
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      desenhar();
+    }
+    function ponto(e) {
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    canvas.addEventListener("pointerdown", e => {
+      if (!canvas.width) ajustar();
+      canvas.setPointerCapture(e.pointerId); atual = [ponto(e)]; tracos.push(atual); desenhar();
+    });
+    canvas.addEventListener("pointermove", e => { if (atual) { atual.push(ponto(e)); desenhar(); } });
+    ["pointerup", "pointercancel"].forEach(ev => canvas.addEventListener(ev, () => { if (atual) { atual = null; mudou(); } }));
+    caixa.querySelector("[data-desfazer]")?.addEventListener("click", () => { tracos.pop(); mudou(); });
+    caixa.querySelector("[data-limpar]")?.addEventListener("click", () => { tracos.length = 0; mudou(); });
+    window.addEventListener("resize", ajustar);
+    new ResizeObserver(ajustar).observe(canvas);
+    ajustar();
+  }
+  document.querySelectorAll(".quadro-assinatura[data-assinatura]").forEach(iniciar);
+})();
+
 // ---------------------------------------------------------------- Fotos da entrega
 // Reduz a foto do celular (até 1600 px, JPEG) antes de enviar e mostra a prévia ao lado do campo.
 (function () {

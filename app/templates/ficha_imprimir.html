@@ -1,4 +1,5 @@
 {% from '_ficha_documento.html' import documento %}
+{% from '_termo_documento.html' import termo_documento %}
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -83,6 +84,7 @@
             <p class="ficha-obs">Assinado eletronicamente em {{ f.assinado_em|hora_br }} após validação de código enviado ao WhatsApp {{ f.whatsapp_numero|whatsapp }} · IP {{ f.assinado_ip or '—' }} · SHA-256 {{ f.documento_hash[:16] }}…</p>
           {% endif %}
         </section>
+        {% if f.portador_id %}<section class="folha">{{ termo_documento(f) }}</section>{% endif %}
         {% endfor %}
       </div>
     </td></tr></tbody>

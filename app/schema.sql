@@ -297,6 +297,13 @@ CREATE TABLE IF NOT EXISTS fichas_epi (
     foto_sacola         TEXT,            -- foto da sacola de EPI em destaque, em instance/fichas/
     fotos_por           INTEGER REFERENCES usuarios (id),
     fotos_em            TEXT,
+    portador_id         INTEGER REFERENCES colaboradores (id), -- quem levou o pedido para o destinatário (NULL = o próprio destinatário retirou)
+    termo_assinatura    TEXT,                     -- assinatura (PNG) de quem levou, no termo de responsabilidade
+    termo_assinado_em   TEXT,
+    problema_texto      TEXT,                     -- destinatário avisou que não recebeu ou que faltou item
+    problema_em         TEXT,
+    problema_resolvido_em TEXT,
+    lembrete_em         TEXT,                     -- lembrete automático de entrega sem confirmação já enviado
     criado_por          INTEGER NOT NULL REFERENCES usuarios (id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );

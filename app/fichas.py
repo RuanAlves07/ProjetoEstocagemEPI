@@ -4,12 +4,13 @@ import hashlib
 import json
 import os
 import secrets
+import threading
 from datetime import date, datetime, timedelta
 
 from flask import (Blueprint, abort, current_app, flash, g, redirect, render_template, request,
                    send_file, session, url_for)
 
-from . import email_service, modelos, pedidos, whatsapp
+from . import email_service, modelos, pedidos, push_service, whatsapp
 from .auth import escrita_required
 from .db import get_db
 from .estoque import ErroValidacao
@@ -19,6 +20,7 @@ from .util import limpar, to_int
 bp = Blueprint("fichas", __name__)
 
 LINK_VALIDADE_DIAS = 7
+LEMBRETE_ENTREGA_DIAS = 3        # entrega levada por outra pessoa sem confirmação: lembra o destinatário
 CODIGO_VALIDADE_MIN = 15
 CODIGO_MAX_TENTATIVAS = 5
 CODIGO_INTERVALO_S = 60          # espera mínima entre um envio de código e outro
@@ -153,8 +155,21 @@ def pendencias(f):
     return faltam
 
 
+def em_transito(f):
+    """Outra pessoa levou o pedido e o destinatário ainda não confirmou o recebimento (assinando a ficha)."""
+    return bool(f["portador_id"]) and f["status"] == "aguardando"
+
+
+def problema_aberto(f):
+    return bool(f["problema_em"]) and not f["problema_resolvido_em"]
+
+
 def situacao(f):
     """(rótulo, classe do badge) da ficha para listas e cabeçalhos."""
+    if f["portador_id"] and problema_aberto(f):
+        return "Destinatário avisou: não recebeu ou faltou item", "vermelho"
+    if em_transito(f):
+        return "Em trânsito · aguardando o destinatário confirmar" + (" · faltam as fotos" if fotos_faltando(f) else ""), "amarelo"
     faltam = pendencias(f)
     if not faltam:
         return STATUS_FICHA.get(f["status"], f["status"]) + (" · concluída" if f["fotos_exigidas"] else ""), "verde"
@@ -168,6 +183,62 @@ def _situacao_ficha_global(f):
     return situacao(f)
 
 
+@bp.app_template_global("entregas_em_transito")
+def entregas_em_transito():
+    """Pedidos levados por outra pessoa que o destinatário ainda não confirmou (mais antigos primeiro)."""
+    linhas = get_db().execute(
+        """SELECT f.id, f.pedido_id, f.criado_em, f.problema_texto, f.problema_em, f.problema_resolvido_em,
+                  f.lembrete_em, c.nome AS colab_nome, c.whatsapp AS colab_whatsapp, pt.nome AS portador_nome
+           FROM fichas_epi f
+           JOIN colaboradores c ON c.id = f.colaborador_id
+           JOIN colaboradores pt ON pt.id = f.portador_id
+           WHERE f.status = 'aguardando'
+           ORDER BY f.id""").fetchall()
+    hoje_ = date.today()
+    resultado = []
+    for r in linhas:
+        r = dict(r)
+        r["dias"] = (hoje_ - date.fromisoformat(r["criado_em"][:10])).days
+        r["problema"] = problema_aberto(r)
+        r["atrasada"] = r["dias"] >= LEMBRETE_ENTREGA_DIAS
+        resultado.append(r)
+    resultado.sort(key=lambda r: (not r["problema"], not r["atrasada"], r["id"]))
+    return resultado
+
+
+def lembrar_entregas_atrasadas(db):
+    """Reenvia, uma vez, o link para o destinatário de entregas sem confirmação há LEMBRETE_ENTREGA_DIAS dias.
+    Chamado ao abrir o Painel e Pedidos; o envio pelo WhatsApp roda em segundo plano."""
+    limite = (datetime.now() - timedelta(days=LEMBRETE_ENTREGA_DIAS)).strftime("%Y-%m-%d %H:%M:%S")
+    ids = []
+    for r in db.execute("""SELECT f.id FROM fichas_epi f JOIN colaboradores c ON c.id = f.colaborador_id
+                           WHERE f.portador_id IS NOT NULL AND f.status = 'aguardando' AND f.lembrete_em IS NULL
+                             AND f.criado_em <= ? AND c.whatsapp IS NOT NULL""", (limite,)).fetchall():
+        # marca antes de enviar: o outro processo do servidor não manda o mesmo lembrete
+        if db.execute("UPDATE fichas_epi SET lembrete_em = ? WHERE id = ? AND lembrete_em IS NULL",
+                      (_agora(), r["id"])).rowcount:
+            ids.append(r["id"])
+    if not ids:
+        return 0
+    app = current_app._get_current_object()
+
+    def enviar():
+        with app.app_context():
+            for ficha_id in ids:
+                try:
+                    ok, erro = _enviar_link(get_db(), ficha_id, lembrete=True)
+                    if not ok:
+                        app.logger.warning("Lembrete da ficha %s não enviado: %s", ficha_id, erro)
+                except Exception:
+                    app.logger.exception("Falha no lembrete da ficha %s", ficha_id)
+
+    if app.config.get("TESTING"):
+        enviar()
+    else:
+        threading.Thread(target=enviar, daemon=True).start()
+    return len(ids)
+
+
 @bp.app_template_global("fotos_pendentes")
 def _fotos_pendentes_global():
     return fichas_com_fotos_pendentes(get_db())
@@ -177,10 +248,13 @@ def carregar_ficha(db, ficha_id):
     f = db.execute(
         """SELECT f.*, c.nome AS colab_nome, c.whatsapp AS colab_whatsapp, b.nome AS benef_nome,
                   u.nome AS criado_por_nome, up.nome AS papel_por_nome, uf.nome AS fotos_por_nome,
-                  p.finalizado_por AS separado_por, us.nome AS separado_por_nome
+                  p.finalizado_por AS separado_por, us.nome AS separado_por_nome,
+                  pt.nome AS portador_nome, pt.matricula AS portador_matricula, pt.cpf AS portador_cpf,
+                  pt.setor AS portador_setor, pt.funcao AS portador_funcao
            FROM fichas_epi f
            JOIN colaboradores c ON c.id = f.colaborador_id
            LEFT JOIN colaboradores b ON b.id = f.beneficiario_id
+           LEFT JOIN colaboradores pt ON pt.id = f.portador_id
            JOIN usuarios u ON u.id = f.criado_por
            LEFT JOIN usuarios up ON up.id = f.papel_por
            LEFT JOIN usuarios uf ON uf.id = f.fotos_por
@@ -194,6 +268,7 @@ def carregar_ficha(db, ficha_id):
     f["fotos_faltando"] = fotos_faltando(f)
     f["pendencias"] = pendencias(f)
     f["situacao"] = situacao(f)
+    f["em_transito"] = em_transito(f)
     return f
 
 
@@ -220,13 +295,15 @@ def fichas_do_colaborador(db, colab_id):
     """Fichas em que o colaborador retirou ou em que o pedido era para ele (retirado por outra pessoa)."""
     linhas = db.execute(
         """SELECT f.id, f.pedido_id, f.status, f.criado_em, f.assinado_em, f.documento,
-                  f.fotos_exigidas, f.foto_colaborador, f.foto_sacola,
+                  f.fotos_exigidas, f.foto_colaborador, f.foto_sacola, f.portador_id, f.problema_em,
+                  f.problema_resolvido_em, pt.nome AS portador_nome,
                   f.colaborador_id, f.beneficiario_id, c.nome AS colab_nome, b.nome AS benef_nome
            FROM fichas_epi f
            JOIN colaboradores c ON c.id = f.colaborador_id
            LEFT JOIN colaboradores b ON b.id = f.beneficiario_id
-           WHERE f.colaborador_id = ? OR f.beneficiario_id = ?
-           ORDER BY f.id DESC""", (colab_id, colab_id)).fetchall()
+           LEFT JOIN colaboradores pt ON pt.id = f.portador_id
+           WHERE f.colaborador_id = ? OR f.beneficiario_id = ? OR f.portador_id = ?
+           ORDER BY f.id DESC""", (colab_id, colab_id, colab_id)).fetchall()
     resultado = []
     for r in linhas:
         r = dict(r)
@@ -234,6 +311,7 @@ def fichas_do_colaborador(db, colab_id):
         r["numero"] = doc.get("numero")
         r["qtd_itens"] = sum(int(i.get("quantidade") or 0) for i in doc.get("itens", []))
         r["retirou"] = r["colaborador_id"] == colab_id
+        r["levou"] = r["portador_id"] == colab_id
         r["situacao"] = situacao(r)
         resultado.append(r)
     return resultado
@@ -290,15 +368,29 @@ def emitir(pedido_id):
     voltar = redirect(url_for("fichas.preparar", pedido_id=pedido_id, modelo_id=modelo["id"],
                               colaborador_id=request.form.get("colaborador_id") or None))
     if not colab:
-        flash("Selecione o colaborador que retirou o pedido.", "erro")
+        flash("Selecione para quem é o pedido (quem vai assinar a ficha).", "erro")
         return voltar
+    portador, termo = None, None
+    if request.form.get("quem_retira") == "outro":
+        portador = db.execute("SELECT * FROM colaboradores WHERE id = ? AND ativo = 1",
+                              (to_int(request.form.get("portador_id")),)).fetchone()
+        if not portador:
+            flash("Selecione quem está levando o pedido.", "erro")
+            return voltar
+        if portador["id"] == colab["id"]:
+            flash(f"Quem está levando é {colab['nome']}, o destinatário: marque “{colab['nome']} está retirando”.", "erro")
+            return voltar
+        termo = _ler_assinatura(request.form.get("termo_assinatura"))
+        if not termo:
+            flash(f"{portador['nome']} precisa assinar o termo de responsabilidade antes de levar o pedido.", "erro")
+            return voltar
     if acao == "enviar" and not colab["whatsapp"]:
         flash(f"{colab['nome']} não tem WhatsApp no cadastro. Cadastre o número ou use Imprimir ficha.", "erro")
         return voltar
     doc = montar_documento(db, pedido, colab, modelo=modelo)
     _aplicar_higienizado(doc)
     try:
-        pedidos.retirar(db, pedido_id, colab["nome"], limpar(request.form.get("retirado_descricao")),
+        pedidos.retirar(db, pedido_id, (portador or colab)["nome"], limpar(request.form.get("retirado_descricao")),
                         g.usuario["id"])
     except ErroValidacao as e:
         flash(str(e), "erro")
@@ -306,16 +398,17 @@ def emitir(pedido_id):
     texto = _documento_json(doc)
     cur = db.execute(
         """INSERT INTO fichas_epi (pedido_id, colaborador_id, beneficiario_id, documento, documento_hash, criado_por,
-                                  fotos_exigidas)
-           VALUES (?, ?, ?, ?, ?, ?, 1)""",
-        (pedido_id, colab["id"], pedido["colaborador_id"], texto, _hash(texto), g.usuario["id"]))
+                                  fotos_exigidas, portador_id, termo_assinatura, termo_assinado_em)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+        (pedido_id, colab["id"], pedido["colaborador_id"], texto, _hash(texto), g.usuario["id"],
+         portador["id"] if portador else None, termo, _agora() if termo else None))
     ficha_id = cur.lastrowid
     erros_foto = gravar_fotos(db, ficha_id, request.files)
     for e in erros_foto:
         flash(e, "erro")
     faltam_fotos = fotos_faltando(carregar_ficha(db, ficha_id))
     if faltam_fotos:
-        flash("Faltam as fotos da entrega (" + ", ".join(faltam_fotos).lower() + "). "
+        flash("Faltam as fotos da entrega (" + "; ".join(faltam_fotos) + "). "
               "Elas ficam pendentes no card “Fotos da entrega” para quem separou o pedido.", "alerta")
     try:
         email_service.notificar_evento_pedido(db, pedido_id, "retirado", ator_nome=g.usuario["nome"])
@@ -323,16 +416,20 @@ def emitir(pedido_id):
         current_app.logger.exception("Falha ao notificar a retirada do pedido %s", pedido_id)
     if acao == "enviar":
         ok, erro = _enviar_link(db, ficha_id)
-        if ok:
+        if ok and portador:
+            flash(f"Retirada registrada: {portador['nome']} levou o pedido e assinou o termo. A ficha foi enviada para o "
+                  f"WhatsApp de {colab['nome']}, que assina quando receber.", "ok")
+        elif ok:
             flash(f"Retirada registrada e ficha de EPI enviada para o WhatsApp de {colab['nome']}.", "ok")
         else:
             flash(f"Retirada registrada, mas a ficha não foi enviada: {erro} Tente reenviar ou imprima a ficha.", "erro")
         return redirect(url_for("fichas.detalhe", ficha_id=ficha_id))
-    flash("Retirada registrada. Imprima a ficha para colher a assinatura.", "ok")
+    flash("Retirada registrada. Imprima a ficha para colher a assinatura"
+          + (f" de {colab['nome']} na entrega dos itens (a ficha vai junto com {portador['nome']})." if portador else "."), "ok")
     return redirect(url_for("fichas.imprimir", ficha_id=ficha_id, auto=1))
 
 
-def _enviar_link(db, ficha_id):
+def _enviar_link(db, ficha_id, lembrete=False):
     """Gera um link novo (o anterior deixa de valer) e manda pelo WhatsApp do colaborador."""
     f = carregar_ficha(db, ficha_id)
     numero = f["colab_whatsapp"]
@@ -341,10 +438,21 @@ def _enviar_link(db, ficha_id):
     token = secrets.token_urlsafe(24)
     expira = (datetime.now() + timedelta(days=LINK_VALIDADE_DIAS)).strftime("%Y-%m-%d %H:%M:%S")
     link = email_service.url_externa("fichas.publica", token=token)
-    texto = (f"Olá {f['colab_nome']},\n\n"
-             f"Você está recebendo esta mensagem para assinar eletronicamente a ficha de entrega de EPI "
-             f"do pedido #{f['doc']['numero']}.\n\n"
-             f"Para acessar o documento, clique no link abaixo:\n{link}\n\n"
+    if f["portador_id"] and lembrete:
+        corpo = (f"O pedido #{f['doc']['numero']} foi retirado por {f['portador_nome']} para você em "
+                 f"{f['criado_em'][8:10]}/{f['criado_em'][5:7]} e a entrega ainda não foi confirmada.\n\n"
+                 f"Se você já recebeu os itens, assine a ficha de EPI pelo link abaixo. "
+                 f"Se não recebeu ou se faltou algum item, avise pelo mesmo link:\n{link}\n\n")
+    elif f["portador_id"]:
+        corpo = (f"O seu pedido de EPI #{f['doc']['numero']} foi retirado por {f['portador_nome']}, "
+                 f"que vai levar os itens até você.\n\n"
+                 f"Quando receber, abra o link abaixo para conferir e assinar a ficha de EPI. "
+                 f"Se não receber ou se faltar algum item, avise pelo mesmo link:\n{link}\n\n")
+    else:
+        corpo = (f"Você está recebendo esta mensagem para assinar eletronicamente a ficha de entrega de EPI "
+                 f"do pedido #{f['doc']['numero']}.\n\n"
+                 f"Para acessar o documento, clique no link abaixo:\n{link}\n\n")
+    texto = (f"Olá {f['colab_nome']},\n\n" + corpo +
              f"O link vale por {LINK_VALIDADE_DIAS} dias. Caso tenha alguma dúvida, estamos à disposição.\n\n"
              f"Atenciosamente,\nA. Becker")
     ok, erro = whatsapp.enviar_texto(numero, texto)
@@ -439,7 +547,7 @@ def fotos(ficha_id):
         flash(e, "erro")
     f = carregar_ficha(db, ficha_id)
     if f["fotos_faltando"]:
-        flash("Foto salva. Ainda falta: " + ", ".join(f["fotos_faltando"]).lower() + ".", "alerta")
+        flash("Foto salva. Ainda falta: " + "; ".join(f["fotos_faltando"]) + ".", "alerta")
     elif not f["pendencias"]:
         flash("Fotos da entrega salvas. A ficha está concluída.", "ok")
     else:
@@ -458,6 +566,17 @@ def foto(ficha_id, campo):
     if not os.path.exists(caminho):
         abort(404)
     return send_file(caminho, mimetype=FOTO_TIPOS.get(os.path.splitext(caminho)[1].lower()))
+
+
+@bp.post("/fichas/<int:ficha_id>/problema/resolver")
+@escrita_required
+def resolver_problema(ficha_id):
+    db = get_db()
+    f = carregar_ficha(db, ficha_id) or abort(404)
+    if problema_aberto(f):
+        db.execute("UPDATE fichas_epi SET problema_resolvido_em = ? WHERE id = ?", (_agora(), ficha_id))
+        flash("Aviso do destinatário marcado como resolvido.", "ok")
+    return redirect(url_for("fichas.detalhe", ficha_id=ficha_id))
 
 
 def _pasta_anexos():
@@ -522,7 +641,7 @@ def relatorio_colaborador(colab_id):
         "SELECT id FROM fichas_epi WHERE colaborador_id = ? ORDER BY id", (colab_id,))]
     fichas = [carregar_ficha(db, i) for i in ids]
     rubrica = next((f["assinatura"] for f in reversed(fichas) if f["assinatura"]), None)
-    recebidas = [f for f in fichas_do_colaborador(db, colab_id) if not f["retirou"]]
+    recebidas = [f for f in fichas_do_colaborador(db, colab_id) if not f["retirou"] and not f["levou"]]
     return render_template("ficha_imprimir.html", fichas=fichas, rubrica=rubrica, relatorio=True,
                            titulo=f"Relatório de fichas de EPI · {colab['nome']}", colab=colab,
                            colab_nome=colab["nome"], matricula=colab["matricula"] or colab["id"],
@@ -617,6 +736,49 @@ def publica_validar(token):
     return redirect(url_for("fichas.publica", token=token))
 
 
+@bp.post("/assinar/<token>/problema")
+def publica_problema(token):
+    db = get_db()
+    f = _ficha_pelo_token(token)
+    if not f:
+        abort(404)
+    if f["status"] != "aguardando" or not f["portador_id"]:
+        return redirect(url_for("fichas.publica", token=token))
+    if not _liberada(f["id"]):
+        flash("Confirme o código enviado pelo WhatsApp antes de continuar.", "erro")
+        return redirect(url_for("fichas.publica", token=token))
+    motivo = {"nao_recebi": "Não recebi os itens", "faltou": "Faltou item"}.get(request.form.get("motivo"))
+    detalhe = limpar(request.form.get("detalhe"))
+    if not motivo:
+        flash("Escolha o que aconteceu.", "erro")
+        return redirect(url_for("fichas.publica", token=token))
+    texto = motivo + (f": {detalhe[:500]}" if detalhe else "")
+    db.execute("UPDATE fichas_epi SET problema_texto = ?, problema_em = ?, problema_resolvido_em = NULL WHERE id = ?",
+               (texto, _agora(), f["id"]))
+    _avisar_equipe_problema(f, texto)
+    flash("Avisamos o RH. Quando receber os itens, você pode voltar a este link e assinar.", "ok")
+    return redirect(url_for("fichas.publica", token=token))
+
+
+def _avisar_equipe_problema(f, texto):
+    """Notificação no navegador/celular da equipe (quem ativou as notificações). Falha não impede o aviso."""
+    if current_app.config.get("TESTING"):
+        return
+    app = current_app._get_current_object()
+    payload = {"title": f"⚠️ Entrega do pedido #{f['doc']['numero']} com problema",
+               "body": f"{f['colab_nome']}: {texto} (levado por {f['portador_nome']})",
+               "icon": "/static/icone.png", "url": f"/fichas/{f['id']}", "tag": f"ficha-problema-{f['id']}"}
+
+    def enviar():
+        try:
+            with app.app_context():
+                push_service.enviar_para_todos(get_db(), payload)
+        except Exception:
+            app.logger.exception("Falha no aviso de problema da ficha %s", f["id"])
+
+    threading.Thread(target=enviar, daemon=True).start()
+
+
 def _ler_assinatura(valor):
     """Confere se veio uma imagem PNG válida do quadro de assinatura e devolve o data URL."""
     prefixo = "data:image/png;base64,"
@@ -647,7 +809,10 @@ def publica_assinar(token):
         flash("Faça a sua assinatura na área indicada antes de enviar.", "erro")
         return redirect(url_for("fichas.publica", token=token))
     db.execute("""UPDATE fichas_epi SET status = 'assinada', assinatura = ?, assinado_em = ?, assinado_ip = ?,
-                  assinado_aparelho = ? WHERE id = ? AND status = 'aguardando'""",
+                  assinado_aparelho = ?,
+                  problema_resolvido_em = CASE WHEN problema_em IS NOT NULL AND problema_resolvido_em IS NULL
+                                               THEN ? ELSE problema_resolvido_em END
+                  WHERE id = ? AND status = 'aguardando'""",
                (assinatura, _agora(), (request.remote_addr or "")[:64],
-                (request.headers.get("User-Agent") or "")[:300], f["id"]))
+                (request.headers.get("User-Agent") or "")[:300], _agora(), f["id"]))
     return redirect(url_for("fichas.publica", token=token))

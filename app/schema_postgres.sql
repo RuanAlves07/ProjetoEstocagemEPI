@@ -319,6 +319,13 @@ CREATE TABLE IF NOT EXISTS fichas_epi (
     foto_sacola         TEXT,            -- foto da sacola de EPI em destaque, em instance/fichas/
     fotos_por           INTEGER REFERENCES usuarios (id),
     fotos_em            TEXT,
+    portador_id         INTEGER REFERENCES colaboradores (id), -- quem levou o pedido para o destinatário (NULL = o próprio destinatário retirou)
+    termo_assinatura    TEXT,                     -- assinatura (PNG) de quem levou, no termo de responsabilidade
+    termo_assinado_em   TEXT,
+    problema_texto      TEXT,                     -- destinatário avisou que não recebeu ou que faltou item
+    problema_em         TEXT,
+    problema_resolvido_em TEXT,
+    lembrete_em         TEXT,                     -- lembrete automático de entrega sem confirmação já enviado
     criado_por          INTEGER NOT NULL REFERENCES usuarios (id),
     criado_em           TEXT NOT NULL DEFAULT (to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'))
 );
@@ -328,6 +335,13 @@ ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS foto_colaborador TEXT;
 ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS foto_sacola TEXT;
 ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS fotos_por INTEGER REFERENCES usuarios (id);
 ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS fotos_em TEXT;
+ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS portador_id INTEGER REFERENCES colaboradores (id);
+ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS termo_assinatura TEXT;
+ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS termo_assinado_em TEXT;
+ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS problema_texto TEXT;
+ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS problema_em TEXT;
+ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS problema_resolvido_em TEXT;
+ALTER TABLE fichas_epi ADD COLUMN IF NOT EXISTS lembrete_em TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_fichas_colab ON fichas_epi (colaborador_id);
 CREATE INDEX IF NOT EXISTS idx_fichas_benef ON fichas_epi (beneficiario_id);
